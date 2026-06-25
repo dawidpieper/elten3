@@ -1,0 +1,5 @@
+/build/
+/dist/
+/CMakeUserPresets.json
+/private/
+/Gemfile.lock

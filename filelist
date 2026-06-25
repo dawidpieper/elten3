@@ -1,0 +1,148 @@
+# A part of Elten - EltenLink / Elten Network desktop client.
+# Copyright (C) 2014-2026 Dawid Pieper
+
+# Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
+# Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
+# You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
+
+# This file contains the Ruby source load order, each in separate line
+
+# Lines beginning with # will be ignored
+
+src/bootstrap.rb
+src/ri/nativestructs.rb
+src/platforms/windows/ri/win32structs.rb :windows
+src/platforms/windows/ri/systemhelpers.rb :windows
+src/platforms/osx/ri/systemhelpers.rb :osx
+src/ri/runtimepaths.rb
+src/eapi/__eapi.rb
+src/eapi/resources.rb
+src/eapi/structs.rb
+src/eapi/log.rb
+src/platforms/windows/ri/desktopruntime.rb :windows
+src/platforms/osx/ri/desktopruntime.rb :osx
+src/eltenlink/__eltenlink.rb
+src/eltenlink/error.rb
+src/eltenlink/client.rb
+src/eltenlink/attachments.rb
+src/eltenlink/users.rb
+src/eltenlink/contacts.rb
+src/eltenlink/admins.rb
+src/eltenlink/apps.rb
+src/eltenlink/calls.rb
+src/eltenlink/activities.rb
+src/eltenlink/conferenceresources.rb
+src/eltenlink/voip.rb
+src/eltenlink/feeds.rb
+src/eltenlink/system.rb
+src/eltenlink/notifications.rb
+src/eltenlink/monitors.rb
+src/eltenlink/profiles.rb
+src/eltenlink/honors.rb
+src/eltenlink/soundthemes.rb
+src/eltenlink/auctions.rb
+src/eltenlink/authentication.rb
+src/eltenlink/accounts.rb
+src/eltenlink/bans.rb
+src/eltenlink/premiumpackages.rb
+src/eltenlink/payments.rb
+src/eltenlink/polls.rb
+src/eltenlink/messages.rb
+src/eltenlink/blog.rb
+src/eltenlink/notes.rb
+src/eltenlink/forum.rb
+src/scenes/faq.rb
+src/scenes/sponsors.rb
+src/scenes/auctions.rb
+src/eapi/audioeditor.rb
+src/scenes/iikeys.rb
+src/scenes/feedviewer.rb
+src/scenes/callhistory.rb
+src/scenes/premiumpackages.rb
+src/scenes/documentation.rb
+src/scenes/install.rb
+src/scenes/conference.rb
+src/eapi/conference.rb
+src/scenes/account.rb
+src/scenes/settings.rb
+src/scenes/clock.rb
+src/scenes/programs.rb
+src/scenes/log.rb
+src/eapi/speechoutput.rb
+src/platforms/windows/eapi/nvda.rb :windows
+src/platforms/osx/eapi/speech.rb :osx
+src/scenes/sounds.rb
+src/eapi/opus.rb
+src/eapi/recorder.rb
+src/scenes/version.rb
+src/scenes/speedtest.rb
+src/platforms/windows/eapi/clipboard.rb :windows
+src/platforms/osx/eapi/clipboard.rb :osx
+src/scenes/authentication.rb
+src/eapi/bass.rb
+src/eapi/sound.rb
+src/eapi/audio3d.rb
+src/scenes/debug.rb
+src/scenes/users_recentlyregistered.rb
+src/scenes/users_recentlyactived.rb
+src/scenes/usersearch.rb
+src/scenes/notes.rb
+src/scenes/forgotpassword.rb
+src/scenes/honors.rb
+src/scenes/console.rb
+src/scenes/piano.rb
+src/scenes/polls.rb
+src/ri/__ri.rb
+src/scenes/admins.rb
+src/eapi/notificationgroups.rb
+src/scenes/notifications.rb
+src/scenes/usersaddedmetocontacts.rb
+src/scenes/blog.rb
+src/scenes/ban.rb
+src/scenes/users.rb
+src/scenes/soundthemes.rb
+src/scenes/changes.rb
+src/scenes/player.rb
+src/scenes/visitingcard.rb
+src/scenes/contacts.rb
+src/scenes/update.rb
+src/scenes/messages.rb
+src/scenes/online.rb
+src/eapi/mainmenu.rb
+src/scenes/forum.rb
+src/scenes/main.rb
+src/scenes/login.rb
+src/scenes/registration.rb
+src/scenes/loading.rb
+src/eapi/documents.rb
+src/platforms/windows/eapi/sapi.rb :windows
+src/platforms/windows/eapi/spellcheck.rb :windows
+src/platforms/windows/eapi/childprocess.rb :windows
+src/platforms/osx/eapi/spellcheck.rb :osx
+src/platforms/osx/eapi/childprocess.rb :osx
+src/eapi/external.rb
+src/eapi/http.rb
+src/eapi/activityreports.rb
+src/eapi/common.rb
+src/eapi/eltensrv.rb
+src/eapi/html.rb
+src/eapi/network.rb
+src/eapi/keyboard.rb
+src/eapi/invisibleinterface.rb
+src/eapi/ui.rb
+src/eapi/speech.rb
+src/eapi/controls.rb
+src/eapi/dictionary.rb
+src/eapi/notifications.rb
+src/platforms/windows/invisibleinterface/nativedialogs.rb :windows
+src/platforms/windows/invisibleinterface/hotkeys.rb :windows
+src/platforms/windows/invisibleinterface/service.rb :windows
+src/platforms/osx/invisibleinterface/service.rb :osx
+src/eapi/mediaencoders.rb
+src/eapi/speechtofile.rb
+src/eapi/mediaextractors.rb
+src/eapi/programsigning.rb
+src/eapi/runner.rb
+src/eapi/program.rb
+src/eapi/quickactions.rb
+src/main.rb

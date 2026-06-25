@@ -1,0 +1,57 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "windows-x64",
+      "displayName": "Windows x64 (Visual Studio 2026)",
+      "generator": "Visual Studio 18 2026",
+      "binaryDir": "${sourceDir}/build/launcher-windows-x64",
+      "architecture": "x64"
+    },
+    {
+      "name": "windows-x86",
+      "displayName": "Windows x86 (Visual Studio 2026)",
+      "generator": "Visual Studio 18 2026",
+      "binaryDir": "${sourceDir}/build/launcher-windows-x86",
+      "architecture": "Win32"
+    },
+    {
+      "name": "windows-arm64",
+      "displayName": "Windows ARM64 (Visual Studio 2026)",
+      "generator": "Visual Studio 18 2026",
+      "binaryDir": "${sourceDir}/build/launcher-windows-arm64",
+      "architecture": "ARM64"
+    },
+    {
+      "name": "osx-arm64",
+      "displayName": "macOS arm64",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/launcher-osx-arm64",
+      "cacheVariables": {
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-x64-release",
+      "configurePreset": "windows-x64",
+      "configuration": "Release"
+    },
+    {
+      "name": "windows-x86-release",
+      "configurePreset": "windows-x86",
+      "configuration": "Release"
+    },
+    {
+      "name": "windows-arm64-release",
+      "configurePreset": "windows-arm64",
+      "configuration": "Release"
+    },
+    {
+      "name": "osx-arm64-release",
+      "configurePreset": "osx-arm64"
+    }
+  ]
+}
