@@ -2317,7 +2317,7 @@ end
 def mark_item_audio_active(id=self.index)
   entry=item_audio_entry(id)
   return if entry==nil
-  entry[:last_update_serial]=$input_frame_serial||0
+  entry[:last_update_serial]=($input_frame_serial||0)+1
   @@audio_entries[entry.object_id]=entry if entry[:player]!=nil
 end
 
