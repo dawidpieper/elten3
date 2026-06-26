@@ -1,4 +1,4 @@
-﻿# A part of Elten - EltenLink / Elten Network desktop client.
+# A part of Elten - EltenLink / Elten Network desktop client.
 # Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
@@ -410,7 +410,7 @@ Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f/100.0)
 tokeys=[]
 if defined?(NVDA) && NVDA.check
   g=NVDA.getgestures
-  for k in g
+  g.each do |k|
         k=k.downcase
         if k=='kb(laptop):nvda+a' or k=='kb(desktop):nvda+downarrow'
           tokeys.push(0x2D,0x28)
@@ -430,7 +430,7 @@ if $setkeys.is_a?(Array)
         def keyboard_events_from_flags(flags)
           flags = flags.to_s.byteslice(0, 256).to_s.ljust(256, "\0")
           events = []
-          for key in 0...256
+          (0...256).each do |key|
             flag = flags.getbyte(key).to_i
             if (flag & 1) != 0
               events << [key, ((flag & 4) != 0 ? :repeat : true)]
@@ -564,13 +564,13 @@ if $setkeys.is_a?(Array)
     end
   end
   ac=QuickActions.get
-  for i in 1..11
+  (1..11).each do |i|
     k=0x6F+i
     if key_first_pressed?(k) && !key_held?(0x12)
       l=i
       l+=12 if key_held?(0x11)
       l*=-1 if key_held?(0x10)
-            for a in ac
+            ac.each do |a|
         a.call if a.key==l
         end
       end
@@ -579,7 +579,7 @@ if $setkeys.is_a?(Array)
   if !key_held?(0x12) && key_any_pressed?
     if key_any_pressed?
     t=GlobalMenu.ctitems
-for m in t
+t.each do |m|
   l=m[3]
   k, shift = keycode(l)
   if key_first_pressed?(k) && key_held?(0x10)==shift && ((key_held?(0x11) && !l.is_a?(Symbol)) || (l.is_a?(Symbol) && !key_held?(0x11))) && m[1].is_a?(Proc)
@@ -803,7 +803,7 @@ end
              update_premiumpackages(d['premiumpackages'].to_s.split(","))
            elsif d['func']=="feeds"
              changed_feeds = d['changed'].is_a?(String) ? JSON.parse(d['changed']) : Array(d['changed'])
-             for f in changed_feeds
+             changed_feeds.each do |f|
                feed = FeedMessage.new(f['id'], f['user'], f['time'], f['message'], f['response'], f['responses'], f['liked'], f['likes'])
                Session.feeds[feed.id]=feed
              end
@@ -985,7 +985,7 @@ if $agalarm==true and $alarmproc!=true
   if checkControls
   $activecontrols||=[]
   $lastactivecontrols||=[]
-  for c in $lastactivecontrols
+  $lastactivecontrols.each do |c|
     c.blur if !$activecontrols.include?(c)
   end
   $lastactivecontrols=$activecontrols.dup

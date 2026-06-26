@@ -63,7 +63,7 @@ module EltenAPI
      def getlocale(code)
        normalized=normalize_locale_code(code)
        lang=nil
-     for l in Languages
+     Languages.each do |l|
       if l.realcode.downcase==normalized.downcase
         lang=l
         break
@@ -74,7 +74,7 @@ module EltenAPI
        def setlocale(code)
     code=normalize_locale_code(code)
     lang=nil
-    for l in Languages
+    Languages.each do |l|
       if l.realcode.downcase==code.downcase
         lang=l
         break
@@ -87,7 +87,7 @@ module EltenAPI
    if defined?(Programs) && Programs.respond_to?(:language_locale_data)
      Programs.language_locale_data(code).each { |data| loadmo(data, false) }
    end
- for d in lang.docs
+ lang.docs.each do |d|
    Docs[d[0]]=d[1]
    end
 end
@@ -118,7 +118,7 @@ end
   Params[1]+=n
   src=data[12..15].unpack("I").first
   dst=data[16..19].unpack("I").first
-  for i in 0...n
+  (0...n).each do |i|
 src_length = data[src+8*i..src+8*i+3].unpack("I").first
 src_offset = data[src+8*i+4..src+8*i+7].unpack("I").first
 dst_length = data[dst+8*i..dst+8*i+3].unpack("I").first
@@ -156,7 +156,7 @@ def n_(*pr)
  end
  forms=[]
  n=0
- for param in pr
+ pr.each do |param|
    if param.is_a?(String)
    forms.push(param)
  elsif param.is_a?(Integer)
@@ -266,14 +266,14 @@ end
 def find(*forms)
   c=DictCache[forms.first]
   return forms if c==nil
-  for i in c
+  c.each do |i|
     return Translations[i].map{|s|s.force_encoding(Encoding::UTF_8)} if Sources[i].size>=forms.size && Sources[i][0...forms.size]==forms
   end
   return forms.map{|s|s.force_encoding(Encoding::UTF_8)}
 end
 def setparams(t)
   pr=t.split("\n")
-  for param in pr
+  pr.each do |param|
     c=param.index(": ")
     next if c==nil
     head=param[0...c]

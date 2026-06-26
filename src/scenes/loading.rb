@@ -82,8 +82,8 @@ v={
 'SoundTheme' => [['Path','Interface','SoundTheme']]
 }
 begin
-for k in v.keys
-  for o in v[k]
+v.keys.each do |k|
+  v[k].each do |o|
     o[1]=k if o[1]==nil
     o[2]=o[0] if o[2]==nil
         val=readini(EltenPath.join(Dirs.eltendata, "config", (k+"")+".ini"), k+"", o[0], "")
@@ -101,7 +101,7 @@ begin
 FileUtils.rm_rf(EltenPath.join(Dirs.eltendata, "lng"))
 if FileTest.exists?(EltenPath.join(Dirs.soundthemes, "inis"))
 d=Dir.entries(EltenPath.join(Dirs.soundthemes, "inis"))
-for f in d
+d.each do |f|
   next if !f.include?(".ini")
   name=readini(EltenPath.join(Dirs.soundthemes, "inis", f), "SoundTheme", "Name", "")
   path=readini(EltenPath.join(Dirs.soundthemes, "inis", f), "SoundTheme", "Path", "")
@@ -199,7 +199,7 @@ if oldfiles.size > 0
 loop {
 suc=true
 dr=Dir.entries("bin")
-for d in dr
+dr.each do |d|
   suc=false if oldfiles.include?(d.downcase)
 end
 break if suc

@@ -90,7 +90,7 @@ class Clipboard
         return [] if handle == nil || handle.to_i == 0
         count = native.drag_query_file.call(handle, -1, nil, 0).to_i
         files = []
-        for index in 0...count
+        (0...count).each do |index|
           length = native.drag_query_file.call(handle, index, nil, 0).to_i
           next if length <= 0
           buffer = "\0" * ((length + 1) * 2)

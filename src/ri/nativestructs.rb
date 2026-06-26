@@ -31,7 +31,7 @@ module EltenNativeStructs
 
     def pointer_array_values(buffer, count)
       values = []
-      for i in 0...count.to_i
+      (0...count.to_i).each do |i|
         values.push(pointer_value(buffer, i * POINTER_SIZE))
       end
       values
@@ -75,7 +75,7 @@ module EltenNativeStructs
     def bass_channel_info_values(buffer)
       filename_offset = POINTER_SIZE == 8 ? 32 : 28
       values = []
-      for i in 0...7
+      (0...7).each do |i|
         values.push(dword_value(buffer, i * 4))
       end
       values.push(pointer_value(buffer, filename_offset))

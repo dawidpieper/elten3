@@ -90,7 +90,7 @@ return b
 end
 def set_echo(ec)
 return nil if !ec.is_a?(Echo)
-for i in 0...@preprocessors.size
+(0...@preprocessors.size).each do |i|
 pc=EltenNativeStructs.pointer_buffer(ec.echoes[i])
 Preprocess_ctl.call(@preprocessors[i], SPEEX_PREPROCESS_SET_ECHO_STATE, pc)
 end
@@ -109,7 +109,7 @@ while (audio.bytesize-index)>=@stepsize
 frg=audio.byteslice(index...index+@stepsize)
 channels=[]
 sources=frg.unpack("s*").each_slice(@ch).to_a.transpose
-for c in 0...@ch
+(0...@ch).each do |c|
 frame=sources[c].pack("s*")
 Preprocess_run.call(@preprocessors[c], frame)
 channels[c]=frame.unpack("s*")
@@ -126,7 +126,7 @@ return ""
 end
 private
 def setctl_int(flag, value)
-for pr in @preprocessors
+@preprocessors.each do |pr|
 pc=[value].pack("i")
 Preprocess_ctl.call(pr, flag, pc)
 end
@@ -137,7 +137,7 @@ Preprocess_ctl.call(@preprocessors[0], flag, pc)
 return pc.unpack("i").first
 end
 def setctl_float(flag, value)
-for pr in @preprocessors
+@preprocessors.each do |pr|
 pc=[value].pack("f")
 Preprocess_ctl.call(pr, flag, pc)
 end
@@ -173,10 +173,10 @@ return indata if indata.bytesize>outdata.bytesize
 return indata if indata.bytesize!=@stepsize
 indata=indata.byteslice(0...outdata.bytesize) if indata.bytesize>outdata.bytesize
 out="\0"*indata.bytesize
-for c in 0...@ch
+(0...@ch).each do |c|
 inframe=("\0"*(@stepsize/@ch)).b
 outframe=("\0"*(@stepsize/@ch)).b
-for i in 0...(@stepsize/@ch/2)
+(0...(@stepsize/@ch/2)).each do |i|
 inframe.setbyte(i*2, indata.getbyte(2*(@ch*i+c)))
 outframe.setbyte(i*2, outdata.getbyte(2*(@ch*i+c)))
 inframe.setbyte(i*2+1, indata.getbyte(2*(@ch*i+c)+1))
@@ -184,7 +184,7 @@ outframe.setbyte(i*2+1, outdata.getbyte(2*(@ch*i+c)+1))
 end
 resframe="\0"*inframe.bytesize
 Echo_cancellation.call(@echoes[c], inframe, outframe, resframe)
-for i in 0...@stepsize/@ch/2
+(0...@stepsize/@ch/2).each do |i|
 out.setbyte(2*(@ch*i+c), resframe.getbyte(i*2))
 out.setbyte(2*(@ch*i+c)+1, resframe.getbyte(i*2+1))
 end
@@ -198,15 +198,15 @@ ret=""
 while (audio.bytesize-index)>=@stepsize
 frg=audio.byteslice(index...index+@stepsize)
 out=("\0"*@stepsize).b
-for c in 0...@ch
+(0...@ch).each do |c|
 frame=("\0"*(@stepsize/@ch)).b
 resframe="\0"*frame.bytesize
-for i in 0...(@stepsize/@ch/2)
+(0...(@stepsize/@ch/2)).each do |i|
 frame.setbyte(i*2, frg.getbyte(2*(@ch*i+c)))
 frame.setbyte(i*2+1, frg.getbyte(2*(@ch*i+c)+1))
 end
 Echo_capture.call(@echoes[c], frame, resframe)
-for i in 0...@stepsize/@ch/2
+(0...@stepsize/@ch/2).each do |i|
 out.setbyte(2*(@ch*i+c), resframe.getbyte(i*2))
 out.setbyte(2*(@ch*i+c)+1, resframe.getbyte(i*2+1))
 end
@@ -224,15 +224,15 @@ ret=""
 while (audio.bytesize-index)>=@stepsize
 frg=audio.byteslice(index...index+@stepsize)
 out=("\0"*@stepsize).b
-for c in 0...@ch
+(0...@ch).each do |c|
 frame=("\0"*(@stepsize/@ch)).b
 resframe="\0"*frame.bytesize
-for i in 0...(@stepsize/@ch/2)
+(0...(@stepsize/@ch/2)).each do |i|
 frame.setbyte(i*2, frg.getbyte(2*(@ch*i+c)))
 frame.setbyte(i*2+1, frg.getbyte(2*(@ch*i+c)+1))
 end
 Echo_playback.call(@echoes[c], frame, resframe)
-for i in 0...@stepsize/@ch/2
+(0...@stepsize/@ch/2).each do |i|
 out.setbyte(2*(@ch*i+c), resframe.getbyte(i*2))
 out.setbyte(2*(@ch*i+c)+1, resframe.getbyte(i*2+1))
 end
@@ -245,7 +245,7 @@ return ret
 end
 private
 def setctl_int(flag, value)
-for pr in @echoes
+@echoes.each do |pr|
 pc=[value].pack("i")
 Echo_ctl.call(pr, flag, pc)
 end
@@ -256,7 +256,7 @@ Echo_ctl.call(@echoes[0], flag, pc)
 return pc.unpack("i").first
 end
 def setctl_float(flag, value)
-for pr in @echoes
+@echoes.each do |pr|
 pc=[value].pack("f")
 Echo_ctl.call(pr, flag, pc)
 end

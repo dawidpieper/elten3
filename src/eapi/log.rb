@@ -87,7 +87,7 @@ end
         lg=[]
         lgh=[]
 last=nil
-        for i in 0...Events.size
+        (0...Events.size).each do |i|
   l=Events[i]
   txt=l.to_s(dsplevel, dspdate)
   if l.level==nil

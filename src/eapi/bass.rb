@@ -1,4 +1,4 @@
-﻿# A part of Elten - EltenLink / Elten Network desktop client.
+# A part of Elten - EltenLink / Elten Network desktop client.
 # Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
@@ -46,7 +46,7 @@ module EltenBassStructs
     def bass_channel_info_values(buffer)
       filename_offset = POINTER_SIZE == 8 ? 32 : 28
       values = []
-      for i in 0...7
+      (0...7).each do |i|
         values.push(dword_value(buffer, i * 4))
       end
       values.push(pointer_value(buffer, filename_offset))
@@ -531,7 +531,7 @@ return if @init==true
       raise(error_name)
     end
     plugins = ["bassopus", "bassflac", "bassmidi", "basswebm", "basswma", "bass_aac", "bass_ac3", "bass_spx", "basshls", "bassalac"]
-        for pl in plugins
+        plugins.each do |pl|
               Log.debug("Loading Bass plugin #{pl}")
           plugin_path = EltenRuntimePaths.absolute_library_file(pl)
           if BASS_PluginLoad.call(plugin_path, 0) == 0
@@ -656,7 +656,7 @@ class VST
   def parameters
     cnt = BASS_VST_GetParamCount.call(@vst)
     params=[]
-    for i in 0...cnt
+    (0...cnt).each do |i|
       params.push(Parameter.new(@vst, i))
     end
     params
@@ -721,7 +721,7 @@ class VST
   def programs
     count = BASS_VST_GetProgramCount.call(@vst)
     programs=[]
-    for i in 0...count
+    (0...count).each do |i|
       ptr = BASS_VST_GetProgramName.call(@vst, i)
       programs[i]=Bass.c_string(ptr).force_encoding("UTF-8")
     end

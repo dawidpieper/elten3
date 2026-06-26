@@ -127,7 +127,7 @@ def import(arr)
     selt=[]
     states=[]
     ind=0
-    for u in @users
+    @users.each do |u|
       user=utf8(u.name)
       user=u.user if u.name=="" || u.name==nil
                   selt.push(user+":\r\n"+p_("Messages", "Last message")+": "+utf8(u.lastuser)+": "+utf8(u.lastsubject)+".\r\n"+format_date(u.lastdate)+"\r\n")
@@ -211,7 +211,7 @@ end
 if @users[@sel_users.index].muted==false
   menu.submenu(p_("Messages", "Mute this conversation")) {|m|
   ms=[[p_("Messages", "Mute for a quarter"), 900], [p_("Messages", "Mute for an hour"), 3600], [p_("Messages", "Mute for a day"), 86400], [p_("Messages", "Mute for a week"), 86400*7], [p_("Messages", "Mute until manually unmuted"), 0]]
-  for mt in ms
+  ms.each do |mt|
     m.option(mt[0], mt[1]) {|t|
     mute_conversation(@users[@sel_users.index], t)
     }
@@ -343,7 +343,7 @@ def edit_conversation(c=nil)
 if form.fields[2]!=nil and form.fields[2].pressed?
   addusers=[]
   if c!=nil
-    for u in users
+    users.each do |u|
       addusers.push(u) if !cusers.include?(u)
       end
   end
@@ -432,7 +432,7 @@ if result.conversations.empty? and sp=='new'
         selt=[]
         states=[]
         ind=0
-    for c in @conversations
+    @conversations.each do |c|
       lu=utf8(c.lastuser)
       lu=@conversation_name if @conversation_name!="" && @conversation_name!=nil && lu[0..0]=="["
       lu=name_conversation(lu) if lu[0..0]=="["
@@ -557,7 +557,7 @@ end
          selt=[]
          states=[]
          audio_urls=[]
-    for m in @messages
+    @messages.each do |m|
       if !curids.include?(m.id)
       if complete
       play_sound("messages_update")

@@ -22,6 +22,16 @@ module EltenAPI
       nvda != nil && nvda.respond_to?(:check) && nvda.check
     end
 
+    def braille_output
+      nvda = nvda_output
+      return nvda if nvda != nil && nvda.respond_to?(:check) && nvda.check && nvda.respond_to?(:braille_alert)
+      SpeechOutput.list.find { |o| o != nvda && o.braille_supported? && o.respond_to?(:usable?) && o.usable? }
+    end
+
+    def braille_check?
+      braille_output != nil
+    end
+
     def speech_output
       output = SpeechOutput.current_output
       nvda = nvda_output
@@ -64,10 +74,11 @@ module EltenAPI
     def alert(text, wait=true)
       Programs.emit_event(:speech_alert)
       speak(text)
-      braille=text.is_a?(SpeechSequence) ? text.braille_text : text
-      nvda_output.braille_alert(braille) if nvda_check?
+      braille = text.is_a?(SpeechSequence) ? text.braille_text : text
+      out = braille_output
+      out.braille_alert(braille) if out != nil
       speech_wait if wait
-      end
+    end
   
       @@current_speechsequence=nil
       def current_speechsequence

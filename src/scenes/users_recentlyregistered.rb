@@ -14,7 +14,7 @@ class Scene_Users_RecentlyRegistered
       alert(_("Error"))
     end
             selt = []
-    for i in 0..onl.size - 1
+    (0..onl.size - 1).each do |i|
       selt[i] = user_with_status(onl[i])
       end
     @sel = ListBox.new(selt,header: p_("Users_RecentlyRegistered", "Recently registered users"), index: 0, flags: 0, quiet: false)

@@ -45,7 +45,7 @@ result = "#{p_("SpeedTest", "Average time")}: #{((times.sum).to_f / (n-errors.to
 #{p_("SpeedTest", "Errors count")}: #{errors}
 
 "
-      for i in 0...n
+      (0...n).each do |i|
         result+=(i+1).to_s+". "+(times[i]*1000).round.to_s+"ms\r\n"
         end
       input_text(p_("SpeedTest", "Test results"),flags: EditBox::Flags::ReadOnly,text: result)

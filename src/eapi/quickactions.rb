@@ -63,7 +63,7 @@ module EltenAPI
               if tps.size==0
                 text=p_("EAPI_Common", "No tips available")
               else
-                for i in 1...tps.size
+                (1...tps.size).each do |i|
                   next if tps[i].size<2
                   t=tps[i]+""
                   t[0..0]=t[0..0].downcase if t[1..1].downcase==t[1..1].downcase
@@ -202,7 +202,7 @@ end
     def load_json_actions(path)
       data=JSON.parse(File.binread(path).to_s)
       fail TypeError, "Quick actions JSON must be an array" if !data.is_a?(Array)
-      for ac in Array(data)
+      Array(data).each do |ac|
         action=normalize_record(ac)
         register(*action) if action!=nil
       end
@@ -215,7 +215,7 @@ end
     def migrate_legacy_actions
       begin
         d=load_data(legacy_data_path)
-        for ac in Array(d)
+        Array(d).each do |ac|
           action=normalize_record(ac)
           register(*action) if action!=nil
         end
@@ -293,7 +293,7 @@ end
 [:conference_dicerollcustom, p_("EAPI_QuickActions", "Conferences: roll a custom dice"), [], 0, false],
 [:alarm, p_("EAPI_QuickActions", "Add alarm"), [], 0, false],
         ]
-        for ac in @@addprocs
+        @@addprocs.each do |ac|
           a.push([ac[1], ac[2]])
           end
         end
@@ -389,7 +389,7 @@ end
     def generate_struct
       load_actions if @@actions==nil
             a=[]
-      for ac in @@actions
+      @@actions.each do |ac|
         b=quick_action_struct(ac)
         a.push(b) if b!=nil
       end
@@ -460,7 +460,7 @@ end
       index
     end
         def get_proc(pr)
-      for a in @@addprocs
+      @@addprocs.each do |a|
         return a[3] if a[1]==pr
       end
       return nil
