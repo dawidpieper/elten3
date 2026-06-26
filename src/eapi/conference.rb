@@ -141,7 +141,7 @@ class Channel
 
 def self.load_steamaudio(file=nil)
   setup_core_runtime(false)
-  require_relative "steamaudio" unless defined?(::SteamAudio)
+  require_relative "audio/steamaudio" unless defined?(::SteamAudio)
   SteamAudio.load(file)
 rescue Exception
   Log.error("Conference SteamAudio load: #{$!.class}: #{$!.message}")
@@ -177,9 +177,9 @@ def self.setup_core_runtime(load_core=true)
   setup_legacy_symbols
   setup_kernel_helpers
   setup_ogg_symbols
-  require_relative "opus" unless defined?(::Opus)
-  require_relative "speexdsp" unless defined?(::SpeexDSP)
-  require_relative "steamaudio" unless defined?(::SteamAudio)
+  require_relative "audio/opus" unless defined?(::Opus)
+  require_relative "audio/speexdsp" unless defined?(::SpeexDSP)
+  require_relative "audio/steamaudio" unless defined?(::SteamAudio)
   require_relative "../eltenlink/voip" unless defined?(::EltenLink::VoIP)
   require_relative "conferencecore" if load_core && !const_defined?(:Core, false)
   start_keyboard_state

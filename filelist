@@ -15,7 +15,11 @@ src/platforms/windows/ri/win32structs.rb :windows
 src/platforms/windows/ri/systemhelpers.rb :windows
 src/platforms/osx/ri/systemhelpers.rb :osx
 src/ri/runtimepaths.rb
-src/eapi/__eapi.rb
+src/eapi/core/base.rb
+src/eapi/core/local_config.rb
+src/eapi/core/runtime.rb
+src/eapi/core/configuration.rb
+src/eapi/core/cache.rb
 src/eapi/resources.rb
 src/eapi/structs.rb
 src/eapi/log.rb
@@ -54,7 +58,7 @@ src/eltenlink/forum.rb
 src/scenes/faq.rb
 src/scenes/sponsors.rb
 src/scenes/auctions.rb
-src/eapi/audioeditor.rb
+src/eapi/audio/audioeditor.rb
 src/scenes/iikeys.rb
 src/scenes/feedviewer.rb
 src/scenes/callhistory.rb
@@ -72,16 +76,21 @@ src/eapi/speechoutput.rb
 src/platforms/windows/eapi/nvda.rb :windows
 src/platforms/osx/eapi/speech.rb :osx
 src/scenes/sounds.rb
-src/eapi/opus.rb
-src/eapi/recorder.rb
+src/eapi/audio/opus.rb
+src/eapi/audio/recorder.rb
+src/eapi/audio/encoders/base.rb
+src/eapi/audio/encoders/ogg.rb
+src/eapi/audio/encoders/opus.rb
+src/eapi/audio/encoders/vorbis.rb
+src/eapi/audio/encoders/wave.rb
 src/scenes/version.rb
 src/scenes/speedtest.rb
 src/platforms/windows/eapi/clipboard.rb :windows
 src/platforms/osx/eapi/clipboard.rb :osx
 src/scenes/authentication.rb
-src/eapi/bass.rb
-src/eapi/sound.rb
-src/eapi/audio3d.rb
+src/eapi/audio/bass.rb
+src/eapi/audio/sound.rb
+src/eapi/audio/fx/audio3d.rb
 src/scenes/debug.rb
 src/scenes/users_recentlyregistered.rb
 src/scenes/users_recentlyactived.rb
@@ -123,24 +132,73 @@ src/platforms/osx/eapi/childprocess.rb :osx
 src/eapi/external.rb
 src/eapi/http.rb
 src/eapi/activityreports.rb
-src/eapi/common.rb
-src/eapi/eltensrv.rb
+src/eapi/common/console.rb
+src/eapi/common/user_menu.rb
+src/eapi/common/diagnostics.rb
+src/eapi/common/license.rb
+src/eapi/common/media.rb
+src/eapi/common/input.rb
+src/eapi/common/threads.rb
+src/eapi/common/hrtf.rb
+src/eapi/common/premium.rb
+src/eapi/common/platform.rb
+src/eapi/common/activity.rb
+src/eapi/common/feed.rb
+src/eapi/common/soundthemes.rb
+src/eapi/common/voice.rb
+src/eapi/common/url.rb
+src/eapi/common/__common.rb
+src/eapi/eltensrv/client.rb
+src/eapi/eltensrv/attachments.rb
+src/eapi/eltensrv/users.rb
+src/eapi/eltensrv/blogs.rb
+src/eapi/eltensrv/feeds.rb
+src/eapi/eltensrv/monitors.rb
+src/eapi/eltensrv/calls.rb
+src/eapi/eltensrv/system.rb
+src/eapi/eltensrv/notifications.rb
+src/eapi/eltensrv/bugs.rb
+src/eapi/eltensrv/contacts.rb
+src/eapi/eltensrv/profiles.rb
+src/eapi/eltensrv/honors.rb
+src/eapi/eltensrv/__eltensrv.rb
 src/eapi/html.rb
 src/eapi/network.rb
 src/eapi/keyboard.rb
 src/eapi/invisibleinterface.rb
-src/eapi/ui.rb
+src/ui/time.rb
+src/ui/input.rb
+src/ui/calls.rb
+src/ui/loop.rb
+src/ui/dialogs.rb
+src/ui/__ui.rb
 src/eapi/speech.rb
-src/eapi/controls.rb
+src/ui/form.rb
+src/ui/controls/form_field.rb
+src/ui/controls/edit_box.rb
+src/ui/controls/list_box.rb
+src/ui/controls/button.rb
+src/ui/controls/check_box.rb
+src/ui/controls/files_tree.rb
+src/ui/controls/static.rb
+src/ui/controls/tree.rb
+src/ui/controls/table_box.rb
+src/ui/controls/grid_box.rb
+src/ui/controls/player.rb
+src/ui/controls/menu.rb
+src/ui/controls/map.rb
+src/ui/controls/opus_record_button.rb
+src/ui/controls/date_button.rb
+src/ui/controls/__controls.rb
 src/eapi/dictionary.rb
 src/eapi/notifications.rb
 src/platforms/windows/invisibleinterface/nativedialogs.rb :windows
 src/platforms/windows/invisibleinterface/hotkeys.rb :windows
 src/platforms/windows/invisibleinterface/service.rb :windows
 src/platforms/osx/invisibleinterface/service.rb :osx
-src/eapi/mediaencoders.rb
+src/eapi/audio/encoders/media.rb
 src/eapi/speechtofile.rb
-src/eapi/mediaextractors.rb
+src/eapi/audio/mediaextractors.rb
 src/eapi/programsigning.rb
 src/eapi/runner.rb
 src/eapi/program.rb
