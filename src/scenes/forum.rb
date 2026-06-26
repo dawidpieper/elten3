@@ -515,7 +515,7 @@ return result
       end
     else
       g = @sgroups[index - @grpheadindex]
-      groupmotddlg(g, false) if g.hasnewmotd
+      groupmotddlg(g, false) if g.hasnewmotd && (g.role == 1 || g.role == 2)
       if g.role == 1 or g.role == 2 or g.public
         if allThreads
           @query = g
@@ -1940,7 +1940,7 @@ threadopen(@thrsel.index)
 
   def threadopen(index)
     g=@sthreads[index].forum.group
-    groupmotddlg(g, false) if g.hasnewmotd
+    groupmotddlg(g, false) if g.hasnewmotd && (g.role == 1 || g.role == 2)
             if @group == -5
           $scene = Scene_Forum_Thread.new(@sthreads[index], -5, @cat, @query, nil, nil, @thrsel.tag)
         else
