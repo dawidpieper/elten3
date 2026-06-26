@@ -142,7 +142,7 @@ verdots=v[0].delete(".").split("").join(".")
 }
 @changes.reverse!
 @selt = []
-for i in 0..@changes.size - 1
+(0..@changes.size - 1).each do |i|
   @selt.push((@changes[i]).split("\n")[0].delete(":").sub(verstring+" ",""))
   end
 @sel = ListBox.new(@selt,header: p_("Changes", "Changelog"), index: 0, flags: 0, quiet: false)

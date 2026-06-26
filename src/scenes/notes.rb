@@ -20,7 +20,7 @@ class Scene_Notes
     return
     end
   selt=[]
-  for n in @notes
+  @notes.each do |n|
     selt.push(n.name+"\r\n#{p_("Notes", "Author")}: "+n.author+"\r\n#{p_("Notes", "Modified")}: "+format_date(n.modified, false, false))
   end
   @sel=ListBox.new(selt,header: p_("Notes", "Notes"), index: index, flags: 0, quiet: false)

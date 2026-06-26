@@ -115,7 +115,7 @@ SetSecurityDescriptorDacl.call(sd, 1, acl, 0)
                     end
                     @checktime=Time.now.to_f
                       b=r.split("\n")
-                      for l in b
+                      b.each do |l|
               j=JSON.load(l)
               @waiting-=1
                                          @reads[j['id']]=j
@@ -132,7 +132,7 @@ SetSecurityDescriptorDacl.call(sd, 1, acl, 0)
                                   @prepared=true
                                   end
                     b=r.split("\n")
-                      for l in b
+                      b.each do |l|
               j=JSON.load(l)
 if j['msgtype']==1
   @waiting-=1

@@ -105,11 +105,11 @@ elsif @preparam.is_a?(String)
         foll = true if @preparam == -5
         @frmindex = 0
         forum = nil
-        for thread in @threads
+        @threads.each do |thread|
           forum = thread.forum.name if thread.id == @pre
         end
         group = nil
-        for tforum in @forums
+        @forums.each do |tforum|
           group = tforum.group.id if tforum.name == forum
         end
         group = -5 if @preparam == -5
@@ -117,7 +117,7 @@ elsif @preparam.is_a?(String)
         @grpsetindex = group if group > 0
         @grpindex[0] = 1 if @preparam == -5
         i = 0
-        for tforum in @forums
+        @forums.each do |tforum|
           if (tforum.group.id == group) or (tforum.followed and @preparam == -5)
             @frmindex = i if tforum.name == forum
             i += 1
@@ -203,7 +203,7 @@ break
       sgloc = false
       klangs=[]
       knownlanguages = Session.languages.split(",").map{|lg|lg.upcase}
-      for g in @groups
+      @groups.each do |g|
         if g.role == 1 || g.role == 2
           @sgroups.push(g)
         end
@@ -215,7 +215,7 @@ break
       end
             @sgroups += spgroups
             sorts=(0..@groups.map{|g|g.id}.max||0).to_a.map{0}
-      for t in @threads
+      @threads.each do |t|
         g=t.forum.group.id
         sorts[g]=t.lastupdate if sorts[g]<t.lastupdate
           end
@@ -232,7 +232,7 @@ break
       }
       @grpheadindex = 3
       grpselt = []
-      for i in 0...@sgroups.size
+      (0...@sgroups.size).each do |i|
         group = @sgroups[i]
         grpselt.push([group.name, group.forums.to_s, group.threads.to_s, group.posts.to_s, (group.posts - group.readposts).to_s])
         @grpindex[0] = i + @grpheadindex if group.id == @grpsetindex
@@ -241,7 +241,7 @@ break
             flt = flr = flp = 0
       ft = fp = fr = 0
       fmt=fmp=fmr=0
-      for thread in @threads
+      @threads.each do |thread|
         if thread.followed
           ft += 1
           fp += thread.posts
@@ -285,7 +285,7 @@ break
       @grpindex[0] = @grpheadindex + @sgroups.size + ll - 1 if ll > 0
       when       1 #Recently active
               @sgroups = []
-      for g in @groups
+      @groups.each do |g|
         next if LocalConfig['ForumShowUnknownLanguages']==0 && knownlanguages.size>0 && !knownlanguages.include?(g.lang[0..1].upcase)
         next if g.hidden
         if (g.public || g.open) && g.posts > 0
@@ -293,7 +293,7 @@ break
         end
       end
       sorts=(0..@groups.map{|g|g.id}.max||0).to_a.map{0}
-      for t in @threads
+      @threads.each do |t|
         g=t.forum.group.id
         sorts[g]=t.lastupdate if sorts[g]<t.lastupdate
           end
@@ -303,14 +303,14 @@ break
       }
       @grpheadindex = 0
       grpselt = []
-      for group in @sgroups
+      @sgroups.each do |group|
         grpselt.push([group.name, group.founder, group.description, group.forums.to_s, group.threads.to_s, group.posts.to_s, (group.posts - group.readposts).to_s])
       end
       grpselh = [nil, p_("Forum", "Administrator"), nil, p_("Forum", "Forums"), p_("Forum", "Threads"), p_("Forum", "posts"), p_("Forum", "Unread")]
     when 2 #Recommended
       @sgroups = []
       spgroups = []
-      for g in @groups
+      @groups.each do |g|
         next if LocalConfig['ForumShowUnknownLanguages']==0 && knownlanguages.size>0 && !knownlanguages.include?(g.lang[0..1].upcase)
         if g.recommended
           if Configuration.language[0..1].downcase == g.lang.downcase
@@ -324,13 +324,13 @@ break
       @sgroups.sort {|a,b| groupsorter(a,b)} if LocalConfig["ForumSort"]!=0
       @grpheadindex = 0
       grpselt = []
-      for group in @sgroups
+      @sgroups.each do |group|
         grpselt.push([group.name + ": " + group.description, group.forums.to_s, group.threads.to_s, group.posts.to_s, (group.posts - group.readposts).to_s])
       end
       grpselh = [nil, p_("Forum", "Forums"), p_("Forum", "Threads"), p_("Forum", "posts"), p_("Forum", "Unread")]
     when 3 #Open
       @sgroups = []
-      for g in @groups
+      @groups.each do |g|
         next if LocalConfig['ForumShowUnknownLanguages']==0 && knownlanguages.size>0 && !knownlanguages.include?(g.lang[0..1].upcase)
         next if g.hidden
         if g.open && g.public && !g.recommended && g.posts > 0
@@ -346,13 +346,13 @@ break
       }
       @grpheadindex = 0
       grpselt = []
-      for group in @sgroups
+      @sgroups.each do |group|
         grpselt.push([group.name, group.founder, group.description, group.forums.to_s, group.threads.to_s, group.posts.to_s, (group.posts - group.readposts).to_s])
       end
       grpselh = [nil, p_("Forum", "Administrator"), nil, p_("Forum", "Forums"), p_("Forum", "Threads"), p_("Forum", "posts"), p_("Forum", "Unread")]
     when 4 #Invited
       @sgroups = []
-      for g in @groups
+      @groups.each do |g|
         if g.role == 5
           @sgroups.push(g)
         end
@@ -366,13 +366,13 @@ break
       }
       @grpheadindex = 0
       grpselt = []
-      for group in @sgroups
+      @sgroups.each do |group|
         grpselt.push([group.name, group.founder, group.description, group.forums.to_s, group.threads.to_s, group.posts.to_s, (group.posts - group.readposts).to_s])
       end
       grpselh = [nil, p_("Forum", "Administrator"), nil, p_("Forum", "Forums"), p_("Forum", "Threads"), p_("Forum", "posts"), p_("Forum", "Unread")]
     when 5 #Moderated
       @sgroups = []
-      for g in @groups
+      @groups.each do |g|
         if g.role == 2
           @sgroups.push(g)
         end
@@ -386,13 +386,13 @@ break
         }
       @grpheadindex = 0
       grpselt = []
-      for group in @sgroups
+      @sgroups.each do |group|
         grpselt.push([group.name, group.founder, group.forums.to_s, group.threads.to_s, group.posts.to_s, (group.posts - group.readposts).to_s])
       end
       grpselh = [nil, p_("Forum", "Administrator"), p_("Forum", "Forums"), p_("Forum", "Threads"), p_("Forum", "posts"), p_("Forum", "Unread")]
     when 6 #All
       @sgroups = []
-      for g in @groups
+      @groups.each do |g|
         next if LocalConfig['ForumShowUnknownLanguages']==0 && knownlanguages.size>0 && !knownlanguages.include?(g.lang[0..1].upcase)
         if g.forums > 0
           @sgroups.push(g)
@@ -407,13 +407,13 @@ break
       }
       @grpheadindex = 0
       grpselt = []
-      for group in @sgroups
+      @sgroups.each do |group|
         grpselt.push([group.name, group.founder, group.description, group.forums.to_s, group.threads.to_s, group.posts.to_s, (group.posts - group.readposts).to_s])
       end
       grpselh = [nil, p_("Forum", "Administrator"), nil, p_("Forum", "Forums"), p_("Forum", "Threads"), p_("Forum", "posts"), p_("Forum", "Unread")]
     when 7 #Recently created
       @sgroups = []
-      for g in @groups
+      @groups.each do |g|
         next if LocalConfig['ForumShowUnknownLanguages']==0 && knownlanguages.size>0 && !knownlanguages.include?(g.lang[0..1].upcase)
         next if g.hidden
         if g.forums > 0
@@ -423,14 +423,14 @@ break
       @sgroups.sort! { |a, b| b.created<=> a.created}
       @grpheadindex = 0
       grpselt = []
-      for group in @sgroups
+      @sgroups.each do |group|
         grpselt.push([group.name, group.founder, group.description, group.forums.to_s, group.threads.to_s, group.posts.to_s, (group.posts - group.readposts).to_s])
       end
       grpselh = [nil, p_("Forum", "Administrator"), nil, p_("Forum", "Forums"), p_("Forum", "Threads"), p_("Forum", "posts"), p_("Forum", "Unread")]
     when 8 #Popular
       grp = forum_fetch([], nil) { EltenLink::Forum.popular_groups(elten_link) }
       @sgroups = []
-        for l in grp
+        grp.each do |l|
           g = nil
           @groups.each { |r| g = r if r.id == l.to_i }
           if g!=nil
@@ -441,13 +441,13 @@ break
         end
       @grpheadindex = 0
       grpselt = []
-      for group in @sgroups
+      @sgroups.each do |group|
         grpselt.push([group.name, group.founder, group.description, group.forums.to_s, group.threads.to_s, group.posts.to_s, (group.posts - group.readposts).to_s])
       end
       grpselh = [nil, p_("Forum", "Administrator"), nil, p_("Forum", "Forums"), p_("Forum", "Threads"), p_("Forum", "posts"), p_("Forum", "Unread")]
     end
     if @grpindex[type] == nil and @grpsetindex != nil
-      for i in 0...@sgroups.size
+      (0...@sgroups.size).each do |i|
         @grpindex[type] = i + @grpheadindex if @sgroups[i].id == @grpsetindex
       end
     end
@@ -607,7 +607,7 @@ return result
         szs = forum_fetch([], nil) { EltenLink::Forum.group_size(elten_link, group_id: g.id) }
         if szs.size >= 3
           s += p_("Forum", "Group size") + "\n"
-          for i in 0..3
+          (0..3).each do |i|
             if i < 3
               a = szs[i].to_i
             else
@@ -721,10 +721,10 @@ if (((@sgroups[@grpsel.index - @grpheadindex].role==1 || (@sgroups[@grpsel.index
           if forum_attempt(nil) {
             EltenLink::Forum.mark_group_as_read(elten_link, group_id: @sgroups[@grpsel.index-@grpheadindex].id)
           }
-            for t in @threads
+            @threads.each do |t|
               t.readposts = t.posts if t.forum.group.id == @sgroups[@grpsel.index-@grpheadindex].id
             end
-            for f in @forums
+            @forums.each do |f|
               f.readposts=f.posts if f.group.id==@sgroups[@grpsel.index-@grpheadindex].id
               end
             @sgroups[@grpsel.index-@grpheadindex].readposts = @sgroups[@grpsel.index-@grpheadindex].posts
@@ -1052,7 +1052,7 @@ rfr=Proc.new {
       users = []
       roles = []
       inherits=[]
-      for member in members
+      members.each do |member|
         users.push(member.user)
         roles.push(member.role)
         inherits.push(member.inherit)
@@ -1232,7 +1232,7 @@ loop do
   def newgroup
     ln = []
     lnindex = 0
-    for lk in Lists.langs.keys
+    Lists.langs.keys.each do |lk|
       l = Lists.langs[lk]
       ln.push(l["name"] + " (" + l["nativeName"] + ")")
       lnindex = ln.size - 1 if Configuration.language.downcase[0..1] == lk.downcase[0..1]
@@ -1338,11 +1338,11 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
   def forumsload(group)
         @sforums = []
     if group >= 0
-      for f in @forums
+      @forums.each do |f|
         @sforums.push(f) if f.group.id == group
       end
     elsif group == -5
-      for f in @forums
+      @forums.each do |f|
         @sforums.push(f) if f.followed
       end
     end
@@ -1350,7 +1350,7 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
       forum_order = {}
       @sforums.each_with_index { |forum, i| forum_order[forum.name] = i }
       forum_last_update = Hash.new(0)
-      for thread in @threads
+      @threads.each do |thread|
         forum = thread.forum
         next if forum == nil || !forum_order.key?(forum.name)
         forum_last_update[forum.name] = thread.lastupdate if forum_last_update[forum.name] < thread.lastupdate
@@ -1364,10 +1364,10 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
       @sforums.sort! {|a,b| forumsorter(a,b)}
     end
     frmselt = []
-    for forum in @sforums
+    @sforums.each do |forum|
       name_parts = [forum.fullname]
       if group == -5
-        for g in @groups
+        @groups.each do |g|
           name_parts << " (#{g.name}) " if g.id == forum.group.id
         end
       end
@@ -1406,7 +1406,7 @@ def forumtagsedit(forum)
   return if forum.group.role!=2
   tags = forumtags(forum)
   selt=[]
-  for t in tags
+  tags.each do |t|
     selt.push(t[1]+": "+t[2..-1].join(", "))
   end
   sel=ListBox.new(selt, header: p_("Forum", "Forum tags"), index: 0, flags: 0, quiet: false)
@@ -1558,7 +1558,7 @@ form.focus
           if forum_attempt(nil) {
             EltenLink::Forum.mark_forum_as_read(elten_link, forum: @sforums[@frmsel.index].name)
           }
-            for t in @threads
+            @threads.each do |t|
               t.readposts = t.posts if t.forum.name == @sforums[@frmsel.index].name
             end
             @sforums[@frmsel.index].readposts = @sforums[@frmsel.index].posts
@@ -1718,7 +1718,7 @@ break
     index = @lastthreadindex
     @lastthreadindex = nil
     @forumtype = 0
-    for forum in @forums
+    @forums.each do |forum|
       @forumtype = forum.type if forum.name == id
     end
     @sthreads = []
@@ -1735,7 +1735,7 @@ break
     rsl=[]
     if id==-3
       rsl=[]
-      for r in @results
+      @results.each do |r|
         i=r/100
         rsl[i]=[] if rsl[i]==nil
         rsl[i].push(r)
@@ -1753,7 +1753,7 @@ break
           end
       when -11
               r=[]
-        for mention in @mentions
+        @mentions.each do |mention|
           if t.id == mention.thread
             th=t.clone
             th.mention = mention
@@ -1781,7 +1781,7 @@ break
           end
       when -7
         r=[]
-        for mention in @mentions
+        @mentions.each do |mention|
           if t.id == mention.thread
             th=t.clone
             th.mention = mention
@@ -1791,7 +1791,7 @@ break
         r
       when -6
         folfor = []
-        for forum in @forums
+        @forums.each do |forum|
           folfor.push(forum.name) if forum.followed == true
         end
         if folfor.include?(t.forum.name) and t.readposts < t.posts
@@ -1801,7 +1801,7 @@ break
           end
       when -4
         folfor = []
-        for forum in @forums
+        @forums.each do |forum|
           folfor.push(forum.name) if forum.followed == true
         end
         if folfor.include?(t.forum.name) and t.readposts == 0
@@ -1954,7 +1954,7 @@ threadopen(@thrsel.index)
   
   def context_threads(menu)
     group = Struct_Forum_Group.new
-    for f in @forums
+    @forums.each do |f|
       group = f.group if f.name == @forum
     end
     if @sthreads.size > 0
@@ -2035,10 +2035,10 @@ threadopen(@thrsel.index)
           selt = []
           ind = 0
           mforums = []
-          for f in @forums
+          @forums.each do |f|
             mforums.push(f) if f.group.role == 2 or (Session.moderator == 1 && f.group.recommended)
           end
-          for f in mforums
+          mforums.each do |f|
             selt.push(f.fullname + " (" + f.group.name + ")")
             ind = selt.size-1 if f.name == @sthreads[@thrsel.index].forum.name
           end
@@ -2122,7 +2122,7 @@ threadopen(@thrsel.index)
         users=[]
 forum_fetch([], nil) { EltenLink::Forum.group_members(elten_link, group_id: @sthreads[@thrsel.index].forum.group.id) }.each { |member| users.push(member.user) }
         dgroups=[]
-        for g in @groups
+        @groups.each do |g|
           dgroups.push(g) if g.role>0 and users.include?(g.founder) and g.id!=@sthreads[@thrsel.index].forum.group.id
           end
         dests=dgroups.map{|g|g.name+" - "+p_("Forum", "Group founded by %{founder}")%{:founder=>g.founder}}
@@ -2157,7 +2157,7 @@ forum_fetch([], nil) { EltenLink::Forum.group_members(elten_link, group_id: @sth
       if @sthreads[@thrsel.index].offered>0
         gr=nil
         suc=false
-        for g in @groups
+        @groups.each do |g|
           if g.id==@sthreads[@thrsel.index].offered and g.role==2
           suc=true
           gr=g
@@ -2167,7 +2167,7 @@ forum_fetch([], nil) { EltenLink::Forum.group_members(elten_link, group_id: @sth
           menu.submenu(p_("Forum", "Thread transfer offer to group %{groupname}")%{:groupname=>gr.name}) {|m|
           m.option(p_("Forum", "Accept this offer"), nil, "A") {
             forums=[]
-            for f in @forums
+            @forums.each do |f|
               forums.push(f) if f.group.id==gr.id
             end
             if forums.size>0
@@ -2292,17 +2292,17 @@ when :move
           selt = []
           ind = 0
           mforums = []
-          for f in @forums
+          @forums.each do |f|
             mforums.push(f) if f.group.role == 2 or (Session.moderator == 1 && f.group.recommended)
           end
-          for f in mforums
+          mforums.each do |f|
             selt.push(f.fullname + " (" + f.group.name + ")")
             ind = selt.size-1 if f.name == threads[0].forum.name
           end
           destination = selector(selt, header: p_("Forum", "Threads destination"), start_index: ind, cancel_index: -1)
           if destination != -1
             if forum_attempt(nil) {
-              for thread in threads
+              threads.each do |thread|
                 EltenLink::Forum.move_thread(elten_link, thread_id: thread.id, forum: mforums[destination].name)
               end
             }
@@ -2315,7 +2315,7 @@ when :move
               end
             when :delete
               if forum_attempt(nil) {
-                for thread in threads
+                threads.each do |thread|
                   EltenLink::Forum.delete_thread(elten_link, thread_id: thread.id)
                 end
               }
@@ -2327,7 +2327,7 @@ when :offer
           users=[]
 forum_fetch([], nil) { EltenLink::Forum.group_members(elten_link, group_id: @sthreads[@thrsel.index].forum.group.id) }.each { |member| users.push(member.user) }
         dgroups=[]
-        for g in @groups
+        @groups.each do |g|
           dgroups.push(g) if g.role>0 and users.include?(g.founder) and g.id!=@sthreads[@thrsel.index].forum.group.id
           end
         dests=dgroups.map{|g|g.name+" - "+p_("Forum", "Group founded by %{founder}")%{:founder=>g.founder}}
@@ -2335,7 +2335,7 @@ forum_fetch([], nil) { EltenLink::Forum.group_members(elten_link, group_id: @sth
         if ind>=0
         dest=dgroups[ind]
         if forum_attempt(nil) {
-          for thread in threads
+          threads.each do |thread|
             next if thread.offered!=0
             EltenLink::Forum.offer_thread(elten_link, thread_id: thread.id, group_id: dest.id)
           end
@@ -2365,8 +2365,8 @@ form.wait
     forums = []
     forumclasses = []
     forumindex = 0
-    for g in @groups
-      for f in @forums
+    @groups.each do |g|
+      @forums.each do |f|
         if f.type == @forumtype && !f.closed
           if f.group.id == g.id
             forums.push(f.fullname + " (#{g.name})")
@@ -2391,7 +2391,7 @@ form.wait
     tin=false
     tin=true if form.index==form.fields.size-3
     f=[]
-    for t in forumtags(forumclasses[form.fields[-3].index])
+    forumtags(forumclasses[form.fields[-3].index]).each do |t|
       f.push(ListBox.new([p_("Forum", "No tag value")]+t[2..-1], header: t[1], index: 0))
     end
     if type==1
@@ -2528,7 +2528,7 @@ form.wait
     end
     return if ![1,2].include?(forumclasses[form.fields[-3].index].group.role) and !canjoin(forumclasses[form.fields[-3].index].group)
     name=""
-    for f in form.fields[7...-4]
+    form.fields[7...-4].each do |f|
       if f.index>0
         name+="["+f.options[f.index]+"] "
         end
@@ -2541,7 +2541,7 @@ form.wait
       attachments = nil
       if files.size > 0
         atts = ""
-        for f in files
+        files.each do |f|
           atts += send_attachment(f) + ","
         end
         atts.chop! if atts[-1..-1] == ","
@@ -2620,7 +2620,7 @@ if flp[0..3] != "OggS"
         @results = []
     if @query != "" and @query.is_a?(String)
       sr = forum_fetch([], nil) { EltenLink::Forum.search(elten_link, query: @query) }
-        for result in sr
+        sr.each do |result|
             thread = @threads.find{|t|t.id==result.thread}
             @results.push(thread.id) if thread!=nil
         end
@@ -2820,7 +2820,7 @@ loop do
     end
     @fields = []
     return if @posts == nil
-    for i in 0...@posts.size
+    (0...@posts.size).each do |i|
       post = @posts[i]
       index = i * 3 if index == -1 and @param == -3 and @query.is_a?(Struct_Forum_SearchQuery) and post.post.downcase.include?(@query.phrase.downcase) && @query.phrase_in.include?(:content)
       index = i * 3 if index == -1 and @param == -3 and @query.is_a?(Struct_Forum_SearchQuery) and post.transcription.downcase.include?(@query.phrase.downcase) && @query.phrase_in.include?(:content) && @query.transcriptions
@@ -2842,7 +2842,7 @@ end
       @fields[-1] = ListBox.new(name_attachments(post.attachments), header: p_("Forum", "Attachments")) if post.attachments.size > 0
       if post.polls.size > 0
         names = []
-        for o in post.polls
+        post.polls.each do |o|
           begin
             poll = EltenLink::Polls.get(elten_link, o)
             names.push(poll.name)
@@ -2935,7 +2935,7 @@ end
       attachments = nil
       if @attachments.size > 0
         atts = ""
-        for f in @attachments
+        @attachments.each do |f|
           atts += send_attachment(f) + ","
         end
         atts.chop! if atts[-1..-1] == ","
@@ -3076,7 +3076,7 @@ if post.edited && !post.locked
     }
       m.option(p_("Forum", "Go to post"), nil, "j") {
         selt = []
-        for i in 0..@posts.size - 1
+        (0..@posts.size - 1).each do |i|
           selt.push((i + 1).to_s + " / " + @postscount.to_s + ": " + @posts[i].author)
         end
                 @form.index = selector(selt, header: p_("Forum", "Select post"), start_index: @form.index / 3, cancel_index: @form.index / 3) * 3
@@ -3096,7 +3096,7 @@ if post.edited && !post.locked
             selt = []
             sr = []
             ind = -1
-            for i in 0..@posts.size - 1
+            (0..@posts.size - 1).each do |i|
               if @posts[i].post.downcase.include?(search.downcase)
                 selt.push((i + 1).to_s + ": " + @posts[i].author)
                 sr.push(i)
@@ -3139,7 +3139,7 @@ if post.edited && !post.locked
       menu.option(p_("Forum", "Listen to the thread")) {
         if speech_output_nvda? and @type == 0
           text = ""
-          for pst in @posts[@form.index / 3..@posts.size]
+          @posts[@form.index / 3..@posts.size].each do |pst|
             text += pst.author + "\r\n" + pst.post + "\r\n" + pst.date + "\r\n\r\n"
           end
           speak(text)
@@ -3242,7 +3242,7 @@ end
             @forums = @struct["forums"]
             @threads = @struct["threads"]
             groups = []
-            for group in @groups
+            @groups.each do |group|
               groups[group.id] = group.name
             end
             forums = {}
@@ -3250,7 +3250,7 @@ end
             fthreads = []
             hthreads=[]
             curr = 0
-            for t in @threads
+            @threads.each do |t|
               if t.forum.group.role == 2 or (Session.moderator == 1 and t.forum.group.recommended)
                 if t.forum.group.id==@threadclass.forum.group.id
               hthreads.push(t)
@@ -3260,7 +3260,7 @@ end
               end
             end
             mthreads=hthreads+fthreads
-            for t in mthreads
+            mthreads.each do |t|
               selt.push(t.name + " (" + t.forum.fullname + " (" + t.forum.group.name + ")" + ")")
               curr = selt.size - 1 if t.id == @thread
             end
@@ -3315,7 +3315,7 @@ end
           }
           m.option(p_("Forum", "Change post position")) {
             sels = []
-            for post in @posts
+            @posts.each do |post|
               sels.push((sels.size + 1).to_s + ": " + post.author + ": " + post.date)
             end
             sels.push(p_("Forum", "Move to end"))
@@ -3414,7 +3414,7 @@ when :move
             @forums = @struct["forums"]
             @threads = @struct["threads"]
             groups = []
-            for group in @groups
+            @groups.each do |group|
               groups[group.id] = group.name
             end
             forums = {}
@@ -3422,7 +3422,7 @@ when :move
             fthreads = []
             hthreads=[]
             curr = 0
-            for t in @threads
+            @threads.each do |t|
               if t.forum.group.role == 2 or (Session.moderator == 1 and t.forum.group.recommended)
                 if t.forum.group.id==@threadclass.forum.group.id
               hthreads.push(t)
@@ -3432,14 +3432,14 @@ when :move
               end
             end
             mthreads=hthreads+fthreads
-            for t in mthreads
+            mthreads.each do |t|
               selt.push(t.name + " (" + t.forum.fullname + " (" + t.forum.group.name + ")" + ")")
               curr = selt.size - 1 if t.id == @thread
             end
             destination = selector(selt, header: p_("Forum", "Post destination"), start_index: curr, cancel_index: -1)
             if destination != -1
               if forum_attempt(nil) {
-                for post in posts
+                posts.each do |post|
                   EltenLink::Forum.move_post(elten_link, post_id: post.id, thread_id: mthreads[destination].id)
                 end
               }
@@ -3450,7 +3450,7 @@ when :move
             end
   when :delete
     if forum_attempt(nil) {
-      for post in posts
+      posts.each do |post|
         EltenLink::Forum.delete_post(elten_link, post_id: post.id)
       end
     }
@@ -3496,7 +3496,7 @@ btn_mentionOK.on(:press) {
 if lst_users.multiselections.size >= 0
 selections = lst_users.multiselections()
 sent = forum_attempt(nil) {
-  for i in 0..selections.size - 1
+  (0..selections.size - 1).each do |i|
     EltenLink::Forum.create_mention(elten_link, user: users[selections[i]], message: edt_message.text, thread_id: thread, post_id: post)
   end
 }
@@ -3537,7 +3537,7 @@ form.wait
     dialog_open
     attnames = name_attachments(post.attachments)
     atts=[]
-    for i in 0...post.attachments.size
+    (0...post.attachments.size).each do |i|
       a=post.attachments[i]
       atts.push([a, nil, attnames[i]])
       end
@@ -3576,7 +3576,7 @@ form.wait
               form.update
               if form.fields[0].text.size > 0 and (((key_pressed?(:key_enter) or key_pressed?(:key_space)) and form.index == 3) or (key_pressed?(:key_enter) and key_held?(0x11) and form.index < 3))
                 attachments=""
-        for a in atts
+        atts.each do |a|
           if a[0]==nil
           attachments += send_attachment(a[1]) + ","
         else
@@ -3601,8 +3601,8 @@ form.wait
   def showbookmarks
     loop_update
     bookmarks=forum_fetch([], nil) { EltenLink::Forum.list_bookmarks(elten_link, thread_id: @thread) }
-    for b in bookmarks
-      for i in 0...@posts.size
+    bookmarks.each do |b|
+      (0...@posts.size).each do |i|
         b.postnum=i if @posts[i].id==b.post
       end
     end
@@ -3924,7 +3924,7 @@ def make_setting(label, type, key, mapping=nil)
   @settings.last.push([label, type, key, mapping])
 end
 def save_category
-  for i in 2...@settings[@category].size
+  (2...@settings[@category].size).each do |i|
     setting=@settings[@category][i]
     next if setting==nil || setting[1]==:custom
     index=i-1
@@ -3944,7 +3944,7 @@ def show_category(id)
   @form.show_all
   @form.fields[1...-3]=[]
   f=[]
-for s in @settings[id][2..-1]
+@settings[id][2..-1].each do |s|
   label, type, key, mapping = s
   field=nil
   case type
@@ -3972,7 +3972,7 @@ end
 def apply_settings
   save_category
   j={}
-  for k in @values.keys
+  @values.keys.each do |k|
     v=@values[k]
     j[k]=v
   end
@@ -3992,7 +3992,7 @@ def load_general
   langs=[]
   langsmapping=[]
   getconfig if @languages==nil
-  for lang in Lists.langs.keys
+  Lists.langs.keys.each do |lang|
     l=Lists.langs[lang]
     langsmapping.push(lang)
     langs.push(l['name']+"("+l['nativeName']+")")
@@ -4020,7 +4020,7 @@ if holds_premiumpackage("scribe")
 blogids=[]
 blognames=[]
 b=EltenLink::Blog.managed(elten_link)
-for blog in b
+b.each do |blog|
 blogids.push(blog.id.to_s)
 blognames.push(blog.name.to_s)
 end

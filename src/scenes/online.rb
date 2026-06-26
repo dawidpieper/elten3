@@ -14,7 +14,7 @@ class Scene_Online
       alert(_("Error"))
     end
                 selt = []
-    for u in @onl
+    @onl.each do |u|
       selt.push(user_with_status(u, false))
     end
     cnt=@onl.size

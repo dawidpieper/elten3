@@ -192,7 +192,7 @@ class AudioInfo
           when :UTF16
             content = deunicode(content)
           when :UnicodeFFE
-            for i in 0...content.bytesize / 2
+            (0...content.bytesize / 2).each do |i|
               s = i * 2
               c = content[s]
               content[s] = content[s + 1]
@@ -220,13 +220,13 @@ class AudioInfo
     if t != nil
       tgs = {}
       mapper = {"TIT2" => "TITLE", "TALB" => "ALBUM", "TPE1" => "ARTIST", "TRCK" => "TRACKNUMBER", "TCOM" => "COMPOSER", "TCOP" => "COPYRIGHT"}
-      for d, o in mapper
+      mapper.each do |d, o|
         f = t.find { |frame| frame.id == d }
         tgs[o] = f.strvalue if f != nil
       end
       chs = t.select { |frame| frame.id == "CHAP" }
       i = 0
-      for c in chs
+      chs.each do |c|
         time = c.numvalue / 1000.0
         name = ""
         sf = c.subframes.find { |s| s.id == "TIT2" }
@@ -266,7 +266,7 @@ class AudioInfo
     return @chapters if @chapters != nil && @chapters != []
     chapters = []
     if (t = tags_ogg) != nil
-      for i in 0..999
+      (0..999).each do |i|
         d = sprintf("%03d", i)
         if t["CHAPTER#{d}"] != nil && t["CHAPTER#{d}NAME"] != nil
           tm = t["CHAPTER#{d}"]
@@ -281,12 +281,12 @@ class AudioInfo
       end
     end
     if (t = tags_id3v2) != nil
-      for f in t
+      t.each do |f|
         if f.id == "CHAP" && f.subframes.size > 0
           c = Chapter.new
           c.time = f.numvalue / 1000.0
           c.name = ""
-          for g in f.subframes
+          f.subframes.each do |g|
             c.name = g.strvalue if g.id == "TIT2"
           end
           chapters.push(c)
@@ -304,7 +304,7 @@ class AudioInfo
       return t[ogg.upcase] if t[ogg.upcase] != nil
     end
     if (t = tags_id3v2) != nil
-      for r in t
+      t.each do |r|
         return r.strvalue[0...r.strvalue.index("\0") || r.strvalue.size] if r.id == id3
       end
     end

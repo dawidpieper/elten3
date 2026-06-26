@@ -115,7 +115,7 @@ rescue EltenLink::Error
 end
 @blogname=blogname=blogtemp.name
 @categories = []
-for c in blogtemp.categories
+blogtemp.categories.each do |c|
   @categories.push(c)  if @isowner or c.posts>0
 end
 sel = [[p_("Blog", "All posts"), nil]] + @categories.map{|c|[c.name, c.posts.to_s]}
@@ -276,7 +276,7 @@ class Scene_Blog_Posts
       rescue EltenLink::Error
         mnts=[]
       end
-        for source in mnts
+        mnts.each do |source|
           mention=Struct_Blog_Mention.new
           mention.id=source.id
           mention.blog=source.blog
@@ -295,7 +295,7 @@ class Scene_Blog_Posts
 if @topage==0
         load_posts(@page)
       else
-        for i in 1..@topage
+        (1..@topage).each do |i|
           load_posts(i)
         end
         @page=@topage
@@ -362,7 +362,7 @@ rescue EltenLink::Error
 end
 post=nil
 @post = [] if @id == "NEWFOLLOWEDBLOGS"
-for source in blogtemp.posts
+blogtemp.posts.each do |source|
   post=Struct_Blog_Post.new(source.id)
   post.name = source.name
     post.unread=source.unread
@@ -375,7 +375,7 @@ for source in blogtemp.posts
   post.comments=source.comments
   post.followed=source.followed
   if @id=="MENTIONED" or @id=="NEWMENTIONED"
-    for mention in @mentions
+    @mentions.each do |mention|
       if mention.blog==post.owner && mention.postid==post.id
         post.mention=mention
         @post.push(post.clone)
@@ -585,7 +585,7 @@ end
 @postcur = 0
 @fields = []
 fdate=""
-for i in 0..@posts.size-1
+(0..@posts.size-1).each do |i|
 field_index=(i==0?i:(i+2))
 @fields[field_index] = EditBox.new(@posts[i].author,type: EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly|EditBox::Flags::HTML,text: format(@posts[i]),quiet: true)
 @fields[field_index].audio_url=@posts[i].audio_url if @posts[i].audio_url.to_s!="" && @posts[i].text.to_s.delete(" \r\n")==""
@@ -900,7 +900,7 @@ def refresh
     rescue EltenLink::Error
       return
     end
-    for source in bt
+    bt.each do |source|
       b=Struct_Blog_Blog.new
       b.id=source.id
       b.library_user = source.library_user
@@ -961,7 +961,7 @@ if @scene!=nil && items==0
   $scene=@scene
   return
   end
-for source in blogtemp
+blogtemp.each do |source|
   b=Struct_Blog_Blog.new
   b.id=source.id
   b.name=source.name
@@ -975,7 +975,7 @@ for source in blogtemp
   b.elten=true
     @blogs.push(b) if LocalConfig["BlogShowUnknownLanguages",1]==1 || knownlanguages.size==0 || knownlanguages.include?(b.lang[0..1].upcase) || (@type.is_a?(String) || @type==3)
 end
-for b in @blogs
+@blogs.each do |b|
   bo=blogowners(b.id)
   bo=[bo] if bo.is_a?(String)
   b.owners=bo
@@ -992,7 +992,7 @@ def addlib(blog)
     langs=[]
   langsmapping=[]
   lnindex=0
-  for lk in Lists.langs.keys.sort{|a,b|polsorter(Lists.langs[a]['name'],Lists.langs[b]['name'])}
+  Lists.langs.keys.sort{|a,b|polsorter(Lists.langs[a]['name'],Lists.langs[b]['name'])}.each do |lk|
     langsmapping.push(lk)
     l=Lists.langs[lk]
     langs.push(l['name']+"( "+l['nativeName']+")")
@@ -1325,9 +1325,9 @@ blogtemp.posts.each_with_index do |post, i|
   @postcategories[i]=post.categories.to_a
 end
 @fields=[]
-for i in 0..@postid.size-1
+(0..@postid.size-1).each do |i|
   f=ListBox.new(categorynames,header: @postname[i],index: 0,flags: ListBox::Flags::MultiSelection)
-  for c in @postcategories[i]
+  @postcategories[i].each do |c|
     ind=categoryids.find_index(c)
     f.selected[ind]=true if ind!=nil
     end
@@ -1341,17 +1341,17 @@ loop do
   break if key_pressed?(:key_escape) or ((key_pressed?(:key_space) or key_pressed?(:key_enter)) and @form.index==@form.fields.size-1)
   if (key_pressed?(:key_space) or key_pressed?(:key_enter)) and (@form.index==@form.fields.size-2 or key_held?(0x11))
     ou=""
-for i in 0..@postid.size-1
+(0..@postid.size-1).each do |i|
   ch=[]
-  for j in 0..@form.fields[i].selected.size-1
+  (0..@form.fields[i].selected.size-1).each do |j|
     ch.push(categoryids[j]) if @form.fields[i].selected[j]==true
   end
   ou+=@postid[i].to_s+":"+ch.join(",")+"|" if ch.size>0
 end
 begin
-  for i in 0..@postid.size-1
+  (0..@postid.size-1).each do |i|
     ch=[]
-    for j in 0..@form.fields[i].selected.size-1
+    (0..@form.fields[i].selected.size-1).each do |j|
       ch.push(categoryids[j]) if @form.fields[i].selected[j]==true
     end
     EltenLink::Blog.update_post(elten_link, blog: @searchname, post_id: @postid[i], categories: ch)
@@ -1387,7 +1387,7 @@ class Scene_Blog_Post_Move
       $scene=Scene_Main.new
       return
       end
-            for blog in b
+            b.each do |blog|
         @blogids.push(blog.id)
         @blognames.push(blog.name)
       end
@@ -1459,7 +1459,7 @@ def make_setting(label, type, key, mapping=nil)
   @settings.last.push([label, type, key, mapping])
 end
 def save_category
-  for i in 2...@settings[@category].size
+  (2...@settings[@category].size).each do |i|
     setting=@settings[@category][i]
     next if setting==nil || setting[1]==:custom
     index=i-1
@@ -1479,7 +1479,7 @@ def show_category(id)
   @form.show_all
   @form.fields[1...-3]=[]
   f=[]
-for s in @settings[id][2..-1]
+@settings[id][2..-1].each do |s|
   label, type, key, mapping = s
   field=nil
   case type
@@ -1507,7 +1507,7 @@ end
 def apply_settings
   save_category
   j={}
-  for k in @values.keys
+  @values.keys.each do |k|
     v=@values[k]
     j[k]=v
   end
@@ -1532,7 +1532,7 @@ def load_general
   langs=[]
   langsmapping=[]
   getconfig if @languages==nil
-  for lang in @languages.keys
+  @languages.keys.each do |lang|
     l=@languages[lang]
     langsmapping.push(lang)
     langs.push(l['english_name']+"("+l['native_name']+")")
@@ -1633,7 +1633,7 @@ def load_date
     timezones=[]
   timezonesmapping=[]
   getconfig if @timezones==nil
-for k in @timezones.keys
+@timezones.keys.each do |k|
   timezones.push(@timezones[k])
   timezonesmapping.push(k)
 end
@@ -1653,7 +1653,7 @@ def load_others
   blogs=get_blogs
   b=[p_("Blog", "Do not set")]
   bm=[""]
-    for bl in blogs
+    blogs.each do |bl|
     if bl.url!="https://"+@domain+"/"
     b.push(bl.name+" ("+bl.url+")")
     bm.push(bl.url)
@@ -1696,7 +1696,7 @@ else
             return []
           end
 blogs=[]
-for source in blogtemp
+blogtemp.each do |source|
   b=Struct_Blog_Blog.new
   b.id=source.id
   b.name=source.name
@@ -1817,7 +1817,7 @@ class Scene_Blog_Tags
       return $scene=Scene_Main.new
     end
     @tags=[]
-    for source in bt
+    bt.each do |source|
       @tags.push(Struct_Blog_Tag.new(source.id))
       @tags.last.name=source.name
     end
@@ -1892,7 +1892,7 @@ class Scene_Blog_PostEditor
       return $scene=Scene_Main.new
     end
     @categories = []
-    for source in bt.categories
+    bt.categories.each do |source|
       c=Struct_Blog_Category.new
       c.id=source.id
       c.name=source.name
@@ -1906,7 +1906,7 @@ class Scene_Blog_PostEditor
       return $scene=Scene_Main.new
     end
     @tags= []
-    for source in bt
+    bt.each do |source|
       t=Struct_Blog_Tag.new
       t.id=source.id
       t.name=source.name
@@ -1933,7 +1933,7 @@ lst_tags.bind_context{|menu|
           dialog_open
         tag = selecttag
           dialog_close
-          for t in @tags
+          @tags.each do |t|
             if tag != nil and t.name.downcase == tag.name.downcase
               tagid = t.id
               break
@@ -1949,7 +1949,7 @@ menu.option(p_("Blog", "Add tag to this post"), nil, "n") {
 tagname=input_text(p_("Blog", "Tag to add"), flags: 0, text: "", escapable: true)
 if tagname!=nil
 tagid=-1
-for t in @tags
+@tags.each do |t|
   if t.name.downcase==tagname.downcase
     tagid=t.id
     break
@@ -1981,7 +1981,7 @@ end
 changed=false
 edt_post.on(:delete) {changed=true}
 edt_post.on(:insert) {changed=true}
-for i in 0...@categories.size
+(0...@categories.size).each do |i|
   lst_categories.selected[i] = true if @categories[i].id == @category
 end
 if @post>0
@@ -2019,11 +2019,11 @@ ph = EltenLink::Client.absolute_api_url(ph)
     edt_excerpt.set_text(excerpt)
     chk_comments.checked=comments
     lst_visibility.index=privacy
-    for i in 0...@categories.size
+    (0...@categories.size).each do |i|
       lst_categories.selected[i]=(cats.include?(@categories[i].id))
     end
-    for tagid in tags
-      for tag in @tags
+    tags.each do |tagid|
+      @tags.each do |tag|
         if tag.id==tagid
           @tagids.push(tagid)
           lst_tags.options.push(tag.name)
@@ -2094,7 +2094,7 @@ end
         text = edt_post.text
         end
 cats=[]
-for i in 0...@categories.size
+(0...@categories.size).each do |i|
   cats.push(@categories[i].id) if lst_categories.selected[i]==true
 end
 if suc
@@ -2270,7 +2270,7 @@ if suc
         return
       end
         @comments.clear
-        for source in ct
+        ct.each do |source|
             @comments.push(Struct_Blog_Comment.new)
             @comments.last.id=source.id
               @comments.last.author=source.author
@@ -2279,7 +2279,7 @@ if suc
             end
             @sel.rows=nil
             r=[]
-            for c in @comments
+            @comments.each do |c|
               r.push([c.author, c.postname, c.content])
             end
             @sel.rows=r
@@ -2318,7 +2318,7 @@ end
   users=[]
   blogs=[]
   blognames=[]
-  for source in b
+  b.each do |source|
     blogs.push(source.blog)
     blognames.push(source.blog_name)
     users.push(source.user)
@@ -2327,7 +2327,7 @@ end
     alert(p_("Blog", "This blog is not followed by any user"))
   else
     rows=[]
-    for i in 0...b.size
+    (0...b.size).each do |i|
       rows.push([users[i], blognames[i]])
     end
     head=p_("Blog", "Followers")

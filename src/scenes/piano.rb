@@ -50,7 +50,7 @@ freqs = {
 0xBE=>622.3,
 0xBF=>740.0
 }
-for k,freq in freqs
+freqs.each do |k,freq|
   if key_pressed?(k)
 if freq != 0
 a=Sound.new(stream: getsound("signal", true))

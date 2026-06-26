@@ -25,7 +25,7 @@ class Scene_Admins
       if subcat==0
         ld=loadedlanguages
         i=0
-      for lo in ld
+      ld.each do |lo|
         l=lo.mo
         lang=Lists.langs[lo.realcode[0..1].downcase]['name']
                             @selt.push(lang)
@@ -69,7 +69,7 @@ class Scene_Admins
       return main(0) if cat > 0
       return
     end
-      for i in 0...@users.size
+      (0...@users.size).each do |i|
         @selt[i]=user_with_status(@users[i], true, true, "\r\n")
         end
     h=""

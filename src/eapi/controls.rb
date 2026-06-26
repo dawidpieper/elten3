@@ -23,7 +23,7 @@ module EltenAPI
 0xBC=>"comma", 0xBD=>"minus", 0xBE=>"period",
 0x25=>"left", 0x26=>"up", 0x27=>"right", 0x28=>"down"
 }
-     for e in ks.keys
+     ks.keys.each do |e|
        k.push([("key_"+ks[e]).to_sym, ks[e].to_sym]) if key_pressed?(e)
        k.push([("keyr_"+ks[e]).to_sym, ks[e].to_sym]) if key_held?(e)
        k.push([("keyup_"+ks[e]).to_sym, ks[e].to_sym]) if key_released?(e)
@@ -813,7 +813,7 @@ espeech(p_("EAPI_Form", "End of line"))
                                     end
           end
           if last!=@vindex
-          for e in @elements
+          @elements.each do |e|
             if last<e.from || last>e.to
               if @vindex>=e.from && @vindex<=e.to
                 d=e.description
@@ -847,7 +847,7 @@ def setformatting(type, params=nil)
                               if range!=nil
                                 from,to=range
                                 s=false
-                                for e in @elements
+                                @elements.each do |e|
                                   next if e.type!=type
                                   s=true if e.from>=from && e.from<=to
                                   s=true if e.to>=from && e.to<=to
@@ -856,7 +856,7 @@ def setformatting(type, params=nil)
                                 if s==true
                                   del=[]
                                   ins=[]
-                                  for e in @elements
+                                  @elements.each do |e|
                                     next if e.type!=type
                                     if e.from>=from && e.to<=to
                                       del.push(e)
@@ -917,14 +917,14 @@ def context(menu, submenu=false)
     end
     }
     m.submenu(p_("EAPI_Form", "Heading")) {|n|
-        for i in 1..6
+        (1..6).each do |i|
       n.option(p_("EAPI_Form", "Heading level %{level}")%{:level=>i}, i, i.to_s) {|level|
       if requires_premiumpackage("scribe")
       a=line_beginning(@vindex, true)
       b=line_ending(@vindex, true)
       del=[]
       s=false
-      for e in @elements
+      @elements.each do |e|
         if e.type==Element::Header && ((e.from>=a && e.from<=b) || (e.to>=a && e.to<=b))
           s=true if e.param==level
           del.push(e)
@@ -1007,7 +1007,7 @@ eredo
   }
   end
   menu.submenu(p_("EAPI_Form", "Load last text")) {|m|
-  for e in @@lastedits
+  @@lastedits.each do |e|
     next if e==self
     t=(e.header+": "+e.text)[0...200]
     m.option(t, e) {|e|
@@ -1030,7 +1030,7 @@ search
   translator(get_check_or_all)
   end
   }
-  for a in @@customactions
+  @@customactions.each do |a|
       menu.option(a[0]) {
     a[1].call(self)
   }
@@ -1048,7 +1048,7 @@ def espellcheck
   langs=[]
   langnames=[]
   lnindex=0
-  for lk in Lists.langs.keys
+  Lists.langs.keys.each do |lk|
     next if !sclangs.map{|l|l[0..1].downcase}.include?(lk[0..1].downcase)
     langs.push(lk)
     l=Lists.langs[lk]
@@ -1066,7 +1066,7 @@ def espellcheck
   form.fields[1...-2]=[]
   form.show_all
   errors=SpellCheck.check(langs[lst_languages.index], @text)
-  for error in errors
+  errors.each do |error|
         phr=splt[error.index...(error.index+error.length)]
         frgb=-1
         frge=0
@@ -1074,7 +1074,7 @@ def espellcheck
         pfrgb=0 if pfrgb<0
         pfrge=error.index+error.length+60
         pfrge=splt.length-1 if pfrge>=splt.length
-                for i in pfrgb..pfrge
+                pfrgb..pfrge.each do |i|
           if i<error.index&& frgb==-1
           frgb=i if splt[i-1..i-1]==" " || i==0
           elsif i>error.index+error.length
@@ -1084,7 +1084,7 @@ def espellcheck
             frg=splt[frgb..frge]||""
     letphr="("+phr.split("").join(", ")+")"
     options=[]
-    for sug in error.suggestions
+    error.suggestions.each do |sug|
       letsug="("+sug.split("").join(", ")+")"
       opt=sug+" "+letsug
       options.push(opt)
@@ -1093,7 +1093,7 @@ def espellcheck
     lst = ListBox.new([p_("EAPI_Form", "Ignore")]+options+[p_("EAPI_Form", "Use custom text")], header: label)
 edt = EditBox.new(label, type: 0, text: phr)
 lst.on(:move) {
-for i in 0...errors.size
+(0...errors.size).each do |i|
   l=form.fields[1+i*2]
   e=form.fields[1+i*2+1]
   next if l==nil || e==nil
@@ -1115,7 +1115,7 @@ for i in 0...errors.size
   btn_replace.on(:press) {
   chindex=0
   repls=0
-  for i in 0...errors.size
+  (0...errors.size).each do |i|
     if form.fields[1+i*2].index>0
       corr=""
       if form.fields[1+i*2].index<form.fields[1+i*2].options.size-1
@@ -1276,7 +1276,7 @@ l=((((index>3000?index-3000:0) ... index).find_all { |i| text_char(i)=="\n"}[-1]
   r=((index ... (index<text_len-3000?index+3000:text_len)).find_all { |i| text_char(i)=="\n"}[0])||text_len    
   ls=get_vlines(l,r, absolute)
   ind=l
-  for n in ls
+  ls.each do |n|
     ind=n if n<=index
   end
       return ind
@@ -1288,7 +1288,7 @@ def line_ending(index=@vindex, absolute=false)
   r=((index ... (index<text_len-3000?index+3000:text_len)).find_all { |i| text_char(i)=="\n"}[0])||text_len
         ls=get_vlines(l,r, absolute)
       ln=0
-    for i in 0...ls.size-1
+    (0...ls.size-1).each do |i|
     ln=i if ls[i]<=index
   end
   ind=ls[ln+1]-1            
@@ -1301,9 +1301,9 @@ def line_ending(index=@vindex, absolute=false)
 def get_vlines(l,r, absolute=false)
     return [l,r+1] if r-l<120 or (@flags&Flags::MultiLine)==0 or (@flags&Flags::DisableLineWrapping)>0 or Configuration.linewrapping==0 or absolute==true
   ls=[l]
-    for c in l...r
+    l...r.each do |c|
            if text_char(c)==" " and c-ls[-1]>120 and c!=r-1
-                        for oc in c..r
+                        c..r.each do |oc|
 if text_char(oc)!=" "
               ls.push(oc)
               break if oc>=r
@@ -1321,7 +1321,7 @@ if text_char(oc)!=" "
         ns=(0...text_len).find_all {|c| text_char(c)=="\n"}
         ns.push(text_len-1)
         lines=[]
-        for i in 0..ns.size-1
+        (0..ns.size-1).each do |i|
                     prior=-1
           prior=ns[i-1] if i>0
           lines+=get_vlines(prior+1,ns[i])
@@ -1373,7 +1373,7 @@ def get_check_or_all
       return
     end
     if @permitted_characters.size>0
-      for c in text.split("")
+      text.split("").each do |c|
         if !@permitted_characters.include?(c)
                 play_sound("border")
       return
@@ -1399,7 +1399,7 @@ def get_check_or_all
 @undo.delete_at(0) if @undo.size>100
 @redo=[] if toundo==true
     applied=[]
-        for e in @elements
+        @elements.each do |e|
       i=@formats.find_index(e.type)
       if e.from<=index && e.to>=index && (text!="\n" || i!=nil)
         play_sound('signal')
@@ -1414,7 +1414,7 @@ def get_check_or_all
         e.to+=text_length
         end
       end
-    for i in 0...@formats.size
+    (0...@formats.size).each do |i|
       if applied[i]!=true
         e=Element.new(index, index, @formats[i])
         @elements.push(e)
@@ -1439,7 +1439,7 @@ deleted_length=character_length(deleted_text)
 @redo=[] if toundo==true
 @undo.delete_at(0) if @undo.size>100
 del=[]
-for e in @elements
+@elements.each do |e|
   if e.to<from
     next
   elsif e.from>to
@@ -1669,7 +1669,7 @@ def html_append_block_break(tag, output, before:)
 end
                 def find_element(type=0,flags=nil,revdir=false,index=@index)
                   e=Element.new(text_len,-1,0)
-                  for el in @elements
+                  @elements.each do |el|
                     e=el if (((!type.is_a?(Array) && el.type==type) || (type.is_a?(Array) && type.include?(el.type))) and (flags==nil or el.param==flags)) and (((revdir==false and el.from>index and el.from<e.from) or (revdir==true and el.to<index and el.to>e.to)))
                   end
                   return nil if e.type==0
@@ -1688,7 +1688,7 @@ end
 def text_html
   r=""
   objs={}
-  for e in @elements
+  @elements.each do |e|
     objs[e.from]||=[]
     objs[e.from].push(e.html_open)
     t=e.to
@@ -1697,10 +1697,10 @@ def text_html
     objs[t].insert(0, e.html_close)
   end
   l=0
-  for k in objs.keys.sort
+  objs.keys.sort.each do |k|
     o=objs[k]
     r+=html_encode(text_range_exclusive(l,k))
-    for b in o
+    o.each do |b|
       r+=b
     end
     l=k
@@ -1720,7 +1720,7 @@ def value
     play_sound("editbox_audiomarker", volume: 100, pitch: 100, pan: pos) if spk && Configuration.controlspresentation!=2
     end
       if spk && @sounds!=nil
-        for snd in @sounds
+        @sounds.each do |snd|
           play_sound(snd, volume: 100, pitch: 100, pan: pos)
           end
         end
@@ -1986,7 +1986,7 @@ end
      @@customactions.push([name, b, cls]) if b!=nil
    end
    def self.unregister_class(cls)
-     for a in @@customactions.dup
+     @@customactions.dup.each do |a|
        @@customactions.delete(a) if a[2]==cls
        end
      end
@@ -2101,7 +2101,7 @@ def initialize(options, header: "", index: 0, flags: 0, quiet: true)
       self.index = index
 self.options=(options)
                                                 @selected = []
-                                                            for i in 0..@options.size - 1
+                                                            (0..@options.size - 1).each do |i|
               @grayed[i] = false if @grayed[i]!=true
               @selected[i] = false
               end
@@ -2125,7 +2125,7 @@ self.options=(options)
               clear_item_audio
               @hotkeys||={}
               @hotkeys.clear
-                                                                                                                                                                                                                                      for i in 0..opts.size - 1
+                                                                                                                                                                                                                                      (0..opts.size - 1).each do |i|
                                                                           gray=false
               if opts[i]!=nil
                 ind=nil
@@ -2170,10 +2170,10 @@ def prepend_options(opts, states=[], audio_urls=[])
   old_audio_entries=@item_audio_entries.dup
   @item_audio_entries={}
   self.options=opts
-  for i in 0...states.size
+  (0...states.size).each do |i|
     set_item_states(i, states[i]) if states[i]!=nil
   end
-  for i in 0...audio_urls.size
+  (0...audio_urls.size).each do |i|
     set_item_audio(i, audio_urls[i]) if audio_urls[i]!=nil && audio_urls[i].to_s!=""
   end
   @options+=old_options
@@ -2424,7 +2424,7 @@ def speak_item_option(id=self.index, base=nil, prefix="", include_selection=true
   end
   if include_hotkey
     ss=false
-    for k in @hotkeys.keys
+    @hotkeys.keys.each do |k|
       ss = k if @hotkeys[k] == id
     end
     text=speech_value_append(text, " ("+text_utf8([ss.to_i & 0xff].pack("C"))+")") if ss.is_a?(Integer)
@@ -2563,7 +2563,7 @@ end
     end
   if key_pressed?(0x21) == true and @lr==false  && !key_held?(0x5B) && !key_held?(0x5C)
     if self.index > 14
-            for i in 1..15
+            (1..15).each do |i|
               self.index-=1
               while hidden?(self.index) == true and self.index>15-i
     self.index -= 1
@@ -2579,7 +2579,7 @@ end
     end
         if key_pressed?(0x22) == true and @lr==false  && !key_held?(0x5B) && !key_held?(0x5C)
        if self.index < (options.size - 15)
-            for i in 1..15
+            (1..15).each do |i|
               self.index+=1
                   while hidden?(self.index) == true and self.index<@options.size-i
     self.index += 1
@@ -2754,7 +2754,7 @@ end
                 b += "\r\n\r\n(#{text_utf8(p_("EAPI_Common", "Checked"))})" if @selected[self.index] == true
                 b += "\r\n\r\n(#{text_utf8(p_("EAPI_Common", "Unchecked"))})" if @selected[self.index] == false && @multi==true
                 ss = false
-                for k in @hotkeys.keys
+                @hotkeys.keys.each do |k|
                   ss = k if @hotkeys[k] == self.index
                 end
                 o=speech_value_append(o, " ("+text_utf8([ss.to_i & 0xff].pack("C"))+")") if ss.is_a?(Integer)
@@ -2822,7 +2822,7 @@ def tag
   end
   def multiselections
   ar=[]
-  for i in 0...@options.size
+  (0...@options.size).each do |i|
     ar.push(i) if @selected[i]
     end
   return ar
@@ -3311,7 +3311,7 @@ end
         files = Clipboard.files
         return if files.size==0
                 waiting {
-        for file in files
+        files.each do |file|
           src=file
           dst=EltenPath.join(@path, File.basename(file))
           if File.directory?(file)
@@ -3400,7 +3400,7 @@ super
   @opfocused=false
         if @sel.selected? or @sel.expanded?
     o=@options.deep_dup
-    for l in @way
+    @way.each do |l|
       o=o[l][1..o[l].size-1]
     end
         if o[@sel.index].is_a?(Array)
@@ -3440,11 +3440,11 @@ super
          def searchway(way=[],tway=[],index=0)
                                  return [index,tway] if way==tway
            t=@options.deep_dup
-                      for l in tway
+                      tway.each do |l|
              t=(t[l]==nil)?nil:(t[l][1..t[l].size-1])
            end
            return [index,tway] if t.is_a?(Array)==false
-                                 for i in 0..t.size-1
+                                 (0..t.size-1).each do |i|
                           x=searchway(way,tway+[i],index+1)
                if x[1]==way
                                  return x
@@ -3460,11 +3460,11 @@ super
                                  end
          def getelements(way=[])
 sou=@options.deep_dup
-         for l in way
+         way.each do |l|
            sou=sou[l][1..sou[l].size-1]
                 end
               ret=sou
-for i in 0..ret.size-1
+(0..ret.size-1).each do |i|
   while ret[i].is_a?(Array)
     ret[i]=ret[i][0]
     end
@@ -3488,7 +3488,7 @@ return ret
       def selector(options, header: "", start_index: 0, cancel_index: nil, flags: 0, border: true, cancel_key: nil)
         dialog_open
         dis=[]
-        for i in 0..options.size-1
+        (0..options.size-1).each do |i|
           if options[i]==nil
             dis.push(i)
             options[i]=""
@@ -3497,7 +3497,7 @@ return ret
           list_flags=flags
           list_flags=ListBox::Flags::AnyDir if flags==1
 lsel=ListBox.new(options, header: header, index: start_index, flags: list_flags)
-      for d in dis
+      dis.each do |d|
         lsel.disable_item(d)
       end
       lsel.focus
@@ -3528,7 +3528,7 @@ lsel=ListBox.new(options, header: header, index: start_index, flags: list_flags)
         
         def menuselector(options)
         dis=[]
-        for i in 0..options.size-1
+        (0..options.size-1).each do |i|
           if options[i]==nil
             dis.push(i)
             options[i]=""
@@ -3538,7 +3538,7 @@ lsel=""
         play_sound("menu_open")
         Menu.menubg_play if Configuration.bgsounds==1 && Configuration.soundthemeactivation==1
 lsel = ListBox.new(options, header: "", index: 0, flags: ListBox::Flags::AnyDir)
-                    for d in dis
+                    dis.each do |d|
         lsel.disable_item(d)
       end
       lsel.update
@@ -3694,13 +3694,13 @@ lsel = ListBox.new(options, header: "", index: 0, flags: ListBox::Flags::AnyDir)
          end
          def apply_row_audio
            return if @row_audio_urls==nil
-           for i in 0...@row_audio_urls.size
+           (0...@row_audio_urls.size).each do |i|
              @sel.set_item_audio(i, @row_audio_urls[i]) if @row_audio_urls[i]!=nil && @row_audio_urls[i].to_s!=""
            end
          end
          def apply_row_states
            return if @row_states==nil
-           for i in 0...@row_states.size
+           (0...@row_states.size).each do |i|
              @sel.set_item_states(i, @row_states[i]) if @row_states[i]!=nil
            end
          end
@@ -3723,13 +3723,13 @@ lsel = ListBox.new(options, header: "", index: 0, flags: ListBox::Flags::AnyDir)
 alias sayoption say_option
            def format_rows(col=0)
            opts=[]
-           for r in @rows
+           @rows.each do |r|
              if r==nil or r.count(nil)==r.size
                o=nil
                               else
              o=""
                           o=row_speech_value(r[col]) if r[col]!=nil
-             for c in 0...@columns.size
+             (0...@columns.size).each do |c|
                if c!=col&&r[c]!=nil
                plain=o.to_s
                o=row_speech_append(o, ((c==0)?":":((plain[-1..-1]!=":"&&plain[-1..-1]!=".")?",":""))+" ")
@@ -3839,8 +3839,8 @@ super
              @x = [[@x.to_i, 0].max, @width - 1].min
              @y = [[@y.to_i, 0].max, @height - 1].min
              @labels = Array.new(@height) { Array.new(@width, "") }
-             for row in 0...[@height, old.size].min
-               for col in 0...[@width, old[row].to_a.size].min
+             (0...[@height, old.size].min).each do |row|
+               (0...[@width, old[row].to_a.size].min).each do |col|
                  @labels[row][col] = old[row][col]
                end
              end
@@ -4095,7 +4095,7 @@ def getposition(pos, len)
   (0..hours).each{|h|lst_hour.options.push(h.to_s)}
   lst_hour.on(:move) {
   t=(len-lst_hour.index*3600)/60
-  for i in 0..59
+  (0..59).each do |i|
     if t<=i
       lst_min.disable_item(i)
     else
@@ -4106,7 +4106,7 @@ def getposition(pos, len)
   }
   lst_min.on(:move) {
     t=(len-lst_hour.index*3600-lst_min.index*60)
-  for i in 0..59
+  (0..59).each do |i|
     if t<=i
       lst_sec.disable_item(i)
     else
@@ -4138,11 +4138,11 @@ def savefile
     nm=@label.delete("\r\n\\/:!@\#*?<>\'\"|+=`") if @label!="" and @label!=nil
         nm+=".opus"
         encoders=[]
-        for e in MediaEncoders.list
+        MediaEncoders.list.each do |e|
           encoders.push(e) if e::Type==:audio
           end
         formats=[]
-        for e in encoders
+        encoders.each do |e|
           f=e::Name+" ("+e::Extension+")"
           if e::Extension.downcase==".opus" && is_opus?
             f+= " ("+p_("EAPI_Form", "Copy original stream")+")"
@@ -4167,7 +4167,7 @@ def savefile
         }
         edt_filename.on(:change) {
         ext=File.extname(edt_filename.text)
-        for i in 0...encoders.size
+        (0...encoders.size).each do |i|
           if encoders[i]::Extension.downcase==ext.downcase
             lst_format.index=i
             break
@@ -4236,7 +4236,7 @@ def completed
 
 def fade
   return if get_sound==nil
-  for i in 1..20
+  (1..20).each do |i|
     loop_update
     get_sound.volume-=0.05
     if get_sound.volume<=0.05
@@ -4297,7 +4297,7 @@ h=d/3600
     [p_("EAPI_Form", "Track number"), ai.track_number],
     [p_("EAPI_Form", "Copyright"), ai.copyright]
         ]
-       for a in fields.deep_dup
+       fields.deep_dup.each do |a|
                   fields.delete(a) if a[1]==nil || a[1]==""
        end
        sel=TableBox.new(["",""], fields, index: 0, header: "", quiet: false)
@@ -4455,11 +4455,11 @@ class Menu
     s=0
     inds=[]
     depth=0
-    for i in 0...index
+    (0...index).each do |i|
       depth+=1 if @options[i].is_a?(String)
       depth-=1 if @options[i]==nil
       end
-    for i in index...@options.size
+    index...@options.size.each do |i|
       c=@options[i]
       if s==0
         break if c==nil
@@ -4707,9 +4707,9 @@ end
     def path(x,y,ox,oy,walls,width,height)
             return [[x,y]] if x==ox&&y==oy
             mat=[]
-            for i in 0...width
+            (0...width).each do |i|
               mat[i]=[]
-              for j in 0...height
+              (0...height).each do |j|
                 s=true
                 s=false if walls.include?([i,j])
                 mat[i][j]=s
@@ -4873,7 +4873,7 @@ def wall(x1, y1, x2=nil, y2=nil)
       play_sound(@direction_sound) if @direction_sound!=nil
       return if @direction_delay
       end
-      for w in @walls
+      @walls.each do |w|
         if w[0]==x&&w[1]==y
           play_sound(@wall_sound) if @wall_sound!=nil
           trigger(:wall)
@@ -4882,7 +4882,7 @@ def wall(x1, y1, x2=nil, y2=nil)
       end
       play_sound(@move_sound) if @move_sound!=nil
       @x,@y=x,y
-      for ac in @actions
+      @actions.each do |ac|
         ac[2].call if ac[0]==x and ac[1]==y
       end
             trigger(:move)
@@ -5107,7 +5107,7 @@ def show_encodersettings
 [p_("EAPI_Form", "High"), 96, 20, 1],
 [p_("EAPI_Form", "Max"), @max_bitrate, ((@max_bitrate>80)?20:40), 1]
   ]
-  for pr in profiles
+  profiles.each do |pr|
     profiles.delete(pr) if pr[1]>@max_bitrate
     end
   appind=@application==2048?0:1
@@ -5139,7 +5139,7 @@ else
   end
   }
   suc=false
-  for i in 0...profiles.size
+  (0...profiles.size).each do |i|
     pr=profiles[i]
     bitrate = bitrates_available[lst_bitrate.index]
     framesize = framesizes_available[lst_framesize.index]
@@ -5171,7 +5171,7 @@ end
 def bitrates_available
   all = [8, 16, 24, 32, 48, 64, 80, 96, 128, 160, 196, 256, 320]
   m=[]
-  for b in all
+  all.each do |b|
     m.push(b) if b<=@max_bitrate
   end
   return m
@@ -5207,13 +5207,13 @@ def edit_tags
 'COPYRIGHT'=>p_("EAPI_Form", "Copyright"),
 }
 opts=[]
-for k in editable_tags
+editable_tags.each do |k|
 v = mapper[k]||k
 opts.push("#{v}: #{tgs[k]||""}")
   end
 lst_tags.options=opts
 opts=[]
-for i in 0..999
+(0..999).each do |i|
   next if tgs["CHAPTER#{sprintf("%03d", i)}"]==nil
 time = tgs["CHAPTER#{sprintf("%03d", i)}"]
   name = tgs["CHAPTER#{sprintf("%03d", i)}NAME"]||""
@@ -5223,7 +5223,7 @@ lst_chapters.options = opts
   }
   getchaps = Proc.new {
   chaps=[]
-  for i in 0..999
+  (0..999).each do |i|
   next if tgs["CHAPTER#{sprintf("%03d", i)}"]==nil
 time = tgs["CHAPTER#{sprintf("%03d", i)}"]
   name = tgs["CHAPTER#{sprintf("%03d", i)}NAME"]||""
@@ -5235,7 +5235,7 @@ chaps
   }
   setchaps = Proc.new{|chaps|
 chaps=chaps.sort_by{|c|c[0]}
-  for i in 0...chaps.size
+  (0...chaps.size).each do |i|
 tgs["CHAPTER#{sprintf("%03d", i)}"]=chaps[i][0]
 tgs["CHAPTER#{sprintf("%03d", i)}NAME"] = chaps[i][1]||""
 end

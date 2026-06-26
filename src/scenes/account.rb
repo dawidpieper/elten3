@@ -35,7 +35,7 @@ def make_setting(label, type, key, mapping=nil, multi=false)
   @settings.last.push([label, type, key, mapping, multi])
 end
 def save_category
-  for i in 2...@settings[@category].size
+  (2...@settings[@category].size).each do |i|
     setting=@settings[@category][i]
     next if setting==nil || setting[1]==:custom
     index=i-1
@@ -48,7 +48,7 @@ def save_category
     val=setting[3][val] if setting[3]!=nil
   else
     vals=[]
-    for v in field.multiselections
+    field.multiselections.each do |v|
       v=setting[3][v] if setting[3]!=nil
       vals.push(v)
     end
@@ -64,7 +64,7 @@ def show_category(id)
   @form.show_all
   @form.fields[1...-3]=[]
   f=[]
-for s in @settings[id][2..-1]
+@settings[id][2..-1].each do |s|
   label, type, key, mapping, multi = s
   field=nil
   case type
@@ -87,7 +87,7 @@ for s in @settings[id][2..-1]
       flags|=ListBox::Flags::MultiSelection if multi==true
       field=ListBox.new(type, header: label, index: index.to_i, flags: flags)
       if multi==true
-        for e in currentconfig(key).to_s.split(",")
+        currentconfig(key).to_s.split(",").each do |e|
 index=e
       index=mapping.find_index(index)||0 if mapping!=nil
       field.selected[index.to_i]=true
@@ -101,7 +101,7 @@ end
 def apply_settings
   save_category
   j={}
-  for k in @values.keys
+  @values.keys.each do |k|
     v=@values[k]
     j[k]=v
     Session.fullname=v if k=="fullname"
@@ -218,7 +218,7 @@ def load_languages
   setting_category(p_("Account", "Languages"))
   langs=[]
   langsmapping=[]
-  for lk in Lists.langs.keys.sort{|a,b|polsorter(Lists.langs[a]['name'],Lists.langs[b]['name'])}
+  Lists.langs.keys.sort{|a,b|polsorter(Lists.langs[a]['name'],Lists.langs[b]['name'])}.each do |lk|
     langsmapping.push(lk)
     l=Lists.langs[lk]
     langs.push(l['name']+"( "+l['nativeName']+")")
@@ -232,7 +232,7 @@ def load_languages
   langslabel, langstype, langskey, langsmapping, langsmulti = @settings[@category][2]
     index=0
   l=currentconfig("mainlanguage")
-  for e in @form.fields[1].multiselections
+  @form.fields[1].multiselections.each do |e|
     mainlangs.push(langstype[e])
     mainlangsmapping.push(langsmapping[e])
     index = mainlangs.size-1 if langsmapping[e]==l
@@ -263,7 +263,7 @@ def load_notifications_settings
   options=[p_("Account", "Notice and show in what's new"),p_("Account", "Notice only"),p_("Account", "Ignore")]
   cats=[p_("Account", "New messages"),p_("Account", "New posts in followed threads"),p_("Account", "New posts on the followed blogs"),p_("Account", "New comments on your blog"),p_("Account", "New threads on followed forums"),p_("Account", "New posts on followed forums"),p_("Account", "New friends"),p_("Account", "Friends' birthday"),p_("Account", "Mentions"),p_("Account", "Followed blog posts"), p_("Account", "Blog followers"), p_("Account", "Blog mentions"), p_("Account", "Awaiting group invitations")]
   sets = ["wn_messages", "wn_followedthreads", "wn_followedblogs", "wn_blogcomments", "wn_followedforums", "wn_followedforumsthreads", "wn_friends", "wn_birthday", "wn_mentions", "wn_followedblogposts", "wn_blogfollowers","wn_blogmentions", "wn_groupinvitations"]
-  for i in 0...sets.size
+  (0...sets.size).each do |i|
     make_setting(cats[i], options, sets[i])
     end
   end
@@ -420,7 +420,7 @@ end
     als=al.map { |entry| [format_date(entry.created_at, false, false), entry.ip, entry.computer] }
 selh=[p_("Account", "Computer"),p_("Account", "Creation IP Address"),p_("Account", "Generation date")]
 selt=[]
-for s in als
+als.each do |s|
   selt.push([s[2],s[1],s[0]])
 end
 @sel=TableBox.new(selh,selt,index: 0,header: p_("Account", "Auto log in tokens"), quiet: false)
@@ -571,7 +571,7 @@ loop_update
     lgs=lg.map { |entry| [format_date(entry.created_at, false, false), entry.ip] }
 selh=["",""]
 selt=[]
-for s in lgs
+lgs.each do |s|
   selt.push([s[0],s[1]])
 end
 @sel=TableBox.new(selh,selt,index: 0,header: p_("Account", "Last logins"), quiet: false)

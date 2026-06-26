@@ -295,7 +295,7 @@ t=@preprocessor
 end
 return if t==nil
 @vst_target = t
-for i in 0...@vsts.size
+(0...@vsts.size).each do |i|
 v=Bass::VST.new(@vsts[i].file, t, @vsts[i].priority)
 v.import(:bank, @vsts[i].export(:bank))
 @vsts[i].free
@@ -345,7 +345,7 @@ vsts_reprioritize
 end
 def vsts_reprioritize
 @vst_lastpriority = 2**31
-for i in 0...@vsts.size
+(0...@vsts.size).each do |i|
 @vst_lastpriority -= 1
 @vsts[i].priority=@vst_lastpriority
 end
@@ -740,7 +740,7 @@ t=@preprocessor
 end
 return if t==nil
 @vst_target = t
-for i in 0...@vsts.size
+(0...@vsts.size).each do |i|
 v=Bass::VST.new(@vsts[i].file, t, @vsts[i].priority)
 v.import(:bank, @vsts[i].export(:bank))
 @vsts[i].free
@@ -790,7 +790,7 @@ vsts_reprioritize
 end
 def vsts_reprioritize
 @vst_lastpriority = 2**31
-for i in 0...@vsts.size
+(0...@vsts.size).each do |i|
 @vst_lastpriority -= 1
 @vsts[i].priority=@vst_lastpriority
 end
@@ -1197,10 +1197,10 @@ if r==0
 r=Bass::BASS_RecordStart.call(0, 0, 0, 0, 0)
 end
 if r==0
-for freq in [192000, 176400, 96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 8000]
+[192000, 176400, 96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 8000].each do |freq|
 r=Bass::BASS_RecordStart.call(freq, 0, 256, 0, 0)
 break if r!=0
-for ch in (1..16).to_a.reverse
+(1..16).to_a.reverse.each do |ch|
 r=Bass::BASS_RecordStart.call(freq, ch, 256, 0, 0)
 break if r!=0
 r=Bass::BASS_RecordStart.call(freq, ch, 0, 0, 0)
@@ -1453,7 +1453,7 @@ def filestream(ind=-1)
 if ind==-1
 r=@sources.find{|s|s.is_a?(StreamSourceFile)}
 return r if r!=nil
-for s in @outstreams
+@outstreams.each do |s|
 r=s.sources.find{|s|s.is_a?(StreamSourceFile)}
 return r if r!=nil
 end
@@ -1502,10 +1502,10 @@ Dir.mkdir(dir+"/streams") if !FileTest.exist?(dir+"/streams")
 @fullsave_chat.write("time,transmitter,username,message\n")
 @fullsave_chat.write("#{Time.now.strftime("%Y-%m-%d %H:%M:%S")},0,,\"Begin of save\"\n")
 @fullsave_myrec=$vorbisrecorderinit.call(unicode(dir+"/myrec.ogg"), 48000, 2, 500000)
-for t in @transmitters.keys
+@transmitters.keys.each do |t|
 @transmitters[t].begin_save(dir, t, @fullsave_time)
 end
-for s in @streams.keys
+@streams.keys.each do |s|
 @streams[s].begin_save(dir, s, @fullsave_time)
 end
 begin_save(dir+"/mixed.ogg")
@@ -1543,10 +1543,10 @@ end
 if @fullsave_dir!=nil
 @fullsave_dir=nil
 @fullsave_time=nil
-for t in @transmitters.values
+@transmitters.values.each do |t|
 t.end_save
 end
-for s in @streams.values
+@streams.values.each do |s|
 s.end_save
 end
 end
@@ -1607,7 +1607,7 @@ end
 end
 def remove_card
 log(-1, "Conference: unmixing cards")
-for s in @sources.find_all{|s|s.is_a?(StreamSourceCard)}.dup
+@sources.find_all{|s|s.is_a?(StreamSourceCard)}.dup.each do |s|
 s.free
 @sources.delete(s)
 end
@@ -1660,7 +1660,7 @@ end
 def remove_stream(hook=true)
 log(-1, "Conference: removing file stream")
 @stream_mutex.synchronize {
-for s in @sources.find_all{|s|s.is_a?(StreamSourceFile)}.dup
+@sources.find_all{|s|s.is_a?(StreamSourceFile)}.dup.each do |s|
 s.free
 @sources.delete(s)
 end
@@ -1855,7 +1855,7 @@ volume*=300 if volume>300
 volume=10 if volume<10
 v=[volume, muted, chat_muted, streams_muted]
 @volumes[user]=v
-for t in @transmitters.values
+@transmitters.values.each do |t|
 t.setvolume(v) if t.username==user
 end
 if muted
@@ -2055,16 +2055,16 @@ calling_stop
 begin
 @recorder_thread.exit if @recorder_thread!=nil
 if subs
-for t in @transmitters.values
+@transmitters.values.each do |t|
 t.free
 end
-for s in @streams.values
+@streams.values.each do |s|
 s.free
 end
-for s in @sources
+@sources.each do |s|
 s.free
 end
-for o in @objects.keys
+@objects.keys.each do |o|
 @objects[o].free
 end
 end
@@ -2080,7 +2080,7 @@ Bass::BASS_StreamFree.call(@recordstream)
 Bass::BASS_StreamFree.call(@outstreams_mixer)
 Bass::BASS_StreamFree.call(@channel_mixer)
 Bass::BASS_StreamFree.call(@whisper_mixer)
-for s in @outstreams
+@outstreams.each do |s|
 s.free
 @outstreams.delete(s)
 end
@@ -2159,7 +2159,7 @@ buf=buf.byteslice(lastsp+1..-1)
 end
 messages.push(buf) if buf.bytesize>0
 end
-for i in 0...messages.size
+(0...messages.size).each do |i|
 @voip.send(2, messages[i], (i==messages.size-1)?(0):(1))
 end
 end
@@ -2200,7 +2200,7 @@ return 0 if @framesize==0
 losses=0
 all=0
 fs=(5000/@framesize.to_f).to_i
-for t in @transmitters.values
+@transmitters.values.each do |t|
 if t.losses.size>fs
 all+=fs
 losses=t.losses[-fs..-1].sum
@@ -2292,7 +2292,7 @@ end
 def vsts_reprioritize(userid=0)
 if userid==0
 @vst_lastpriority = 2**31
-for i in 0...@vsts.size
+(0...@vsts.size).each do |i|
 @vst_lastpriority -= 1
 @vsts[i].priority=@vst_lastpriority
 end
@@ -2328,7 +2328,7 @@ def userid
 end
 private
 def position_changed
-for s in @outstreams
+@outstreams.each do |s|
 s.set_user_position(@position.x, @position.y, @position.dir)
 end
 if is_muted
@@ -2405,10 +2405,10 @@ if r==0
 r=Bass::BASS_RecordStart.call(0, 0, 0, 0, 0)
 end
 if r==0
-for freq in [48000, 44100, 96000, 88200, 192000, 176400, 384000, 64000, 32000, 24000, 22050, 16000, 8000]
+[48000, 44100, 96000, 88200, 192000, 176400, 384000, 64000, 32000, 24000, 22050, 16000, 8000].each do |freq|
 r=Bass::BASS_RecordStart.call(freq, 0, 256, 0, 0)
 break if r!=0
-for ch in (1..16).to_a.reverse
+(1..16).to_a.reverse.each do |ch|
 r=Bass::BASS_RecordStart.call(freq, ch, 256, 0, 0)
 break if r!=0
 r=Bass::BASS_RecordStart.call(freq, ch, 0, 0, 0)
@@ -2446,7 +2446,7 @@ pos_y=p2
 pos_x=-1 if pos_x<1||pos_x>255
 pos_y=-1 if pos_y<1||pos_y>255
 frame_id = p3*256+p4
-for s in @streams.values
+@streams.values.each do |s|
 if s.userid==userid
 s.set_user_position(pos_x, pos_y)
 end
@@ -2529,7 +2529,7 @@ pos_x=p1
 pos_y=p2
 pos_x=-1 if pos_x<1||pos_x>255
 pos_y=-1 if pos_y<1||pos_y>255
-for s in @streams.values
+@streams.values.each do |s|
 if s.userid==userid
 s.set_user_position(pos_x, pos_y)
 end
@@ -2634,7 +2634,7 @@ Bass::BASS_StreamFree.call(@output_stream) if @output_stream!=0
 Bass::BASS_Mixer_StreamAddChannel.call(@output, @output_mixer, 0)
 Bass::BASS_Mixer_StreamAddChannel.call(@saver, @output_stream, 0)
 @channels=params['channel']['channels']
-for t in @transmitters.keys
+@transmitters.keys.each do |t|
 @transmitters[t].free
 @transmitters.delete(t)
 end
@@ -2646,7 +2646,7 @@ n=params['channel']['users'].size
 c = params['channel']['users'].find_index{|u|u['id']==@voip.uid}
 c=0 if c==nil
 da = 2.0*Math::PI/n
-for i in 0...params['channel']['users'].size
+(0...params['channel']['users'].size).each do |i|
 u = params['channel']['users'][i]
 uid=u['id']
 a = ((n-c+i)%n) * da
@@ -2684,7 +2684,7 @@ end
 end
 @channel_hooks.each{|h|h.call(params['channel'])}
 @volumes_hooks.each{|h|h.call(@volumes)}
-for t in @transmitters.keys
+@transmitters.keys.each do |t|
 if !upusers.include?(t)
 @whisper=0 if @whisper==t
 @user_hooks.each{|h|h.call(false, @transmitters[t].username, t)} if frs==false
@@ -2694,7 +2694,7 @@ log(-1, "Conference: unregistering transmitter #{t}")
 end
 end
 upobjects=[]
-for o in params['channel']['objects']
+params['channel']['objects'].each do |o|
 oid=o['id']
 upobjects.push(oid)
 if @objects.include?(oid)
@@ -2707,19 +2707,19 @@ log(-1, "Conference: registering new object #{o['name']}")
 @objects[oid].set_mixer(@channel_mixer)
 end
 end
-for o in @objects.keys
+@objects.keys.each do |o|
 if !upobjects.include?(o)
 log(-1, "Conference: unregistering object #{o}")
 @objects[o].free
 @objects.delete(o)
 end
 end
-for s in @outstreams
+@outstreams.each do |s|
 s.set_mixer(@channel_mixer)
 end
 if params['channel']['streams'].is_a?(Array)
 upstreams=[]
-for s in params['channel']['streams']
+params['channel']['streams'].each do |s|
 sid=s['id']
 upstreams.push(sid)
 if @streams.include?(sid)
@@ -2735,7 +2735,7 @@ username=@transmitters[s['user']].username if @transmitters[s['user']]!=nil
 @streams[sid].set_user_position(@transmitters[s['user']].transmitter_x, @transmitters[s['user']].transmitter_y) if @transmitters[s['user']]!=nil and @transmitters[s['user']].transmitter_x>0
 end
 end
-for s in @streams.keys
+@streams.keys.each do |s|
 if !upstreams.include?(s)
 log(-1, "Conference: unregistering stream #{s}")
 @voip.streamid_unmute(s)
@@ -2748,7 +2748,7 @@ end
 end
 if params['channel']['speakers'].is_a?(Array)
 upspeakers=[]
-for userid in params['channel']['speakers']
+params['channel']['speakers'].each do |userid|
 upspeakers.push(userid)
 if !@speakers.include?(userid)
 username=""
@@ -2757,7 +2757,7 @@ username=@transmitters[userid].username if @transmitters[userid]!=nil
 @speaker_hooks.each{|h|h.call(1, username, userid)} if userid==@voip.uid
 end
 end
-for s in @speakers.keys
+@speakers.keys.each do |s|
 username,userid=@speakers[s]
 if !upspeakers.include?(userid)
 @speaker_hooks.each{|h|h.call(0, username, userid)} if userid==@voip.uid
@@ -2767,7 +2767,7 @@ end
 end
 if params['channel']['waiting_users'].is_a?(Array) 
 upwaiting=[]
-for w in params['channel']['waiting_users']
+params['channel']['waiting_users'].each do |w|
 upwaiting.push(w['id'])
 if !@waiting_users.map{|u|u.id}.include?(w['id'])
 wu=WaitingUser.new
@@ -2778,7 +2778,7 @@ wu.name=w['name']
 end
 end
 todel=[]
-for w in @waiting_users
+@waiting_users.each do |w|
 if !upwaiting.include?(w.id)
 todel.push(w)
 @waitinguser_hooks.each{|h|h.call(false, w.name, w.id)}
@@ -2808,7 +2808,7 @@ if @pushtotalk==true
 return true if @pushtotalk_keys.size==0
 suc=true
 $neededkeys = @pushtotalk_keys
-for k in @pushtotalk_keys
+@pushtotalk_keys.each do |k|
 if $conference_key_state[k]==false
 suc=false
 break
@@ -2949,7 +2949,7 @@ audio.clear
 end
 }
 end
-for s in @outstreams
+@outstreams.each do |s|
 if s.encoder!=nil && !s.encoder.closed? && @bitrate!=0 && @stream_bitrate!=0
 mb=maxBytes
 mb*=(s.channels.to_f/@channels)

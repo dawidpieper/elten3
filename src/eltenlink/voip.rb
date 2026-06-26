@@ -187,7 +187,7 @@ if resp['params']!=nil
 end
 end
 if resp.is_a?(Hash) && resp['packets'].is_a?(Array)
-for data in resp['packets'].map{|pc|Base64.decode64(pc)}
+resp['packets'].map{|pc|Base64.decode64(pc)}.each do |data|
 receive(data)
 end
 end
@@ -255,7 +255,7 @@ mutes.each{|m|mute(m)}
 chat_mutes.each{|m|chat_mute(m)}
 streams_mutes.each{|m|streams_mute(m)}
 streamid_mutes.each{|m|streamid_mute(m)}
-for i in 0...@streams.size
+(0...@streams.size).each do |i|
 s=@streams[i]
 if s!=nil
 @streams[i][:id]=command("stream_add", {'name'=>s[:name], 'channels'=>s[:channels], 'x'=>s[:x], 'y'=>s[:y]})['id']||0
@@ -338,7 +338,7 @@ end
 def send_multi(packets)
 return if !packets.is_a?(Array)
 coll=[]
-for pc in packets
+packets.each do |pc|
 if pc.size>2
 m=generate_packet(pc[0], pc[1], pc[2]||0, pc[3]||0, pc[4]||0, pc[5]||0, pc[6]||nil, pc[7]||nil, pc[8]||false)
 if m!=nil
@@ -627,7 +627,7 @@ if @receivetimes.size>50
 s=0
 r=0
 c=0
-for ind in @receivetimes.keys
+@receivetimes.keys.each do |ind|
 if @sendtimes[ind]!=nil
 r+=@receivetimes[ind]
 s+=@sendtimes[ind]
@@ -676,10 +676,10 @@ if CommandAliases[cmd].is_a?(Numeric)
 json[':c']=CommandAliases[cmd]
 json.delete(":command")
 end
-for k in params.keys
+params.keys.each do |k|
 json[k]=params[k]
 end
-for k in json.keys
+json.keys.each do |k|
 if json[k].is_a?(String)
 json[k]=json[k]+""
 json[k].force_encoding("UTF-8")

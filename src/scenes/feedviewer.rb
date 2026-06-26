@@ -102,10 +102,10 @@ dialog_close
     users=[feed.user]
     users+=feed.message.scan(/\@([a-zA-Z0-9\.\-\_]+)/).map{|r|r[0]}
     todel=[]
-    for u in users
+    users.each do |u|
       todel.push(u) if u.downcase==Session.name.downcase
     end
-    for i in 1...users.size
+    (1...users.size).each do |i|
       todel.push(users[i]) if users[0...i].map{|u|u.downcase}.include?(users[i].downcase)
       end
     todel.each{|u|users.delete(u)}

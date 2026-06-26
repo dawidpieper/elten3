@@ -55,7 +55,7 @@ module EltenAPI
         first_pressed = Array.new(256, false)
         repeated = Array.new(256, false)
 
-        for key in 0..255
+        (0..255).each do |key|
           was_down = @held[key] == true
           is_down = down[key] == true
           held[key] = is_down
@@ -84,7 +84,7 @@ module EltenAPI
         end
 
         action_pressed = Array.new(256, false)
-        for key in 0..255
+        (0..255).each do |key|
           action_pressed[key] = pressed[key] == true || repeated[key] == true
           if action_pressed[key] == true
             if @last_pressed_tick[key].to_i == current_tick - 1
@@ -207,7 +207,7 @@ module EltenAPI
       def normalize_state(raw_state)
         bytes = raw_state.to_s.byteslice(0, 256).to_s.ljust(256, "\0")
         state = Array.new(256, false)
-        for key in 0..255
+        (0..255).each do |key|
           state[key] = (bytes.getbyte(key).to_i & 0x80) != 0
         end
         state
@@ -215,7 +215,7 @@ module EltenAPI
 
       def state_string(held)
         bytes = "\0" * 256
-        for key in 0..255
+        (0..255).each do |key|
           bytes.setbyte(key, held[key] ? 0x80 : 0)
         end
         bytes

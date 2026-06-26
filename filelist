@@ -71,6 +71,7 @@ src/scenes/log.rb
 src/eapi/speechoutput.rb
 src/platforms/windows/eapi/nvda.rb :windows
 src/platforms/osx/eapi/speech.rb :osx
+src/platforms/osx/eapi/voiceover.rb :osx
 src/scenes/sounds.rb
 src/eapi/opus.rb
 src/eapi/recorder.rb

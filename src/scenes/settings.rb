@@ -38,7 +38,7 @@ def make_setting(label, type, section, config=nil, mapping=nil, multi=false)
   @settings.last.push([label, type, section, config, mapping, multi])
 end
 def save_category
-  for i in 2...@settings[@category].size
+  (2...@settings[@category].size).each do |i|
     setting=@settings[@category][i]
         next if setting==nil || setting[1]==:custom
     index=i-1
@@ -52,7 +52,7 @@ def save_category
       mpg=setting[4]
       mpg=(0...setting[1].size).to_a.map{|a|a.to_s} if mpg==nil
       vl=[]
-      for i in 0...mpg.size
+      (0...mpg.size).each do |i|
         vl.push(mpg[i]) if field.selected[i]
       end
       val=vl.join(",")
@@ -67,7 +67,7 @@ def show_category(id)
   @form.show_all
   @form.fields[1...-3]=[]
   f=[]
-for s in @settings[id][2..-1]
+@settings[id][2..-1].each do |s|
   label, type, section, config, mapping, multi = s
   field=nil
   case type
@@ -95,7 +95,7 @@ for s in @settings[id][2..-1]
       mpg||=(0...type.size).to_a.map{|a|a.to_s}
       mpg=mpg.map{|a|a.delete(",")}
       flds=currentconfig(section, config).split(",")
-      for f in flds
+      flds.each do |f|
         ind=mpg.find_index(f)
         field.selected[ind]=true if ind!=nil
         end
@@ -107,7 +107,7 @@ end
 end
 def apply_settings
   save_category
-  for k in @values.keys
+  @values.keys.each do |k|
     v=@values[k]
     writeconfig(k[0], k[1], v)
   end
@@ -124,7 +124,7 @@ def make_window
     setting_category(p_("Settings", "General"))
         l=loadedlanguages.map{|l|l.realcode}
         langsmapping=["en-GB"]
-    for d in l
+    l.each do |d|
         langsmapping.push(d) if !langsmapping.include?(d)
         end
   langsmapping=langsmapping.find_all{|l|Lists.langs[l[0..1].downcase].is_a?(Hash)}
@@ -177,7 +177,7 @@ def make_window
         make_setting(p_("Settings", "Speech rate"), (0..100).to_a.reverse.map{|x|x.to_s+"%"}, "Voice", "Rate", (0..100).to_a.reverse)
         make_setting(p_("Settings", "Speech volume"), (5..100).to_a.reverse.map{|x|x.to_s+"%"}, "Voice", "Volume", (5..100).to_a.reverse)
         make_setting(p_("Settings", "Speech pitch"), (0..100).to_a.reverse.map{|x|x.to_s+"%"}, "Voice", "Pitch", (0..100).to_a.reverse)
-        make_setting(p_("Settings", "Enable braille output (requires NVDA addon)"), :bool, "Interface", "EnableBraille") if SpeechOutput.list.any?{|output| output.braille_supported?}
+        make_setting(p_("Settings", "Enable braille output"), :bool, "Interface", "EnableBraille") if SpeechOutput.list.any?{|output| output.braille_supported?}
         make_setting(p_("Settings", "Use a voice dictionary when processing characters (requires NVDA addon when using NVDA as a speech output)"), :bool, "Voice", "UseVoiceDictionary")
                         make_setting(p_("Settings", "Typing echo"), [p_("Settings", "Characters"),p_("Settings", "Words"),p_("Settings", "Characters and words"),p_("Settings", "None")], "Interface", "TypingEcho")
         on_load {

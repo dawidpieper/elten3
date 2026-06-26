@@ -36,7 +36,7 @@ class Scene_Contacts
         alert(p_("Contacts", "Empty list"))
               end
       selt = []
-      for i in 0..@contact.size - 1
+      (0..@contact.size - 1).each do |i|
         selt[i] = user_with_status(@contact[i])
         end
       header=p_("Contacts", "Contacts")
