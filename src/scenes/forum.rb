@@ -2853,6 +2853,7 @@ end
       end
     end
 
+    index = @readposts * 3 if index == -1 && @query == :first_unread && @readposts < @postscount
     index = 0 if index == -1
     index = @lastpostindex if @lastpostindex != nil
     index = 0 if index > @fields.size

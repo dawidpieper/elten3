@@ -388,7 +388,7 @@ module NotificationGroups
     when "message"
       Proc.new { open_message(payload) }
     when "followedthread", "followedforum", "followedforumpost", "mention"
-      Proc.new { open_forum_thread(payload) }
+      Proc.new { open_forum_thread(payload, cat.to_s) }
     when "followedblog", "blogcomment", "followedblogpost", "blogmention"
       Proc.new { open_blog_post(payload) }
     when "blogfollower"
@@ -430,11 +430,11 @@ module NotificationGroups
     payload["subject"].to_s.delete("\r\n").gsub(/re: /i, "").downcase.strip
   end
 
-  def open_forum_thread(payload)
+  def open_forum_thread(payload, cat=nil)
     thread_id = payload["threadid"].to_i
     if thread_id > 0
       post_id = payload["postid"].to_i
-      query = post_id > 0 ? post_id : ""
+      query = ["followedthread", "followedforumpost"].include?(cat.to_s) ? :first_unread : (post_id > 0 ? post_id : "")
       insert_scene(Scene_Forum_Thread.new(thread_id, -13, 0, query, nil, Scene_Main.new), true, return_to_main: true)
     else
       insert_scene(Scene_Forum.new, true, return_to_main: true)
