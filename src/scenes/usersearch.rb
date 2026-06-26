@@ -28,7 +28,7 @@ if @results.size==0
   return
 end
 selt=[]
-for r in @results
+@results.each do |r|
   selt.push(user_with_status(r, true, true, "\r\n"))
   end
 @sel=ListBox.new(selt,header: p_("UserSearch", "Found items"), index: 0, flags: 0, quiet: false)

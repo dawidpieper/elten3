@@ -39,7 +39,7 @@ module EltenKeyboard
       events = key_events
       event_flags = apply_key_events_to_state(state, events, now)
       flags = Array.new(256, 0)
-      for key in 0..255
+      (0..255).each do |key|
         down = key_down?(state, key)
         @stale_suppressed[key] = false if !down && @stale_suppressed[key] == true
         if down && stale_key_down?(key, now)
@@ -71,11 +71,11 @@ module EltenKeyboard
         end
         @last_down[key] = down
       end
-      for key in 0..255
+      (0..255).each do |key|
         flags[key] |= event_flags[key]
       end
       @flags_state = state.byteslice(0, 256).to_s.dup
-      for key in 0..255
+      (0..255).each do |key|
         buffer.setbyte(key, flags[key]) if buffer.respond_to?(:setbyte)
       end
       0
@@ -85,7 +85,7 @@ module EltenKeyboard
       initialize_state
       state = keyboard_state
       now = monotonic_time
-      for key in 0..255
+      (0..255).each do |key|
         down = key_down?(state, key)
         @event_down[key] = down
         @last_down[key] = down
@@ -123,7 +123,7 @@ module EltenKeyboard
       return Array.new(256, false) if !EltenWindow.keyboard_active?
       state = raw_state
       keys = Array.new(256, false)
-      for key in 0..255
+      (0..255).each do |key|
         keys[key] = key_down?(state, key)
       end
       keys
@@ -204,7 +204,7 @@ module EltenKeyboard
           @stale_suppressed[key] = false
         end
       end
-      for key in 0..255
+      (0..255).each do |key|
         state.setbyte(key, state.getbyte(key).to_i | 0x80) if @event_down[key] == true
       end
       flags
@@ -851,7 +851,7 @@ module EltenWindow
 
     def keyboard_state_has_pressed_keys?(state)
       state = state.to_s.byteslice(0, 256).to_s.ljust(256, "\0")
-      for key in 0...256
+      (0...256).each do |key|
         return true if (state.getbyte(key).to_i & 0x80) != 0
       end
       false
@@ -915,7 +915,7 @@ module EltenWindow
     def clear_native_keyboard_state
       state = "\0" * 256
       GET_KEYBOARD_STATE.call(state)
-      for i in 0...256
+      (0...256).each do |i|
         state.setbyte(i, state.getbyte(i).to_i & 1)
       end
       SET_KEYBOARD_STATE.call(state)

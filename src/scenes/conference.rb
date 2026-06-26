@@ -72,7 +72,7 @@ class Scene_Conference
             }
             end
           menu.option(p_("Conference", "Deny speech to all users"), nil, "_") {
-          for u in Conference.channel.users  
+          Conference.channel.users.each do |u|
             if !Conference.channel.administrators.include?(u.name)
           Conference.speech_deny(u.id)
           end
@@ -211,7 +211,7 @@ end
     timeout_break if Conference.channel.users.size>1
             lst_users.clear_options
         ind=nil
-            for u in Conference.channel.users
+            Conference.channel.users.each do |u|
           parts=[u.name]
           if u.supervisor!=nil && u.supervisor!=""
           su=Conference.channel.users.find{|us|us.id==u.supervisor}
@@ -258,7 +258,7 @@ end
     @users_hook.block.call
     @text_hook = Conference.on(:text) {
 options=[]
-    for c in Conference.texts
+    Conference.texts.each do |c|
 if c[2].is_a?(String)
   ch=c[0]+": "+c[2]
   ch=ch[0...5000]
@@ -554,7 +554,7 @@ if channel==nil
 [p_("Conference", "Low quality"), 28, 60, 1, 2, 0, 0, 1],
 ]
 prindex=presets.size
-for preset in presets
+presets.each do |preset|
   if channel.bitrate==preset[1] and channel.framesize==preset[2] and channel.channels==preset[3] and channel.vbr_type==preset[4] and channel.codec_application==preset[5] and channel.spatialization==preset[6] and ((channel.fec)?(1):(0))==preset[7] and channel.prediction_disabled==false
     prindex=presets.find_index(preset)
     end
@@ -563,7 +563,7 @@ for preset in presets
     langs = []
       langnames=[]
     lnindex = 0
-    for lk in Lists.langs.keys
+    Lists.langs.keys.each do |lk|
       l = Lists.langs[lk]
       if (channel.groupid==0 || channel.groupid==nil) || channel.lang.downcase[0..1]==lk.downcase[0..1]
       langnames.push(l["name"] + " (" + l["nativeName"] + ")")
@@ -682,7 +682,7 @@ chk_hidden = CheckBox.new(p_("Conference", "Make this channel hidden"), checked:
   lst_preset.trigger(:move)  
   lst_bitrate.on(:move) {
     bitrate=bitrates[lst_bitrate.index]
-          for i in 0...framesizes.size
+          (0...framesizes.size).each do |i|
             c=framesizes[i]*bitrates[lst_bitrate.index]/8*1000/1024
         if c>1280 || c<=5
           lst_framesize.disable_item(i)
@@ -952,7 +952,7 @@ end
 def generate_pushtotalkkeyslabel
   kb=[]
   ks=Conference.pushtotalk_keys
-  for k in ks.sort
+  ks.sort.each do |k|
   case k
   when 0x10
     kb.push("SHIFT")
@@ -1018,7 +1018,7 @@ form=Form.new([
     lst_modifiers.selected[6]=ks.include?(0x1a)
   lst_modifiers.selected[7]=ks.include?(0xA3)
   lst_modifiers.selected[8]=ks.include?(0xA5)
-  for k in ks
+  ks.each do |k|
     if keys.include?(k)
       lst_key.index=keys.find_index(k)
       break
@@ -1096,18 +1096,18 @@ timeout_break
     menu.option(p_("Conference", "Channel scenery"), nil, "o") {chanobjects}
     cardset = false
    cardset = true if Conference.mystreams.sources.find{|s|!s.scrollable}!=nil
-for s in Conference.mystreams.streams
+Conference.mystreams.streams.each do |s|
   cardset = true if s.sources.find{|s|!s.scrollable}!=nil
   end
     if cardset
 menu.option(p_("Conference", "Remove soundcard stream")) {
 td=[]
-for i in 0...Conference.mystreams.sources.size
+(0...Conference.mystreams.sources.size).each do |i|
   td.push(i) if !Conference.mystreams.sources[i].scrollable
 end
 td.reverse.each{|q|Conference.removesource(-1, q)}
 td=[]
-for i in 0...Conference.mystreams.streams.size
+(0...Conference.mystreams.streams.size).each do |i|
   td.push(i) if Conference.mystreams.streams[i].sources.find{|s|!s.scrollable}!=nil
 end
 td.reverse.each{|q|Conference.stream_remove(q)}
@@ -1123,7 +1123,7 @@ chk_listen = CheckBox.new(p_("Conference", "Turn on the listening"), checked: tr
 btn_cardok = Button.new(p_("Conference", "Stream")),
 btn_cardcancel = Button.new(_("Cancel"))
 ], index: 0, silent: false, quiet: true)
-for i in 0...mics.size
+(0...mics.size).each do |i|
   lst_card.disable_item(i) if mics[i].disabled?
   end
 btn_cardcancel.on(:press) {form.resume}
@@ -1143,18 +1143,18 @@ if cardid>-1
 end
 streaming = false
 streaming = true if Conference.mystreams.sources.find{|s|s.scrollable}!=nil
-for s in Conference.mystreams.streams
+Conference.mystreams.streams.each do |s|
   streaming = true if s.sources.find{|s|s.scrollable}!=nil
   end
 if streaming
 menu.option(p_("Conference", "Remove audio stream"), nil, "i") {
 td=[]
-for i in 0...Conference.mystreams.sources.size
+(0...Conference.mystreams.sources.size).each do |i|
   td.push(i) if Conference.mystreams.sources[i].scrollable
 end
 td.reverse.each{|q|Conference.removesource(-1, q)}
 td=[]
-for i in 0...Conference.mystreams.streams.size
+(0...Conference.mystreams.streams.size).each do |i|
   td.push(i) if Conference.mystreams.streams[i].sources.find{|s|s.scrollable}!=nil
 end
 td.reverse.each{|q|Conference.stream_remove(q)}
@@ -1247,7 +1247,7 @@ def context(menu)
   if Conference.channel.conference_mode==1
     allowed=false
 requested=false
-    for u in Conference.channel.users
+    Conference.channel.users.each do |u|
   if u.id==Conference.userid
     allowed=true if u.speech_allowed
     requested=true if u.speech_requested
@@ -1680,19 +1680,19 @@ sel.focus
   end
   if sources.find{|s|s.toggleable}!=nil
   menu.option(p_("Conference", "Toggle stream"), nil, "p") {
-  for i in 0...sources.size
+  (0...sources.size).each do |i|
     Conference.togglestream(sid, i) if sources[i].toggleable
     end
   }
   end
   if sources.find{|s|s.scrollable}!=nil
     menu.option(p_("Conference", "Scroll backward"), nil, "[") {
-  for i in 0...sources.size
+  (0...sources.size).each do |i|
     Conference.scrollstream(-5, sid, i) if sources[i].toggleable
     end
   }
   menu.option(p_("Conference", "Scroll forward"), nil, "]") {
-  for i in 0...sources.size
+  (0...sources.size).each do |i|
     Conference.scrollstream(5, sid, i) if sources[i].toggleable
     end
   }
@@ -1782,7 +1782,7 @@ lst_location = ListBox.new([p_("Conference", "Right next to me"), p_("Conference
 btn_place = Button.new(p_("Conference", "Place")),
 btn_cancel = Button.new(_("Cancel"))
 ], index: 0, silent: false, quiet: true)
-for i in 0...mics.size
+(0...mics.size).each do |i|
   lst_card.disable_item(i) if mics[i].disabled?
   end
 btn_place.on(:press) {
@@ -1930,7 +1930,7 @@ lst_card = ListBox.new(mics.map{|m|o="";o=" ("+p_("Conference", "Loopback device
 btn_place = Button.new(p_("Conference", "Place")),
 btn_cancel = Button.new(_("Cancel"))
 ], index: 0, silent: false, quiet: true)
-for i in 0...mics.size
+(0...mics.size).each do |i|
   lst_card.disable_item(i) if mics[i].disabled?
   end
 btn_place.on(:press) {
@@ -1985,7 +1985,7 @@ class Scene_Conference_VSTS
     rfr=Proc.new {
     selt=[]
     if vst!=nil
-    for param in vst['parameters']
+    vst['parameters'].each do |param|
       selt.push([param['name'], param['unit'], param['display'], param['value'].to_s])
     end
     end
@@ -2067,7 +2067,7 @@ class Scene_Conference_VSTS
     @vsts=Conference.vsts(@userid)
     selt=[]
     if @vsts!=nil
-      for v in @vsts
+      @vsts.each do |v|
         selt.push([v['name'], v['bypass']?(p_("Conference", "Disabled")):p_("Conference", "Enabled"), v['file']])
         end
     end
@@ -2152,7 +2152,7 @@ t=File.file?(vstchains_file) ? File.binread(vstchains_file) : "".b
 t+=[name.bytesize].pack("I")
 t+=name
 t+=[@vsts.size].pack("I")
-for i in 0...@vsts.size
+(0...@vsts.size).each do |i|
   v=@vsts[i]
   t+=[v['file'].bytesize].pack("I")
 t+=v['file']
@@ -2260,7 +2260,7 @@ menu.option(p_("Conference", "Add VST"), nil, "n") {
          return if hd[3]!=1
          return if hd[4]!=@vsts[@sel.index]['uniqueid']
        params=f.unpack("g*")
-       for i in 0...params.size
+       (0...params.size).each do |i|
          break if i>=@vsts[@sel.index]['parameters'].size
          Conference.vst_setparam(@sel.index, i, params[i], @userid)
          end
@@ -2280,7 +2280,7 @@ menu.option(p_("Conference", "Add VST"), nil, "n") {
          name=io.read(sz)
                   vsz=io.read(4).unpack("I").first
                   vsts=[]
-                  for i in 0...vsz
+                  (0...vsz).each do |i|
         sz=io.read(4).unpack("I").first
                     file=io.read(sz)
                     sz=io.read(4).unpack("I").first
@@ -2293,11 +2293,11 @@ menu.option(p_("Conference", "Add VST"), nil, "n") {
  end
  save = Proc.new {
  wr=""
- for c in chains
+ chains.each do |c|
    wr+=[c[0].bytesize].pack("I")
    wr+=c[0]
    wr+=[c[1].size].pack("I")
-   for v in c[1]
+   c[1].each do |v|
 wr+=[v[0].bytesize].pack("I")
    wr+=v[0]
      wr+=[v[1].to_s.bytesize].pack("I")
@@ -2340,7 +2340,7 @@ wr+=[v[0].bytesize].pack("I")
        Conference.vst_remove(0, @userid)
 refresh
        end
-     for v in chain[1]
+     chain[1].each do |v|
      Conference.vst_add(v[0], @userid)
       refresh  
      if v[1]!=nil

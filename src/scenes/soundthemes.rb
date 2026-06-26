@@ -11,7 +11,7 @@ st=Dir.entries(Dirs.soundthemes)
 st.delete("..")
 st.delete(".")
 @soundthemes = []
-for s in st
+st.each do |s|
       f=EltenPath.join(Dirs.soundthemes, s)
       if File.file?(f) && File.extname(f).downcase==".elsnd"
         t=load_soundtheme(f, false)
@@ -117,7 +117,7 @@ std = @std.select{|s|s.user==category}.sort_by{|s|s.time}.reverse
 end
       sts=std.map{|s|
       status=p_("SoundThemes", "Not downloaded")
-      for st in @soundthemes
+      @soundthemes.each do |st|
         next if st.file==nil
         if File.basename(st.file)==File.basename(s.file)
             if s.stamp.to_i>st.stamp.to_i

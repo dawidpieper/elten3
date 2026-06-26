@@ -172,7 +172,7 @@ module EltenLink
       def parse_short_list(lines)
         polls = []
         return polls if lines[1].to_i <= 0
-        for index in 1...lines.size
+        (1...lines.size).each do |index|
           clean = EltenLink.clean_line(lines[index])
           next unless index == 1 || EltenLink.legacy_end?(clean)
           id = lines[index + 1].to_i

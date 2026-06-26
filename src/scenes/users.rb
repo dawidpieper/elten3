@@ -29,7 +29,7 @@ class Scene_Users
           return
     end
         selt = []
-    for i in 0..usr.size - 1
+    (0..usr.size - 1).each do |i|
       selt[i] = user_with_status(usr[i])
       end
     @sel = ListBox.new(selt,header: p_("Users", "List of users"), index: 0, flags: 0, quiet: false)

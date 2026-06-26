@@ -20,7 +20,7 @@ class Scene_Honors
     end
     selt=[]
     ind=0
-    for h in @honors
+    @honors.each do |h|
       ind=selt.size if h.id==@honor
       selt.push(makeselt(h))
     end
@@ -79,7 +79,7 @@ else
                   selt+=h.enlevels[0]
                 end
               elsif h.levels.size>1
-                for i in h.level...h.levels.size
+                h.level...h.levels.size.each do |i|
                   selt+=p_("Honors", "Level")+(i+1).to_s+": "
                   if Configuration.language=="pl-PL"
                     selt+=h.levels[i]
@@ -143,7 +143,7 @@ if Session.moderator==1
     levels=honor.levels.deep_dup
     enlevels=honor.enlevels.deep_dup
     selt=[]
-    for i in 0..levels.size-1
+    (0..levels.size-1).each do |i|
       selt.push("#{i+1}: #{levels[i]}, #{enlevels[i]}")
       end
     selt+=[p_("Honors", "Add challenge")]
@@ -156,7 +156,7 @@ if Session.moderator==1
         levels.delete_at(form.fields[0].index)
         enlevels.delete_at(form.fields[0].index)
         selt=[]
-    for i in 0..levels.size-1
+    (0..levels.size-1).each do |i|
       selt.push("#{i+1}: #{levels[i]}, #{enlevels[i]}")
       end
     selt+=[p_("Honors", "Add challenge")]
@@ -194,7 +194,7 @@ loop do
     end
   end
   selt=[]
-    for i in 0..levels.size-1
+    (0..levels.size-1).each do |i|
       selt.push("#{i+1}: #{levels[i]}, #{enlevels[i]}")
       end
     selt+=[p_("Honors", "Add challenge")]
@@ -241,7 +241,7 @@ loop do
     end
     }
                 selt = []
-    for i in 0...@selt.size
+    (0...@selt.size).each do |i|
       u=@selt[i]
       selt.push(user_with_status(u, false))
       end

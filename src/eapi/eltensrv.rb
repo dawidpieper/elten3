@@ -246,7 +246,7 @@ module EltenAPI
         speech_wait
       end
       selt = []
-      for i in 0..contact.size - 1
+      (0..contact.size - 1).each do |i|
         selt[i] = user_with_status(contact[i])
       end
       sel = ListBox.new(selt,header: p_("EAPI_Common", "Select contact"), index: 0, flags: 0, quiet: false)
@@ -366,7 +366,7 @@ module EltenAPI
       end
       if vc[1]!="     " and vc.size!=1
         text += "\r\n\r\n"
-        for i in 1..vc.size - 1
+        (1..vc.size - 1).each do |i|
           text += vc[i]
         end
       end

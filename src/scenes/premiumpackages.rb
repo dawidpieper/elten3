@@ -193,7 +193,7 @@ sactivate=p_("PremiumPackages", "Activate package using code")
     begin
       active_until=EltenLink::PremiumPackages.active_until(elten_link)
       active_until.each do |package, totime|
-        for c in @packages
+        @packages.each do |c|
           c.totime=totime if c.package==package
           end
         end
@@ -201,8 +201,8 @@ sactivate=p_("PremiumPackages", "Activate package using code")
     end
       begin
         j=EltenLink::Payments.prices(elten_link)
-        for k in j.keys
-          for c in @packages
+        j.keys.each do |k|
+          @packages.each do |c|
             if c.package==k
               c.activable=true  
               c.price=j[k]["price$#{@currency}"]
@@ -222,7 +222,7 @@ sactivate=p_("PremiumPackages", "Activate package using code")
         conversionprice=nil
                 if c.package=="sponsor"
           z=0
-          for g in @packages.find_all{|pc|pc.package!="sponsor"}
+          @packages.find_all{|pc|pc.package!="sponsor"}.each do |g|
             d=((g.totime-Time.now.to_f)/86400).floor
             d=0 if d<0
             z+=(g.price*0.9)/365.0*d
@@ -231,7 +231,7 @@ sactivate=p_("PremiumPackages", "Activate package using code")
         end
 if c.package=="orchestra"
           z=0
-          for g in @packages.find_all{|pc|pc.package!="orchestra"}
+          @packages.find_all{|pc|pc.package!="orchestra"}.each do |g|
             d=((g.totime-Time.now.to_f)/86400).floor
             d=0 if d<0
             z+=(g.price*0.9)/365.0*d
@@ -276,7 +276,7 @@ The granting of a premium package does not constitute a commitment or a commerci
      methods=[]
      begin
        j=EltenLink::Payments.methods(elten_link, currency: @currency, language: Configuration.language)
-       for m in j
+       j.each do |m|
          if m['id']=='transfer' and m['type']=='transfer'
            transfer=m
          end
@@ -348,7 +348,7 @@ form=Form.new([
       if package!=nil and package.package=="sponsor" and convert==true
         conversionprice=package.price
           z=0
-          for g in @packages.find_all{|c|c.package!="sponsor"}
+          @packages.find_all{|c|c.package!="sponsor"}.each do |g|
             d=((g.totime-Time.now.to_f)/86400).floor
             d=0 if d<0
             z+=(g.price*0.9)/365.0*d
@@ -385,7 +385,7 @@ form=Form.new([
       if package!=nil and package.package=="sponsor" and convert==true
         conversionprice=package.price
           z=0
-          for g in @packages.find_all{|c|c.package!="sponsor"}
+          @packages.find_all{|c|c.package!="sponsor"}.each do |g|
             d=((g.totime-Time.now.to_f)/86400).floor
             d=0 if d<0
             z+=(g.price*0.9)/365.0*d

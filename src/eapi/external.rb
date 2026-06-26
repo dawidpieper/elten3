@@ -32,7 +32,7 @@ text=text[0..5000]
   h=JSON.load(j)
   return "" if !h[0].is_a?(Array)
   t=""
-  for a in h[0]
+  h[0].each do |a|
     return "" if !a[0].is_a?(String)
     t+=a[0]
   end
@@ -48,14 +48,14 @@ text=text[0..5000]
 # @param text [String] a text to translate
      def translator(text)
   langs={}
-  for lk in Lists.langs.keys
+  Lists.langs.keys.each do |lk|
     lname=Lists.langs[lk]['nativeName']+" ("+Lists.langs[lk]['name']+")"
     langs[lk]=lname
     end
        dialog_open
   from=ListBox.new([p_("EAPI_External", "recognize automatically")]+langs.values,header: p_("EAPI_External", "source language"))
  ind=0
- for i in 0..langs.keys.size-1
+ (0..langs.keys.size-1).each do |i|
    ind=i if Configuration.language[0..1].downcase==langs.keys[i].downcase
    end
  to=ListBox.new(langs.values,header: p_("EAPI_External", "destination language"),index: ind)

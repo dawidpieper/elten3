@@ -116,10 +116,10 @@ class Scene_Sounds
                         @name=@name[0..255] if @name.size>255
         n=@name.split(" ")
         ind=n.size
-        for i in 0...n.size
+        (0...n.size).each do |i|
           ind=i if n[i].downcase=='by'
           end
-        for i in 0...n.size
+        (0...n.size).each do |i|
                     break if i==ind
                     s=n[i]
                               t=s.split("")[0].upcase+s.split("")[1..-1].join.downcase
@@ -131,7 +131,7 @@ class Scene_Sounds
                 end
       end
         @snd=[]
-    for file in @soundnames.keys.sort
+    @soundnames.keys.sort.each do |file|
           @snd.push(Struct_Sounds_Sound.new(file,@soundnames[file],@theme))
     end
     return $scene=Scene_Main.new if @snd.size==0
@@ -288,7 +288,7 @@ form.resume
     waiting {
     magic="EltenSoundThemePackageFileCMPSMC"
 cnt=""
-    for s in @snd
+    @snd.each do |s|
             begin
             snd=s.sound(true)
             rescue Exception => e
@@ -330,7 +330,7 @@ id=id.delspecial
 @form.focus
         return
       end
-      for st in std
+      std.each do |st|
         if st.file.downcase==id.downcase+".elsnd" && st.user!=Session.name
 alert(p_("Sounds", "Sound theme with that ID already exists."))
 @form.focus

@@ -59,7 +59,7 @@ module EltenRecorderStructs
     def bass_channel_info_values(buffer)
       filename_offset = POINTER_SIZE == 8 ? 32 : 28
       values = []
-      for i in 0...7
+      (0...7).each do |i|
         values.push(dword_value(buffer, i * 4))
       end
       values.push(pointer_value(buffer, filename_offset))
@@ -214,7 +214,7 @@ module EltenRecorderRuntime
       tags = {}
       ai = AudioInfo.new(channel)
       chapters = ai.chapters
-      for i in 0...chapters.size
+      (0...chapters.size).each do |i|
         chapter = chapters[i]
         key = sprintf("CHAPTER%03d", i)
         time = chapter.time.to_f
@@ -888,11 +888,11 @@ class VorbisAudioEncoder < AudioEncoder
     buffer = VorbisNative.analysis_buffer.call(@vd, frames)
     pointer_table = Fiddle::Pointer.new(buffer.to_i)[0, @channels * EltenRecorderStructs::POINTER_SIZE]
     samples = pcm.unpack("s<*")
-    for channel in 0...@channels
+    (0...@channels).each do |channel|
       pointer = Fiddle::Pointer.new(EltenRecorderStructs.pointer_value(pointer_table, channel * EltenRecorderStructs::POINTER_SIZE))
       values = Array.new(frames)
       index = channel
-      for frame in 0...frames
+      (0...frames).each do |frame|
         values[frame] = samples[index].to_f / 32768.0
         index += @channels
       end

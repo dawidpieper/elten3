@@ -12,7 +12,7 @@ class Scene_Clock
               @field[2]=Button.new(_("Cancel"))
               @alarms=EltenAPI::Alarms.load.map{|alarm| alarm.dup}
               sel=[]
-              for a in @alarms
+              @alarms.each do |a|
                   sel.push("#{p_("Clock","Hour")}: #{sprintf("%02d:%02d",a[0],a[1])}, #{p_("Clock","Type")}: #{if a[2]==0;p_("Clock", "One time");else;p_("Clock", "repeated");end}")
                 end
                 @field[0].options=sel
@@ -91,7 +91,7 @@ refresh
                                                                            end
                                                                            def refresh
                                                                                                                                                         sel=[]
-                                                                           for a in @alarms
+                                                                           @alarms.each do |a|
                                                                                sel.push("#{p_("Clock","Hour")}: #{sprintf("%02d:%02d",a[0],a[1])}, #{p_("Clock","Type")}: #{if a[2]==0;p_("Clock", "One time");else;p_("Clock", "Repeated");end}: #{(a[3]!=nil)?a[3]:""}")
                                                                              end
                                                                              @field[0].options=sel 

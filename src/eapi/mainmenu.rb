@@ -28,7 +28,7 @@ module GlobalMenu
     style=:menubar if defaults
     @menu = Menu.new("",style)
     if $activecontrols!=nil
-        for c in $activecontrols||[]
+        $activecontrols||[].each do |c|
       if !c.menu_enabled?
         return
         end
@@ -82,7 +82,7 @@ module GlobalMenu
     end
     @menu.submenu(p_("MainMenu", "&Programs")) {|m|
     list=Programs.list
-    for prg in list
+    list.each do |prg|
       m.scene(prg.menu_label||prg.name||prg.to_s, prg) if !prg.hidden?
       end
     m.scene(p_("MainMenu", "Programs management"), Scene_Programs)
@@ -172,7 +172,7 @@ module GlobalMenu
     }
     if ($subthreads||[]).size>0 || $mainthread!=$currentthread
       @menu.submenu(p_("MainMenu", "&Windows")) {|m|
-      for i in -1...$subthreads.size
+      -1...$subthreads.size.each do |i|
         if i>=0
         sc=$subthreads[i]
       else

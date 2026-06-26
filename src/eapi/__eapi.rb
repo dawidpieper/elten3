@@ -253,7 +253,7 @@ module LocalConfig
 LOCache[k] = v
           end
           def save
-            for k in LCCache.keys
+            LCCache.keys.each do |k|
               v=LCCache[k]
               writeconfig("local", k, v) if v!=LOCache[k]
 LOCache[k] = v
@@ -292,9 +292,9 @@ rowNum = [-1, 0, 0, 1]
 colNum = [0, -1, 1, 0]
 return nil if(mat[x][y]==false or mat[ox][oy]==false)
 visited=[]
-for i in 0...mat.size
+(0...mat.size).each do |i|
 visited[i]=[]
-for j in 0...mat[i].size
+(0...mat[i].size).each do |j|
 visited[i][j]=false
 end
 end
@@ -306,7 +306,7 @@ if(curr[0][0] == ox && curr[0][1] == oy)
 return curr[1]
 end
 q.delete_at(0)
-for i in 0...4
+(0...4).each do |i|
   row = curr[0][0] + rowNum[i]
 col = curr[0][1] + colNum[i]
 if row>=0 && col>=0 && row<mat.size && col<mat[row].size && mat[row][col]==true && !visited[row][col]
@@ -411,13 +411,13 @@ end
                   Bass.setdevice(-1)
                 else
     sc=Bass.soundcards
-  for i in 0...sc.size
+  (0...sc.size).each do |i|
     if sc[i].name==Configuration.soundcard
     Bass.setdevice(i)
     end
   end
     devices=defined?(Sapi) ? Sapi.devices : []
-    for i in 0...devices.size
+    (0...devices.size).each do |i|
             if Configuration.soundcard==devices[i]
                 Sapi.set_device(i)
         end
@@ -426,7 +426,7 @@ end
 Configuration.microphone = readconfig("SoundCard", "Microphone", "")
   s=false
   mc=Bass.microphones
-  for i in 0...mc.size
+  (0...mc.size).each do |i|
     if mc[i].name==Configuration.microphone
           Bass.setrecorddevice(i)
     s=true
@@ -619,7 +619,7 @@ end
 
   def save
     c=current
-    for entry in c.keys
+    c.keys.each do |entry|
       del=(c[entry]['totime']!=0 && c[entry]['totime']<=Time.now.to_i) || c[entry]['lastaccess']<Time.now.to_i-86400*30
       c.delete(entry) if del
       end

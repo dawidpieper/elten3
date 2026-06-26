@@ -413,11 +413,11 @@ def acsel_load(fc=true)
       @acsel.index=[options.size-1, 0].max
     end
     @acsel.index=0 if @acsel.index<0
-    for i in 0...@actions.size
+    (0...@actions.size).each do |i|
       @acsel.enable_item(@specials.size+i)
       end
   end
-      for i in 0...@actions.size
+      (0...@actions.size).each do |i|
       @acsel.disable_item(@specials.size+i) if @actions[i].show==false && !@acselshowhidden
     end
         @acsel.focus if fc==true
@@ -435,7 +435,7 @@ def accontext(menu)
   menu.option(p_("Main", "Change hotkey"), nil, "k") {
   s=[p_("Main", "None")]
   k=[0]
-  for i in 1..11
+  (1..11).each do |i|
     s.push("F"+i.to_s)
     k.push(i)
     s.push("SHIFT+F"+i.to_s)
@@ -520,12 +520,12 @@ def action_add
   actions=[]
   actionlabels=[]
     c=QuickActions.predefined_procs
-  for a in c
+  c.each do |a|
     actions.push(a[0])
     actionlabels.push(a[1])
   end
     g=GlobalMenu.scenes
-  for m in g
+  g.each do |m|
     actions.push(m[1])
     actionlabels.push(m[0])
   end
@@ -547,7 +547,7 @@ def feeds_load(fc=false)
   @@feed_id = @feeds[@feedsel.index].id if @feeds.is_a?(Array) && @feeds.size>0 && @feedsel!=nil
   @feeds=[]
   ind=-1
-  for f in Session.feeds.keys.sort.reverse
+  Session.feeds.keys.sort.reverse.each do |f|
     feed=Session.feeds[f]
     @feeds.push(feed) if feed!=nil && feed.message!=""
     ind=@feeds.size-1 if ind==-1 && @@feed_id>0 && feed.id<=@@feed_id
@@ -627,10 +627,10 @@ dialog_close
     users=[feed.user]
     users+=feed.message.scan(/\@([a-zA-Z0-9\.\-\_]+)/).map{|r|r[0]}
     todel=[]
-    for u in users
+    users.each do |u|
       todel.push(u) if u.downcase==Session.name.downcase
     end
-    for i in 1...users.size
+    (1...users.size).each do |i|
       todel.push(users[i]) if users[0...i].map{|u|u.downcase}.include?(users[i].downcase)
       end
     todel.each{|u|users.delete(u)}
@@ -670,7 +670,7 @@ def feed_new(users=[], response=0)
   feed(inp, response) if inp!=nil
 end
 def feed_id=(f)
-  for i in 0...@feeds.size
+  (0...@feeds.size).each do |i|
     @feedsel.index=i if @feeds[i].id>=f
     end
   end

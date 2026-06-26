@@ -40,7 +40,7 @@ module OSXSpeechBridge
       array = send_id(cls("NSSpeechSynthesizer"), "availableVoices")
       count = send_size(array, "count")
       result = []
-      for index in 0...count
+      (0...count).each do |index|
         voice_id = string(send_id(array, "objectAtIndex:", index, [SIZE_T]))
         attrs = send_id(cls("NSSpeechSynthesizer"), "attributesForVoice:", nsstring(voice_id), [PTR])
         name = dict_string(attrs, "NSVoiceName", "VoiceName")
@@ -513,8 +513,8 @@ module OSXSpeechBridge
 
     def interleave_samples(samples, frames, channels)
       pcm = +"".b
-      for frame in 0...frames
-        for channel in 0...channels
+      (0...frames).each do |frame|
+        (0...channels).each do |channel|
           pcm << yield(samples[channel][frame] || 0)
         end
       end

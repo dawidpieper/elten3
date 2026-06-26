@@ -64,12 +64,12 @@ def polls_filter
   @lastpoll=@polls[@sel.index].id if @polls.is_a?(Array) and @polls.size>0
   @polls=[]
 knownlanguages = Session.languages.split(",").map{|lg|lg.upcase}
-for pl in @allpolls
+@allpolls.each do |pl|
   @polls.push(pl) if LocalConfig["PollsShowUnknownLanguages"]==1 || knownlanguages.size==0 || knownlanguages.include?(pl.language[0..1].upcase)
   end
 selt=[]
 index=0
-for poll in @polls
+@polls.each do |poll|
 if poll != nil
   selt.push([poll.name, poll.author, poll.votes.to_s, poll.description])
     index=selt.size-1 if poll.id==@lastpoll
@@ -139,7 +139,7 @@ class Scene_Polls_Create
       @ln = []
       ls=[]
     lnindex = 0
-    for lk in Lists.langs.keys
+    Lists.langs.keys.each do |lk|
       l = Lists.langs[lk]
       ls.push(l["name"] + " (" + l["nativeName"] + ")")
       @ln.push(lk)
@@ -260,7 +260,7 @@ else
   end
   end
 qu=[]
-           for q in @questions
+           @questions.each do |q|
   qu.push(q[0]) if q!=nil
   end
   @fields[3].options = qu
@@ -347,7 +347,7 @@ end
 @description=poll.description
     txt="#{@name}\r\n#{p_("Polls", "Author")}: #{@author}\r\n#{p_("Polls", "Created")}: #{format_date(@created)}\r\n\r\n#{@description}"
     qs=[]
-for q in @questions
+@questions.each do |q|
   if q[1]==2
     qs.push(EditBox.new(q[0],text: "",quiet: true))
     qs.last.on(:change) {@changed=true}
@@ -393,19 +393,19 @@ loop do
 if key_pressed?(:key_enter) or key_pressed?(:key_space)
   if @form.index==@form.fields.size-2
     ans=""
-    for i in 1..@questions.size
+    (1..@questions.size).each do |i|
 case @questions[i-1][1]
 when 0
   ans+=(i-1).to_s+":"+@form.fields[i].index.to_s+"\r\n"
   when 1
-for j in 0..@form.fields[i].options.size-1
+(0..@form.fields[i].options.size-1).each do |j|
     ans+=(i-1).to_s+":"+j.to_s+"\r\n" if @form.fields[i].selected[j]==true
   end
   when 2
     ans+=(i-1).to_s+":"+@form.fields[i].text.gsub(";"," ").gsub(":"," ").delete("\r\n")+"\r\n" if @form.fields[i].text!=""
   else
     if @questions[i-1][1]<0
-    for j in 0..@form.fields[i].options.size-1
+    (0..@form.fields[i].options.size-1).each do |j|
     ans+=(i-1).to_s+":"+j.to_s+"\r\n" if @form.fields[i].selected[j]==true
   end
   end
@@ -482,17 +482,17 @@ results.answers.each do |answer|
   b=[r,a]
     @answers[q].push(b)
 end
-for q in 0..@questions.size-1
+(0..@questions.size-1).each do |q|
   if @answers[q]!=nil
   txt+=@questions[q][0].to_s+"\r\n"
 if @questions[q][1]<2
-   for i in 2...@questions[q].size
+   (2...@questions[q].size).each do |i|
    a=i-2
 pr=(@answers[q].map{|x|x[1]}.count(a).to_f/@votes.to_f*100.0).to_i
 txt+=@questions[q][i]+": "+pr.to_s+"%\r\n"
    end
 else
-  for a in @answers[q]
+  @answers[q].each do |a|
     txt+=": "+a[1]+"\r\n"
     end
 end  
@@ -529,7 +529,7 @@ end
 @poll.created = poll.created
 @questions=[]
 qs=poll.questions
-for qu in qs
+qs.each do |qu|
   q=Struct_Polls_Question.new
   q.question=qu[0]
   q.type=qu[1].to_i
@@ -582,7 +582,7 @@ end
 def answers_context(menu)
   return if @sel_answers.rows.size==0
   suc=false
-  for f in @filters
+  @filters.each do |f|
     suc=true if f==@sel_questions.index && f==@curanswers[@sel_answers.index]
     end
 if suc==false
@@ -596,7 +596,7 @@ if suc==false
   }
 else
   menu.option(p_("Polls", "Delete this answer from filters")) {
-  for f in @filters
+  @filters.each do |f|
     @filters.delete(f) if f[0]==@sel_questions.index and f[1]==@curanswers[@sel_answers.index]
   end
   update_filters
@@ -614,17 +614,17 @@ def filters_context(menu)
   end
 def update_answers
   authors=@answers.map{|a|a.author}.uniq
-  for f in @filters
-    for author in authors.deep_dup
+  @filters.each do |f|
+    authors.deep_dup.each do |author|
 if f[2]==true
   suc=false
-  for a in @answers
+  @answers.each do |a|
     suc=true if a.author==author && a.question==f[0] && a.answer==f[1]
   end
   authors.delete(author) if suc==false
 else
   suc=true
-  for a in @answers
+  @answers.each do |a|
     suc=false if a.author==author && a.question==f[0] && a.answer==f[1]
   end
   authors.delete(author) if suc==false
@@ -637,13 +637,13 @@ end
   if q.type<2
     anses=[]
           answersList = []
-    for a in @answers
+    @answers.each do |a|
       next if !authors.include?(a.author)
       if a.question==@sel_questions.index
         anses.push(a.answer)
       end
     end
-    for a in 0...q.answers.size
+    (0...q.answers.size).each do |a|
       if anses.size>0
       prc=(anses.count(a).to_f/authors.size.to_f*100.0).floor
     else
@@ -657,7 +657,7 @@ end
         @curanswers.push(a[2])
       end
   else
-    for a in @answers
+    @answers.each do |a|
       next if !authors.include?(a.author)
       if a.question==@sel_questions.index
         @sel_answers.rows.push([a.answer.to_s]) if a.answer.to_s!=""
@@ -670,7 +670,7 @@ end
   end
   def update_filters
     @sel_filters.options=[]
-    for f in @filters
+    @filters.each do |f|
       q=@questions[f[0]]
       ans=f[1]
       ans=q.answers[f[1]] if q.type<2

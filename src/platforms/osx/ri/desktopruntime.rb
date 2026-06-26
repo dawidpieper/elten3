@@ -1192,7 +1192,7 @@ module EltenKeyboard
       if !EltenWindow.keyboard_active?
         clear_state
         if buffer.respond_to?(:setbyte)
-          for key in 0..255
+          (0..255).each do |key|
             buffer.setbyte(key, 0)
           end
         end
@@ -1203,7 +1203,7 @@ module EltenKeyboard
       events = key_events
       event_flags = apply_key_events_to_state(state, events, now)
       flags = Array.new(256, 0)
-      for key in 0..255
+      (0..255).each do |key|
         down = key_down?(state, key)
         @stale_suppressed[key] = false if !down && @stale_suppressed[key] == true
         if down && stale_key_down?(key, now)
@@ -1231,10 +1231,10 @@ module EltenKeyboard
         end
         @last_down[key] = down
       end
-      for key in 0..255
+      (0..255).each do |key|
         flags[key] |= event_flags[key]
       end
-      for key in 0..255
+      (0..255).each do |key|
         buffer.setbyte(key, flags[key]) if buffer.respond_to?(:setbyte)
       end
       0
@@ -1248,7 +1248,7 @@ module EltenKeyboard
       end
       state = keyboard_state
       now = monotonic_time
-      for key in 0..255
+      (0..255).each do |key|
         down = key_down?(state, key)
         @last_down[key] = down
         @last_down_event[key] = down ? now : nil
@@ -1276,7 +1276,7 @@ module EltenKeyboard
     def active_pressed_keys
       state = raw_state
       keys = Array.new(256, false)
-      for key in 0..255
+      (0..255).each do |key|
         keys[key] = key_down?(state, key)
       end
       keys

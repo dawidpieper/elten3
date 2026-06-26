@@ -22,7 +22,7 @@ class Scene_Users_AddedMeToContacts
         alert(_("Error"))
       end
     selt = []
-    for i in 0..usr.size - 1
+    (0..usr.size - 1).each do |i|
       selt[i] = user_with_status(usr[i])
       end
     header=p_("UsersAddedMeToContacts", "Users who added me to their contacts list")

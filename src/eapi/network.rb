@@ -19,7 +19,7 @@ while boundary=="" || values.any? { |value| value.include?(boundary) }
   boundary="----EltBoundary"+rand(36**32).to_s(36)
 end
 txt="".b
-for h in body.keys
+body.keys.each do |h|
 txt << ("--"+boundary+"\r\nContent-Disposition: form-data; name=\"#{h}\"\r\n\r\n").b
 txt << body[h].to_s.b
 txt << "\r\n".b
@@ -58,7 +58,7 @@ return nil
       waiting_end if w
 if headers!=nil
 headers.clear
-for k,v in response_headers
+response_headers.each do |k,v|
 headers[k]=v
 end
 end

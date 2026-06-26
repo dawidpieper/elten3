@@ -404,7 +404,7 @@ def self.source_for(stream, source, may_stream=false)
   if !stream.is_a?(Numeric)
     s=@@core.sources.find{|src|src.is_a?(Core::StreamSourceFile)}
     return s if s!=nil
-    for st in @@core.outstreams
+    @@core.outstreams.each do |st|
       s=st.sources.find{|src|src.is_a?(Core::StreamSourceFile)}
       return s if s!=nil
     end
@@ -824,7 +824,7 @@ def self.volume(user)
 def self.volumes
   return {} if @@volumes==nil
   vls={}
-  for u in @@volumes.keys
+  @@volumes.keys.each do |u|
     vls[u] = ChannelUserVolume.new(u, @@volumes[u][0], @@volumes[u][1], @@volumes[u][2], @@volumes[u][3])
     end
   return vls
@@ -862,7 +862,7 @@ def self.waiting_channel_id
   def self.channels
     channels=[]
   if @@channels.is_a?(Array)
-    for cha in @@channels
+    @@channels.each do |cha|
             ch=Channel.new
       ch.id=cha['id'].to_i
       ch.name=cha['name'].to_s
@@ -879,7 +879,7 @@ def self.waiting_channel_id
       ch.spatialization=cha['spatialization']
       ch.creator=cha['creator']
       ch.groupid=cha['groupid'].to_i
-      for u in cha['users']
+      cha['users'].each do |u|
         ch.users.push(ChannelUser.new(u['id'], u['name']))
       end
       ch.administrators=cha['administrators']||[]
@@ -1059,7 +1059,7 @@ end
                         def self.setmystreams(str)
                                                 st=JSON.load(str)
                                                 @@mystreams=Streams.new
-                                                for s in st['sources']
+                                                st['sources'].each do |s|
                                                   so=Source.new
                                                   so.name=s['name']
                                                   so.volume=s['volume']
@@ -1067,14 +1067,14 @@ end
                                                   so.toggleable=s['toggleable']
                                                   @@mystreams.sources.push(so)
                                                 end
-for s in st['streams']
+st['streams'].each do |s|
   str=Stream.new
   str.name=s['name']
   str.volume=s['volume']
   str.x=s['x']
   str.y=s['y']
   str.locally_muted=s['locally_muted']
-  for o in s['sources']
+  s['sources'].each do |o|
     so=Source.new
     so.name=o['name']
     so.volume=o['volume']
@@ -1205,7 +1205,7 @@ def self.on(hook, &block)
                           @@hooks.delete(hk)
                           end
                         def self.trigger(hook)
-                          for hk in @@hooks
+                          @@hooks.each do |hk|
                             hk.block.call if hk.hook==hook
                             end
                           end

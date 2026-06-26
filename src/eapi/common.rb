@@ -155,7 +155,7 @@ loop_update
             form.focus
           }
           menu.submenu(p_("EAPI_Common", "Last codes")) { |m|
-            for c in container.codes
+            container.codes.each do |c|
               menu.option(c[0...100], c) { |c|
                 form.fields[0].set_text(c)
                 form.focus
@@ -184,7 +184,7 @@ loop_update
           rescue Exception
             plc = ""
             if $@.is_a?(Array)
-              for e in $@
+              $@.each do |e|
                 if e != nil
                   plc += e + "\n" if e != nil and e[0..6] != "Section"
                 end
@@ -274,7 +274,7 @@ else
   sel.push("")
   end
     if $usermenuextra.is_a?(Hash) and Session.name!="guest"
-      for k in $usermenuextra.keys
+      $usermenuextra.keys.each do |k|
     sel.push(k)
     end
     end
@@ -734,7 +734,7 @@ if default_keyboard && EltenWindow.character_input_supported?
   keybd=keybd.map{|k|((k)?(255):(0))}.pack("C*") if keybd.is_a?(Array)
   akey=akey.unpack("c*").map{|k|k<0} if !akey.is_a?(Array)
     ret=""
-          for i in 32..255
+          (32..255).each do |i|
     if akey[i]
       re = EltenKeyboard.translate_virtual_key(i, keybd)
 
