@@ -308,6 +308,7 @@ if key_pressed?(:key_enter)
     return "ALT"
     when 1
             visitingcard(user)
+      loop_update
             return("ALT")
       break
             when 2
@@ -352,6 +353,8 @@ if key_pressed?(:key_enter)
         end
         end
     end
+      loop_update
+    return "ALT"
         when 7
         voicecall(nil, nil, [user])
         when 8
@@ -372,6 +375,8 @@ else
     alert(p_("EAPI_Common", "This user is no longer monitored"))
   end
   end
+      loop_update
+    return "ALT"
           when 10
         if @isbanned == false
           insert_scene(Scene_Ban_Ban.new(user,Scene_Main.new), true)
