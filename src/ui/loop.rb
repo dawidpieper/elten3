@@ -168,7 +168,6 @@ end
         sleep(TICK_SECONDS)
       update_window_tray_visibility if loop_update_due?(:window_tray_visibility, PERIODIC_FAST_SECONDS, loop_now)
       raise SystemExit if EltenWindow.consume_close_request
-                              Input.update
       key_update
       EltenTray.restore_hotkey_pressed? if tray_supported? && defined?(EltenTray) && loop_update_due?(:tray_restore_hotkey, PERIODIC_FAST_SECONDS, loop_now)
       if key_held?(0x10) && key_held?(0x11)

@@ -1254,32 +1254,6 @@ module EltenTray
   end
 end
 
-module Input
-  LEFT = 0x25
-  UP = 0x26
-  RIGHT = 0x27
-  DOWN = 0x28
-  A = 0x10
-  B = 0x1B
-  C = 0x0D
-  CTRL = 0x11
-
-  class << self
-    def update
-      true
-    end
-
-    def trigger?(key)
-      defined?(EltenAPI::KeyboardState) && EltenAPI::KeyboardState.pressed?(key)
-    end
-
-    def repeat?(key)
-      return true if EltenWindow.keyboard_key_held?(key)
-      defined?(EltenAPI::KeyboardState) && EltenAPI::KeyboardState.held?(key)
-    end
-  end
-end
-
 class Bitmap
   attr_reader :filename
 
