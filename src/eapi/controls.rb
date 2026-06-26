@@ -475,6 +475,7 @@ s=selectcontact
   class EditBox < FormField
     BRAILLE_CONTEXT_CHARS = 25_000
     READ_TEXT_BREAK_PATTERN = /\n|[!?\.,] /.freeze
+    WORD_NAVIGATION_SCAN_CHARS = 3_000
     @@customactions=[]
     @@lastedits=[]
     attr_accessor :index
@@ -681,7 +682,9 @@ espeech(p_("EAPI_Form", "End of line"))
                         espeech(text_range(oi,e))
                 @vindex=oi
               else
-                @vindex=((@vindex+(key_held?(0x10)?((@vindex>=(text_len-1))?1:2):1) ... (@vindex<text_len-100?@vindex+100:text_len)).find_all { |i| text_char(i)==" " or text_char(i)=="\n"}.sort[0]||(key_held?(0x10) ? text_len : text_len-1))
+                scan_to=[@vindex+WORD_NAVIGATION_SCAN_CHARS,text_len].min
+                fallback=key_held?(0x10)?scan_to:scan_to-1
+                @vindex=((@vindex+(key_held?(0x10)?((@vindex>=(text_len-1))?1:2):1) ... scan_to).find_all { |i| text_char(i)==" " or text_char(i)=="\n"}.sort[0]||fallback)
                                 @vindex+=(key_held?(0x10) ? 0 : 1)
                                                                                                 (@vindex==text_len)?play_sound("editbox_endofline"):espeech(text_range((key_held?(0x10)?((0 .. @vindex).find_all { |i| text_char(i)==" " or text_char(i)=="\n"}.sort.last||0):@vindex),(@vindex+1 .. text_len).find_all { |i| text_char(i)==" " or text_char(i)=="\n"}.sort[0]||text_len-1))
                                                                                               end
@@ -705,7 +708,8 @@ espeech(p_("EAPI_Form", "End of line"))
                                             espeech(text_range(ind,@vindex-1))
                 @vindex=ind
               else
-                                @vindex=((((@vindex>100)?(@vindex-100):0) ... @vindex-1).find_all { |i| text_char(i)==" " or text_char(i)=="\n"}.sort.last||-1)+1
+                                scan_from=[@vindex-WORD_NAVIGATION_SCAN_CHARS,0].max
+                @vindex=((scan_from ... @vindex-1).find_all { |i| text_char(i)==" " or text_char(i)=="\n"}.sort.last||(scan_from-1))+1
                 espeech(text_range(@vindex,(@vindex+1 ... text_len).find_all { |i| text_char(i)==" " or text_char(i)=="\n"}.sort[0]||text_len-1))
                 end
               end
