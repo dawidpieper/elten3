@@ -2623,8 +2623,8 @@ end
 @hrtf.free if @hrtf!=nil
 @hrtf=nil
 if params['channel']['spatialization']!=0
-SteamAudio.load if !SteamAudio.loaded?
-@hrtf=SteamAudio.new(48000, @framesize) if SteamAudio.loaded?
+SteamAudio.load
+@hrtf=SteamAudio.new(48000, @framesize)
 end
 if params['channel']['channels']!=@channels
 Bass::BASS_StreamFree.call(@output) if @output!=0

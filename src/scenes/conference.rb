@@ -399,11 +399,9 @@ if ch.passworded
   end
   if ps!=nil || !ch.passworded
     if !ch.passworded || ps!=nil
-      if ch.spatialization==0 || load_hrtf
           Conference.join(ch.id, ps)
                     @chans=get_channelslist
   locha.call(@chans)
-  end
 end
 end
   lst_channels.focus
@@ -514,11 +512,9 @@ when 1
     ps=input_text(p_("Conference", "Channel password"), flags: EditBox::Flags::Password, text: "", escapable: true) if ch.passworded
     loop_update if ch.passworded
     if !ch.passworded || ps!=nil
-      if ch.spatialization==0 || load_hrtf
       Conference.join(ch.id, ps)
       delay(1)
       return if Conference.channel.id!=0
-      end
       end
     end
     if setuser!=nil
@@ -713,13 +709,6 @@ chk_hidden = CheckBox.new(p_("Conference", "Make this channel hidden"), checked:
       alert(p_("Conference", "%{value} is the maximum allowed channel width and height")%{:value=>"225"})
       suc=false
     end
-    if suc
-          if lst_spatialization.index>=1
-      t=Time.now.to_f
-      l=load_hrtf
-            suc=false if l==false
-          end
-      end
     if suc
       name=edt_name.text
       motd=edt_motd.text

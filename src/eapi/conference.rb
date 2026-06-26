@@ -433,7 +433,6 @@ def self.add_card_to_core(card, listen=false)
 end
 def self.open(ignorePTT=false, nick=nil)
   @@opened=false
-  load_hrtf(false)
   volume=LocalConfig["ConferenceVolume", -1]
   input_volume=LocalConfig["ConferenceInputVolume", -1]
   stream_volume=LocalConfig["ConferenceStreamVolume", -1]
@@ -988,7 +987,6 @@ end
       ch.fec=params['fec']==true
             ch.public=params['public']!=false
             ch.spatialization = params['spatialization']||0
-            load_hrtf if ch.spatialization!=0
             ch.password=params['password']
             ch.channels = params['channels']||2
             ch.lang=params['lang']||""

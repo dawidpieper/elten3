@@ -139,7 +139,6 @@ src/eapi/common/license.rb
 src/eapi/common/media.rb
 src/eapi/common/input.rb
 src/eapi/common/threads.rb
-src/eapi/common/hrtf.rb
 src/eapi/common/premium.rb
 src/eapi/common/platform.rb
 src/eapi/common/activity.rb

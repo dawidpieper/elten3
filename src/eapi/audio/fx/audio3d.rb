@@ -36,7 +36,7 @@ class Audio3DEffect < SoundEffect
       @@engine_mutex.synchronize do
         return @@engines[key] if @@engines[key] != nil
         require_relative "../steamaudio" unless defined?(::SteamAudio)
-        return nil if !SteamAudio.load
+        SteamAudio.load
         @@engines[key] = SteamAudio.new(frequency, framesize)
       end
     rescue Exception => e
