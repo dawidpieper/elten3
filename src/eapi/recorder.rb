@@ -730,7 +730,7 @@ module VorbisNative
       require "fiddle"
       require_relative "conferencenative" unless defined?(::ELTEN_INTPTR)
       OggNative.load!
-      @vorbis = EltenRuntimePaths.dlopen("vorbis")
+      @vorbis = EltenRuntimePaths.dlopen("libvorbis")
       cstring = defined?(Fiddle::TYPE_CONST_STRING) ? Fiddle::TYPE_CONST_STRING : Fiddle::TYPE_VOIDP
       @info_init = Fiddle::Function.new(@vorbis["vorbis_info_init"], [Fiddle::TYPE_VOIDP], Fiddle::TYPE_INT)
       @info_clear = Fiddle::Function.new(@vorbis["vorbis_info_clear"], [Fiddle::TYPE_VOIDP], Fiddle::TYPE_INT)
