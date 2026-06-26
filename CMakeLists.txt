@@ -5,7 +5,7 @@ if(CMAKE_GENERATOR MATCHES "Visual Studio")
 endif()
 
 if(APPLE AND NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
-  set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0" CACHE STRING "Minimum macOS deployment target")
+  set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS deployment target")
 endif()
 
 project(EltenLauncher LANGUAGES CXX)

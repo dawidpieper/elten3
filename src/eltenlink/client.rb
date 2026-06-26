@@ -115,6 +115,7 @@ module EltenLink
         @context == nil ? sleep(0.01) : call_context(:loop_update, false)
         if Time.now.to_f - started > timeout.to_f
           @last_error = Error.timeout(module_name: safe_request_path)
+          call_context(:waiting_end)
           break
         end
       end
