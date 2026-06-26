@@ -435,10 +435,20 @@ module NotificationGroups
     if thread_id > 0
       post_id = payload["postid"].to_i
       query = ["followedthread", "followedforumpost"].include?(cat.to_s) ? :first_unread : (post_id > 0 ? post_id : "")
-      insert_scene(Scene_Forum_Thread.new(thread_id, -13, 0, query, nil, Scene_Main.new), true, return_to_main: true)
+      mention = forum_mention_from_payload(payload) if cat.to_s == "mention" && post_id > 0
+      insert_scene(Scene_Forum_Thread.new(thread_id, -13, 0, query, mention, Scene_Main.new), true, return_to_main: true)
     else
       insert_scene(Scene_Forum.new, true, return_to_main: true)
     end
+  end
+
+  def forum_mention_from_payload(payload)
+    mention = Struct_Forum_Mention.new(payload["mentionid"].to_i)
+    mention.thread = payload["threadid"].to_i
+    mention.post = payload["postid"].to_i
+    mention.author = payload["author"].to_s
+    mention.message = payload["message"].to_s
+    mention
   end
 
   def open_blog_post(payload)

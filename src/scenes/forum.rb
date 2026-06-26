@@ -2984,15 +2984,16 @@ end
     if @form.index < @postscount * 3 && @posts[@form.index/3]!=nil
       menu.useroption(@posts[@form.index / 3].authorname)
     end
-    if @threadclass.mention!=nil
+    mention = @threadclass.mention || @mention
+    if mention!=nil
       menu.submenu(p_("Forum", "Received mention")) {|m|
       m.option(p_("Forum", "Show mention"), nil, "/") {
-      input_text(p_("Forum", "Mention by %{user}")%{:user=>@threadclass.mention.author}, flags: EditBox::Flags::ReadOnly, text: @threadclass.mention.message, escapable: true)
+      input_text(p_("Forum", "Mention by %{user}")%{:user=>mention.author}, flags: EditBox::Flags::ReadOnly, text: mention.message, escapable: true)
       }
       m.option(p_("Forum", "Send reply to mentioner"), nil, "?") {
       if requires_premiumpackage("courier")
-      to=@threadclass.mention.author
-      subj="RE: "+@threadclass.mention.message.to_s+" ("+@threadclass.name+")"
+      to=mention.author
+      subj="RE: "+mention.message.to_s+" ("+@threadclass.name+")"
       insert_scene(Scene_Messages_New.new(to, subj, "", Scene_Main.new))
       end
       }
