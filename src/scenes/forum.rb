@@ -116,13 +116,7 @@ elsif @preparam.is_a?(String)
         group = 0 if group == nil
         @grpsetindex = group if group > 0
         @grpindex[0] = 1 if @preparam == -5
-        i = 0
-        for tforum in @forums
-          if (tforum.group.id == group) or (tforum.followed and @preparam == -5)
-            @frmindex = i if tforum.name == forum
-            i += 1
-          end
-        end
+        @frmsetname = forum
         @group = group
         threadsmain(forum)
       else
@@ -1363,6 +1357,11 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
     else
       @sforums.sort! {|a,b| forumsorter(a,b)}
     end
+    if @frmsetname != nil
+      index = @sforums.find_index { |forum| forum.name == @frmsetname }
+      @frmindex = index if index != nil
+      @frmsetname = nil
+    end
     frmselt = []
     for forum in @sforums
       name_parts = [forum.fullname]
@@ -1924,6 +1923,7 @@ break
       if (key_pressed?(:key_left) and !key_held?(0x10)) or key_pressed?(:key_escape)
         return $scene=Scene_Main.new if @pre==nil && @preparam.is_a?(String)
         if id.is_a?(String)
+          @frmsetname = id
           return forumsmain
         elsif id == -2 or id == -4 or id == -6 or id == -7
           return $scene = Scene_Main.new
