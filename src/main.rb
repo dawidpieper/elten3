@@ -9,7 +9,7 @@ class Object
   end
 
 module Elten
-VERSION_STRING="ELTEN 3.0 BETA 16"
+VERSION_STRING="ELTEN 3.0 BETA 17"
 BRANCH="beta"
 class <<self
   def version
