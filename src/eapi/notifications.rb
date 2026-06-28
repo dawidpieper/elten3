@@ -46,8 +46,9 @@ module EltenAPI
       def drain_events(limit=50)
         ensure_state
         start if !running?
+        return [] if @events.empty?
         events = []
-        while events.size < limit
+        while events.size < limit && !@events.empty?
           begin
             events << @events.pop(true)
           rescue ThreadError

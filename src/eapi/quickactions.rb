@@ -7,7 +7,9 @@
 module EltenAPI
   module QuickActions
             @@actions=nil
+            @@hotkey_actions=nil
         @@addprocs = []
+    EMPTY_HOTKEY_ACTIONS = [].freeze
     class QuickAction
       attr_accessor :label, :key, :show
       attr_reader :action, :params
@@ -183,8 +185,14 @@ end
       load_actions if @@actions==nil
             @@actions.dup
     end
+    def hotkey_actions(key)
+      load_actions if @@actions==nil
+      build_hotkey_actions if @@hotkey_actions==nil
+      @@hotkey_actions[key.to_i] || EMPTY_HOTKEY_ACTIONS
+    end
     def load_actions
       @@actions=[]
+      invalidate_hotkey_cache
       if FileTest.exist?(data_path)
         load_json_actions(data_path)
       elsif FileTest.exist?(legacy_data_path)
@@ -195,6 +203,7 @@ end
     rescue Exception => e
       Log.error("Quick actions load failed: #{e.class}: #{e.message}") if defined?(Log)
       @@actions=[]
+      invalidate_hotkey_cache
       load_defaults
       delete_legacy_data_file
       save_actions
@@ -210,6 +219,7 @@ end
     rescue Exception => e
       Log.error("Quick actions JSON load failed: #{e.class}: #{e.message}") if defined?(Log)
       @@actions=[]
+      invalidate_hotkey_cache
       load_defaults
     end
     def migrate_legacy_actions
@@ -222,6 +232,7 @@ end
       rescue Exception => e
         Log.error("Quick actions legacy migration failed: #{e.class}: #{e.message}") if defined?(Log)
         @@actions=[]
+        invalidate_hotkey_cache
         load_defaults
       ensure
         delete_legacy_data_file
@@ -237,6 +248,7 @@ end
       File.delete(data_path) if FileTest.exist?(data_path)
       delete_legacy_data_file
       @@actions=[]
+      invalidate_hotkey_cache
       load_defaults
       true
     end
@@ -264,7 +276,10 @@ end
     def unregister_program(program)
       prefix=program.to_s+"__"
       @@addprocs.delete_if{|proc| proc[0]==program}
-      @@actions.delete_if{|action| action.action.is_a?(Symbol) && action.action.to_s.start_with?(prefix)} if @@actions!=nil
+      if @@actions!=nil
+        @@actions.delete_if{|action| action.action.is_a?(Symbol) && action.action.to_s.start_with?(prefix)}
+        invalidate_hotkey_cache
+      end
     end
     def predefined_procs(defaults=false)
             a=[
@@ -304,6 +319,7 @@ end
       @@actions=[] if @@actions==nil
       action=QuickAction.new(scene, label, params, key, show)
       @@actions.push(action)
+      invalidate_hotkey_cache
       action
     end
     def create(scene, label="", params=[], key=0, show=true)
@@ -312,14 +328,17 @@ end
       return false if action==nil
       return true if save_actions
       @@actions.delete(action)
+      invalidate_hotkey_cache
       false
     end
     def delete(index)
       index=normalize_index(index)
       return false if index==nil
       action=@@actions.delete_at(index)
+      invalidate_hotkey_cache
       return true if save_actions
       @@actions.insert(index, action)
+      invalidate_hotkey_cache
       false
     end
     def rename(index, label)
@@ -336,8 +355,10 @@ end
       return false if index==nil
       old=@@actions[index].key
       @@actions[index].key=key
+      invalidate_hotkey_cache
       return true if save_actions
       @@actions[index].key=old
+      invalidate_hotkey_cache
       false
     end
     def reshow(index, show)
@@ -353,16 +374,20 @@ end
       index=normalize_index(index)
       return false if index==nil || index<=0
       @@actions[index-1], @@actions[index] = @@actions[index], @@actions[index-1]
+      invalidate_hotkey_cache
       return true if save_actions
       @@actions[index-1], @@actions[index] = @@actions[index], @@actions[index-1]
+      invalidate_hotkey_cache
       false
     end
     def down(index)
       index=normalize_index(index)
       return false if index==nil || index>=@@actions.size-1
             @@actions[index+1], @@actions[index] = @@actions[index], @@actions[index+1]
+      invalidate_hotkey_cache
       return true if save_actions
       @@actions[index+1], @@actions[index] = @@actions[index], @@actions[index+1]
+      invalidate_hotkey_cache
       false
       end
     def save_actions
@@ -464,6 +489,20 @@ end
         return a[3] if a[1]==pr
       end
       return nil
+    end
+    def build_hotkey_actions
+      index={}
+      for action in @@actions||[]
+        key=action.key.to_i
+        next if key==0
+        index[key] ||= []
+        index[key].push(action)
+      end
+      index.each_value{|actions| actions.freeze}
+      @@hotkey_actions=index.freeze
+    end
+    def invalidate_hotkey_cache
+      @@hotkey_actions=nil
     end
     end
   end

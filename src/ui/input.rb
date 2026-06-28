@@ -336,70 +336,71 @@ if $setkeys.is_a?(Array)
                     end
 
     def keyprocs
-                  if $windowminimized != true
-                  if key_first_pressed?(0x11)
-                    speech_stop(false)
-                    $speech_wait = false
-                  end
-                  if key_held?(0x11) && key_held?(0x12) && key_held?(0x10) && key_first_pressed?(80)
-                    insert_scene(Scene_Piano.new)
-                    end
-                  main_menu_opened = false
-                  if !GlobalMenu.opened? && key_pressed?(:key_alt)
-                   main_menu_opened = true
-                   GlobalMenu.show
-                 end
-                 if !main_menu_opened && !GlobalMenu.opened? && key_pressed?(:key_context_menu)
-                   GlobalMenu.show(false)
-                 elsif !main_menu_opened && $opencontextmenu==true && !GlobalMenu.opened?
-                   suc=false
-                   ($activecontrols||[]).each{|ac|
-                   suc=true if ac.hascontext
-                   }
-                   if suc
-                                          $opencontextmenu=false
-                     GlobalMenu.show(false)
-                   else
-                     $opencontextmenucounter+=1
-                     $opencontextmenu=false if $opencontextmenucounter>=10
-                   end
-                 elsif !main_menu_opened && $opencontextmenu==0
-                   $opencontextmenucounter=0
-                    end
-  if key_first_pressed?(0x7B)
-    if $resetting!=true
-      $resetting=true
-    confirm(p_("EAPI_UI", "Do you want to restart Elten?")) {$reset=true}
-    $resetting=false
-    end
-  end
-  ac=QuickActions.get
-  for i in 1..11
-    k=0x6F+i
-    if key_first_pressed?(k) && !key_held?(0x12)
-      l=i
-      l+=12 if key_held?(0x11)
-      l*=-1 if key_held?(0x10)
-            for a in ac
-        a.call if a.key==l
+      return if $windowminimized == true
+      if key_first_pressed?(0x11)
+        speech_stop(false)
+        $speech_wait = false
+      end
+      if key_held?(0x11) && key_held?(0x12) && key_held?(0x10) && key_first_pressed?(80)
+        insert_scene(Scene_Piano.new)
+      end
+      main_menu_opened = false
+      if !GlobalMenu.opened? && key_pressed?(:key_alt)
+        main_menu_opened = true
+        GlobalMenu.show
+      end
+      if !main_menu_opened && !GlobalMenu.opened? && key_pressed?(:key_context_menu)
+        GlobalMenu.show(false)
+      elsif !main_menu_opened && $opencontextmenu==true && !GlobalMenu.opened?
+        suc=false
+        ($activecontrols||[]).each{|ac|
+          suc=true if ac.hascontext
+        }
+        if suc
+          $opencontextmenu=false
+          GlobalMenu.show(false)
+        else
+          $opencontextmenucounter+=1
+          $opencontextmenu=false if $opencontextmenucounter>=10
+        end
+      elsif !main_menu_opened && $opencontextmenu==0
+        $opencontextmenucounter=0
+      end
+      if key_first_pressed?(0x7B)
+        if $resetting!=true
+          $resetting=true
+          confirm(p_("EAPI_UI", "Do you want to restart Elten?")) {$reset=true}
+          $resetting=false
+        end
+      end
+      if !key_held?(0x12)
+        ctrl_held = key_held?(0x11)
+        shift_held = key_held?(0x10)
+        for i in 1..11
+          k=0x6F+i
+          if key_first_pressed?(k)
+            l=i
+            l+=12 if ctrl_held
+            l*=-1 if shift_held
+            for a in QuickActions.hotkey_actions(l)
+              a.call
+            end
+          end
+        end
+      end
+      any_key_pressed = key_any_pressed?
+      if !key_held?(0x12) && any_key_pressed
+        t=GlobalMenu.ctitems
+        for m in t
+          l=m[3]
+          k, shift = keycode(l)
+          if key_first_pressed?(k) && key_held?(0x10)==shift && ((key_held?(0x11) && !l.is_a?(Symbol)) || (l.is_a?(Symbol) && !key_held?(0x11))) && m[1].is_a?(Proc)
+            m[1].call(m[2])
+            loop_update(false)
+          end
         end
       end
     end
-  end
-  if !key_held?(0x12) && key_any_pressed?
-    if key_any_pressed?
-    t=GlobalMenu.ctitems
-for m in t
-  l=m[3]
-  k, shift = keycode(l)
-  if key_first_pressed?(k) && key_held?(0x10)==shift && ((key_held?(0x11) && !l.is_a?(Symbol)) || (l.is_a?(Symbol) && !key_held?(0x11))) && m[1].is_a?(Proc)
-    m[1].call(m[2])
-    loop_update(false)
-    end
-  end
-  end
-  end
-end
 
   end
 end
