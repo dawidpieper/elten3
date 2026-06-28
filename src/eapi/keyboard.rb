@@ -168,6 +168,7 @@ module EltenAPI
 
       def idle?
         initialize_state
+        return true if window_background?
         state = current
         state.held.include?(true) != true &&
           state.pressed.include?(true) != true &&
@@ -261,6 +262,18 @@ module EltenAPI
         target = now if target <= 0.0 || target < now - 1.0
         target += @repeat_interval while target <= now
         target
+      end
+
+      def window_background?
+        return false if !defined?(EltenWindow)
+        if EltenWindow.respond_to?(:active_or_child?)
+          return EltenWindow.active_or_child? != true
+        elsif EltenWindow.respond_to?(:keyboard_active?)
+          return EltenWindow.keyboard_active? != true
+        end
+        false
+      rescue Exception
+        false
       end
 
       def monotonic_time
