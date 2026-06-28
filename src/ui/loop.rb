@@ -27,6 +27,20 @@ def loop_update_window
   true
 end
 
+def loop_update_tick_seconds
+  foreground = true
+  if defined?(EltenWindow)
+    if EltenWindow.respond_to?(:active_or_child?)
+      foreground = EltenWindow.active_or_child?
+    elsif EltenWindow.respond_to?(:keyboard_active?)
+      foreground = EltenWindow.keyboard_active?
+    end
+  end
+  foreground ? TICK_SECONDS : TICK_BACKGROUND_SECONDS
+rescue Exception
+  TICK_SECONDS
+end
+
                     # Updates a window, speech api and keyboard state
                     @@call=nil
                     @@missedcalls_window=nil
@@ -165,7 +179,7 @@ end
          ActivityReports.track($scene.class.name, activity_delta) if activity_delta > 0
        end
         loop_update_window
-        sleep(TICK_SECONDS)
+        sleep(loop_update_tick_seconds)
       update_window_tray_visibility if loop_update_due?(:window_tray_visibility, PERIODIC_FAST_SECONDS, loop_now)
       raise SystemExit if EltenWindow.consume_close_request
       key_update
