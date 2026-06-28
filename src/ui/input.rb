@@ -119,12 +119,13 @@ Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f/100.0)
     end
 
     def alt_pressed?
-      if (@@altdowntime||0)<Time.now.to_f-1
+      alt_first_pressed = key_first_pressed?(0x12)
+      if (@@altdowntime||0)<Time.now.to_f-1 && !alt_first_pressed
       @@altdown||=false
       @@altdowntime=Time.now.to_f
       return false
       end
-      @@altdown=true if key_first_pressed?(0x12)
+      @@altdown=true if alt_first_pressed
       @@altdown=false if key_held?(0x11) || key_held?(0x5B) || key_held?(0x5C) || key_held?(0x10) || key_held?(0x09) || key_pressed?(0x09) || key_first_pressed?(0x09)
               l=key_released?(0x12)&&@@altdown
               @@altdowntime=0 if l
@@ -335,8 +336,20 @@ if $setkeys.is_a?(Array)
                       end
                     end
 
+    def keyprocs_idle_frame?
+      return false if !defined?(EltenAPI::KeyboardState)
+      return false if !EltenAPI::KeyboardState.idle?
+      return false if defined?(GlobalMenu) && GlobalMenu.opened?
+      return false if $opencontextmenu == true
+      return false if $opencontextmenu == 0 && ($opencontextmenucounter||0) != 0
+      true
+    rescue Exception
+      false
+    end
+
     def keyprocs
       return if $windowminimized == true
+      return if keyprocs_idle_frame?
       if key_first_pressed?(0x11)
         speech_stop(false)
         $speech_wait = false
