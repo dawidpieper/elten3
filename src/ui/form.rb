@@ -116,8 +116,17 @@ end
       end
       }
       end
+        def keyboard_idle_frame?
+          return false if !defined?(EltenAPI::KeyboardState)
+          EltenAPI::KeyboardState.idle?
+        rescue Exception
+          false
+        end
+
         def update(*arg)
-      keyevents.each {|a| trigger(a[0], key_held?(0x10), key_held?(0x11), key_held?(0x12)) if !key_processed(a[1])}
+      if @events!=nil && @events.size>0 && !keyboard_idle_frame?
+        keyevents.each {|a| trigger(a[0], key_held?(0x10), key_held?(0x11), key_held?(0x12)) if !key_processed(a[1])}
+      end
       $activecontrols.push(self) if $activecontrols.is_a?(Array)
     end
     def focus(index=nil,count=nil)

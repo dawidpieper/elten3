@@ -45,12 +45,24 @@ module EltenAPI
 @denied_characters=[]
 focus if quiet==false
 end
+    def idle_update_frame?
+return false if !defined?(EltenAPI::KeyboardState)
+return false if !EltenAPI::KeyboardState.idle?
+return false if @audioplayer!=nil || (@audiotext!=nil && @audiotext!="") || @audiostream!=nil
+true
+rescue Exception
+false
+end
     def update
 super
 focus if @audioplayer==nil and @audiotext!="" and @audiotext!=nil
 if @selected==true
 play_sound("editbox_textselected")
 @selected=false
+end
+if idle_update_frame?
+  esay
+  return
 end
       oldindex=@index
       oldtext=@text      if @audioplayer!=nil and key_pressed?(:key_escape)
