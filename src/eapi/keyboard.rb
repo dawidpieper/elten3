@@ -168,7 +168,12 @@ module EltenAPI
 
       def idle?
         initialize_state
-        @held_any != true && @current_active != true
+        state = current
+        state.held.include?(true) != true &&
+          state.pressed.include?(true) != true &&
+          state.released.include?(true) != true &&
+          state.first_pressed.include?(true) != true &&
+          state.repeated.include?(true) != true
       rescue Exception
         false
       end

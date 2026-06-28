@@ -117,8 +117,7 @@ end
       }
       end
         def keyboard_idle_frame?
-          return false if !defined?(EltenAPI::KeyboardState)
-          EltenAPI::KeyboardState.idle?
+          keyboard_input_idle?
         rescue Exception
           false
         end

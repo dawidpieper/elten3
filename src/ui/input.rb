@@ -146,6 +146,14 @@ Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f/100.0)
       key_update if @keyboard_state_initialized != true
     end
 
+    def keyboard_input_idle?
+      return false if !defined?(EltenAPI::KeyboardState)
+      ensure_keyboard_state
+      EltenAPI::KeyboardState.idle?
+    rescue Exception
+      false
+    end
+
     def keyboard_code(key)
       case key
       when :key_escape, :escape, :esc
@@ -337,8 +345,7 @@ if $setkeys.is_a?(Array)
                     end
 
     def keyprocs_idle_frame?
-      return false if !defined?(EltenAPI::KeyboardState)
-      return false if !EltenAPI::KeyboardState.idle?
+      return false if !keyboard_input_idle?
       return false if defined?(GlobalMenu) && GlobalMenu.opened?
       return false if $opencontextmenu == true
       return false if $opencontextmenu == 0 && ($opencontextmenucounter||0) != 0

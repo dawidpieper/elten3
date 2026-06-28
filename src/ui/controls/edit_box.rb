@@ -46,8 +46,7 @@ module EltenAPI
 focus if quiet==false
 end
     def idle_update_frame?
-return false if !defined?(EltenAPI::KeyboardState)
-return false if !EltenAPI::KeyboardState.idle?
+return false if !keyboard_input_idle?
 return false if @audioplayer!=nil || (@audiotext!=nil && @audiotext!="") || @audiostream!=nil
 true
 rescue Exception

@@ -470,8 +470,7 @@ def value
 
 def idle_update_frame?
   return false if @requested_select == true || @run == true
-  return false if !defined?(EltenAPI::KeyboardState)
-  EltenAPI::KeyboardState.idle?
+  keyboard_input_idle?
 rescue Exception
   false
 end
