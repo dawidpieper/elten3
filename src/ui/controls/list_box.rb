@@ -468,8 +468,28 @@ def value
   self.index
   end
 
+def idle_update_frame?
+  return false if @requested_select == true || @run == true
+  return false if !defined?(EltenAPI::KeyboardState)
+  EltenAPI::KeyboardState.idle?
+rescue Exception
+  false
+end
+
+def idle_update
+  $activecontrols.push(self) if $activecontrols.is_a?(Array)
+  if $focus==true
+    $focus=false
+    focus
+  end
+  @selected_now=false
+  mark_item_audio_active(self.index) if item_audio?(self.index)
+  true
+end
+
             # Update the listbox
     def update
+return idle_update if idle_update_frame?
 super
 @selected_now=false
 mark_item_audio_active(self.index) if item_audio?(self.index)
