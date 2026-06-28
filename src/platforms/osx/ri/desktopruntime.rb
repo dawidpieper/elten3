@@ -32,6 +32,10 @@ module OSXWindowNative
   NS_EVENT_MODIFIER_FLAG_COMMAND = 1 << 20
   NS_EVENT_MODIFIER_FLAG_FUNCTION = 1 << 23
   NS_EVENT_TYPE_KEY_DOWN = 10
+  TIMER_INTERVAL_SECONDS = 1.0 / 30.0
+  TIMER_STATE_REFRESH_SECONDS = 0.05
+  TIMER_FOCUS_REPAIR_SECONDS = 0.10
+  MAX_KEY_EVENT_QUEUE = 1024
   MAC_KEY_Q = 12
   MAC_KEY_FN = 63
   NX_DEVICE_LEFT_OPTION_MASK = 0x00000020
@@ -591,7 +595,7 @@ module OSXWindowNative
       raise "class_addMethod failed" if ok.to_i == 0
       @objc_register_class_pair.call(klass)
       @timer_target = @msg_id.call(klass, sel("new"))
-      @timer = @msg_id_timer.call(cls("NSTimer"), sel("scheduledTimerWithTimeInterval:target:selector:userInfo:repeats:"), 1.0 / 120.0, @timer_target, sel("eltenTick:"), 0, 1)
+      @timer = @msg_id_timer.call(cls("NSTimer"), sel("scheduledTimerWithTimeInterval:target:selector:userInfo:repeats:"), TIMER_INTERVAL_SECONDS, @timer_target, sel("eltenTick:"), 0, 1)
       @retained_objects ||= []
       @retained_objects.concat([klass, @timer_target, @timer])
       debug("Cocoa timer installed")
@@ -628,13 +632,12 @@ module OSXWindowNative
 
     def timer_tick
       process_app_thread_actions
-      refresh_window_cache(@main_window) if @main_window.to_i != 0
-      refresh_keyboard_active
-      @key_sink_focused = first_responder(@main_window).to_i == @key_sink_view.to_i if @main_window.to_i != 0 && @key_sink_view != nil
-      if @keyboard_allowed == true && @key_sink_focused != true
-        focus_key_sink(@main_window)
+      now = monotonic_time
+      if timer_due?(:state_refresh, TIMER_STATE_REFRESH_SECONDS, now)
+        refresh_window_cache(@main_window) if @main_window.to_i != 0
         refresh_keyboard_active
       end
+      refresh_key_sink_focus if timer_due?(:focus_repair, TIMER_FOCUS_REPAIR_SECONDS, now)
       if @exit_requested == true || (@worker_thread != nil && !@worker_thread.alive?)
         clear_keyboard_state
         @msg_void_ptr.call(@application, sel("stop:"), nil) if @application.to_i != 0
@@ -642,6 +645,29 @@ module OSXWindowNative
       true
     rescue Exception => e
       debug("timer tick failed: #{e.class}: #{e.message}")
+      false
+    end
+
+    def timer_due?(key, interval, now = nil)
+      now ||= monotonic_time
+      @timer_last ||= {}
+      last = @timer_last[key]
+      return false if last != nil && now - last.to_f < interval.to_f
+      @timer_last[key] = now
+      true
+    rescue Exception
+      true
+    end
+
+    def refresh_key_sink_focus
+      return false if @main_window.to_i == 0 || @key_sink_view == nil || @key_sink_view.to_i == 0
+      @key_sink_focused = first_responder(@main_window).to_i == @key_sink_view.to_i
+      if @keyboard_allowed == true && @key_sink_focused != true
+        focus_key_sink(@main_window)
+        refresh_keyboard_active
+      end
+      true
+    rescue Exception
       false
     end
 
@@ -882,6 +908,7 @@ module OSXWindowNative
 
     def set_keyboard_key(key, down, repeat = false)
       @keyboard_state ||= ("\0" * 256)
+      @keyboard_allowed = true
       key = key.to_i & 0xff
       previous = (@keyboard_state.getbyte(key).to_i & 0x80) != 0
       @keyboard_state.setbyte(key, down ? 0x80 : 0)
@@ -897,7 +924,7 @@ module OSXWindowNative
     def queue_key_event(key, state)
       @key_event_queue ||= []
       @key_event_queue << [key.to_i & 0xff, state]
-      @key_event_queue.shift while @key_event_queue.size > 256
+      @key_event_queue = @key_event_queue.last(MAX_KEY_EVENT_QUEUE) if @key_event_queue.size > MAX_KEY_EVENT_QUEUE
       true
     end
 
@@ -1553,8 +1580,11 @@ module EltenWindow
     end
 
     def pump_messages
-      OSXWindowNative.pump if @native_window == true
-      capture_keyboard_state
+      if @native_window == true
+        OSXWindowNative.pump if OSXWindowNative.app_thread?
+      else
+        capture_keyboard_state
+      end
       true
     end
 
@@ -1596,6 +1626,7 @@ module EltenWindow
     end
 
     def keyboard_state
+      return OSXWindowNative.keyboard_state.to_s if @native_window == true && defined?(OSXWindowNative)
       @keyboard_state ||= ("\0" * 256)
     end
 
@@ -1615,6 +1646,7 @@ module EltenWindow
     end
 
     def begin_input_frame
+      return true if @native_window == true
       update_messages
       true
     end

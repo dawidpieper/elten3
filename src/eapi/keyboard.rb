@@ -54,6 +54,7 @@ module EltenAPI
         released = Array.new(256, false)
         first_pressed = Array.new(256, false)
         repeated = Array.new(256, false)
+        frame_active = false
 
         for key in 0..255
           was_down = @held[key] == true
@@ -97,9 +98,12 @@ module EltenAPI
             end
           end
           held[key] = true if pressed_implies_held == true && action_pressed[key] == true
+          frame_active = true if action_pressed[key] == true || released[key] == true || first_pressed[key] == true || repeated[key] == true
         end
 
         @held = held.dup
+        @held_any = held.include?(true)
+        @current_active = frame_active
         @current = Result.new(
           pressed: action_pressed,
           held: held,
@@ -155,10 +159,26 @@ module EltenAPI
         false
       end
 
+      def any_held?
+        initialize_state
+        @held_any == true
+      rescue Exception
+        false
+      end
+
+      def idle?
+        initialize_state
+        @held_any != true && @current_active != true
+      rescue Exception
+        false
+      end
+
       def clear_current_frame
         initialize_state
         empty = Array.new(256, false)
         held = @held.dup
+        @held_any = held.include?(true)
+        @current_active = false
         @current = Result.new(
           pressed: empty.dup,
           held: held,
@@ -176,6 +196,8 @@ module EltenAPI
         @next_repeat = Array.new(256, 0.0)
         @last_pressed_tick = Array.new(256, -1000)
         @tick_serial = 0
+        @held_any = false
+        @current_active = false
         @current = nil
         true
       end
@@ -187,6 +209,8 @@ module EltenAPI
         @next_repeat ||= Array.new(256, 0.0)
         @last_pressed_tick ||= Array.new(256, -1000)
         @tick_serial ||= 0
+        @held_any = @held.include?(true) if @held_any == nil
+        @current_active = false if @current_active == nil
         @repeat_delay ||= DEFAULT_REPEAT_DELAY
         @repeat_interval ||= DEFAULT_REPEAT_INTERVAL
       end
@@ -194,6 +218,8 @@ module EltenAPI
       def reset_result
         reset
         empty = Array.new(256, false)
+        @held_any = false
+        @current_active = false
         Result.new(
           pressed: empty.dup,
           held: empty.dup,
