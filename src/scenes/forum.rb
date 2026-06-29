@@ -1878,14 +1878,16 @@ break
       if id!=-11
         setindex=thread if thread.id == @pre
       else
-        setindex = thread if @tc!=nil && thread.mention.id == @tc.mention.id
+        mention = thread.mention
+        setindex = thread if @tc!=nil && @tc.mention!=nil && mention!=nil && mention.id == @tc.mention.id
       end
       end
             name_parts = [thread.name+""]
       name_parts << forum_closed_command if thread.closed
       name_parts << forum_pinned_command if thread.pinned
       if id == -7 or id==-11
-        name_parts << " . #{p_("Forum", "Mentioned by")}: #{thread.mention.author} (#{thread.mention.message})"
+        mention = thread.mention
+        name_parts << " . #{p_("Forum", "Mentioned by")}: #{mention.author} (#{mention.message})" if mention!=nil
       end
       if id == -3 or id == -6 or id == -7
         name_parts << " (#{thread.forum.fullname}, #{thread.forum.group.name})"
