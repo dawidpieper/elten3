@@ -1533,9 +1533,6 @@ form.focus
           }
             alert(p_("Forum", "Removed from followed forums list."))
             @sforums[@frmsel.index].followed = false
-            if id == -1
-              groupsmain(id)
-            end
           end
         end
         if @group == -5
