@@ -1298,11 +1298,23 @@ def value
                         @audioplayer.stop
                         end
                         end
+    def clear_audio_player
+      if @audioplayer!=nil
+        @audioplayer.close if @audioplayer.respond_to?(:sound) && @audioplayer.sound!=nil
+        @audioplayer=nil
+      end
+      @audioplayed=false
+    rescue Exception
+      @audioplayer=nil
+      @audioplayed=false
+    end
     def audio_url
       @audiotext
     end
     def audio_url=(u)
+      clear_audio_player if u==nil || @audiotext!=u || @audiostream!=nil
       @audiotext=u
+      @audiostream=nil if u==nil
       end
                         def read_text(index=0,head="")
       return speak(head) if @text=="" and head!="" and head!=nil
