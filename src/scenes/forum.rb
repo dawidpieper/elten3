@@ -3341,14 +3341,22 @@ end
 
   def moderation_mass_posts
     form = Form.new([
-    lst_posts = ListBox.new(@posts.map{|ps|ps.author+": "+ps.post[0...5000]}, header: p_("Forum", "Posts"), index: @form.index/3, flags: ListBox::Flags::MultiSelection),
+    lst_posts = ListBox.new(@posts.each_with_index.map{|ps,index|(index+1).to_s+": "+ps.author+": "+(ps.transcription.strip!="" ? ps.transcription[0...5000] : ps.post[0...5000])}, header: p_("Forum", "Posts"), index: @form.index/3, flags: ListBox::Flags::MultiSelection),
     edt_post = EditBox.new(p_("Forum", "Post content"), type: EditBox::Flags::ReadOnly, text: ""),
     btn_move = Button.new(p_("Forum", "Move")),
     btn_delete = Button.new(p_("Forum", "Delete")),
 btn_cancel = Button.new(_("Cancel"))
     ])
-    @posts.each_with_index{|ps,i|lst_posts.set_item_audio(i, ps.audio_url) if ps.respond_to?(:audio_url) && ps.audio_url.to_s!=""}
-    lst_posts.on(:move) {edt_post.set_text(@posts[lst_posts.index].post)}
+    lst_posts.on(:move) {
+post = @posts[lst_posts.index]
+if post.respond_to?(:audio_url) && post.audio_url.to_s != ""
+edt_post.set_text(post.transcription||"")
+edt_post.audio_url = post.audio_url
+else
+edt_post.set_text(@posts[lst_posts.index].post)
+edt_post.audio_url = nil
+end
+}
     lst_posts.trigger(:move)
     form.cancel_button = btn_cancel
     btn_cancel.on(:press) {
