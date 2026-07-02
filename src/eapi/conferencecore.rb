@@ -2239,17 +2239,30 @@ def chat
 @chat.dup
 end
 def calling_play
+calling_stop
 @callingplaying=true
-play_sound("calling")
+return if Configuration.soundthemeactivation == 0
+sound=getsound("calling")
+return if sound==nil && !FileTest.exists?("calling")
+@callingplayer=Sound.new(sound==nil ? "calling" : nil, loop: true, stream: sound)
+if @callingplayer!=nil
+@callingplayer.volume=Configuration.volume.to_f/200.0
+@callingplayer.play
+end
+rescue Exception
+log(2, "Conference: calling sound: "+$!.to_s+" "+$@.to_s)
+play_sound("calling") rescue nil
 end
 def calling_stop
-if @callingplaying==true
+if @callingplayer!=nil
+@callingplayer.close rescue nil
+@callingplayer=nil
+end
 if $bgplayer!=nil
 $bgplayer.close
 $bgplayer=nil
 end
 @callingplaying=false
-end
 end
 def vsts(userid=0)
 if userid==0

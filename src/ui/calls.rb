@@ -26,6 +26,7 @@ class CallWindow
             end
         end
         def cancel
+          EltenAPI::UI.call_sound_stop
           EltenAPI::EltenSRV.cancel_call(@id, self)
           end
       end

@@ -117,19 +117,12 @@ end
                 end
               end
             elsif d['func']=='call_start'
-             if $bgplayer!=nil
-               $bgplayer.close
-               $bgplayer=nil
-             end
-             play_sound(d['ringtone'] || 'ringing')
-             @@call = CallWindow.new(d['call_id'], d['caller'], d['channel'], d['password']) if @@call==nil || @@call.id!=d['call_id']
+              call_sound_start(d['ringtone'] || 'ringing')
+              @@call = CallWindow.new(d['call_id'], d['caller'], d['channel'], d['password']) if @@call==nil || @@call.id!=d['call_id']
            elsif d['func']=='call_stop'
-             if $bgplayer!=nil
-               $bgplayer.close
-               $bgplayer=nil
-             end
-             @@call=nil
-             $focus=true
+              call_sound_stop
+              @@call=nil
+              $focus=true
            elsif d['func']=='missed_call'
              if d['caller']!=nil
                @@missedcalls_window ||= MissedCallsWindow.new

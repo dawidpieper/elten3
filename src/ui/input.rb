@@ -7,6 +7,17 @@
 module EltenAPI
   module UI
     @@altdowntime=0
+    def self.call_sound_stop
+      if $callplayer != nil
+        $callplayer.close rescue nil
+        $callplayer = nil
+      end
+      if $bgplayer != nil
+        $bgplayer.close rescue nil
+        $bgplayer = nil
+      end
+    end
+
     private
 # User interface related functions
     def play_sound(voice, volume: 100, pitch: 100, pan: 50, ignore_soundtheme: false)
@@ -69,6 +80,27 @@ Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f/100.0)
   Bass::BASS_ChannelSetAttribute.call(stream, 3, pan.to_f/50.0-1.0)
                                                                                                                                                                                                       Bass::BASS_ChannelPlay.call(stream, 0)
                         end
+                      end
+
+                      def call_sound_start(ringtone)
+                        call_sound_stop
+                        voice = ringtone || "ringing"
+                        return if Configuration.soundthemeactivation == 0 && !FileTest.exists?(voice)
+                        sound = getsound(voice)
+                        file = sound == nil ? voice : nil
+                        return if sound == nil && !FileTest.exists?(file)
+                        $callplayer = Sound.new(file, loop: true, stream: sound)
+                        if $callplayer != nil
+                          $callplayer.volume = Configuration.volume.to_f / 200.0
+                          $callplayer.play
+                        end
+                      rescue Exception => e
+                        Log.error("Call sound: #{e.class}: #{e.message}")
+                        play_sound(voice || "ringing") rescue nil
+                      end
+
+                      def call_sound_stop
+                        EltenAPI::UI.call_sound_stop
                       end
 
                       # The keyboard related functions
