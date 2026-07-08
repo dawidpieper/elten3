@@ -37,7 +37,7 @@ module EltenLink
           "authmethod" => authmethod
         }
         if stamp != nil
-          params["stamp_timespan"] = stamp["timespan"]
+          params["stamp_timestamp"] = stamp["timestamp"]
           params["stamp_key_sha256"] = stamp["key_sha256"]
           params["stamp_hwid"] = stamp["hwid"]
           params["stamp_hmac"] = stamp["hmac"]
