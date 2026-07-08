@@ -155,6 +155,14 @@ while tries<3
         break
     end
   end
+elsif e.code.to_s=="session.account_not_activated"
+  if handle_account_activation(name)
+    suc=false
+  else
+    delete_logindata
+    @@skipauto=true
+    return $scene=Scene_Login.new
+  end
 else
   login_error=e
   break
@@ -253,6 +261,12 @@ else
     speech_wait
     @skipauto=true
     return main
+  when "session.account_not_activated"
+    alert(p_("Login", "This account has not been activated yet."))
+    Session.token = nil
+    speech_wait
+    @skipauto=true
+    return main
   else
     alert(p_("Login", "Login failure."))
     Session.token = nil
@@ -265,6 +279,53 @@ end
         $scene = Scene_Loading.new
         $preinitialized = false
                 $scene = Scene_Main.new if Session.token != nil
+      end
+      def handle_account_activation(name)
+        header = p_("Login", "This account has not been activated. Enter the activation code from the e-mail message or request the message again.")
+        label = p_("Login", "Activation code:")
+        tries = 0
+        loop do
+          action = selector([p_("Login", "Enter activation code"), p_("Login", "Resend activation e-mail"), _("Cancel")], header: header, start_index: 0, cancel_index: 2, flags: 1)
+          return false if action==nil || action==2
+          if action==1
+            begin
+              EltenLink::Accounts.resend_activation(elten_link, name: name)
+              alert(p_("Login", "The activation e-mail has been sent again."))
+            rescue EltenLink::Error => e
+              if e.code.to_s=="accounts.activation_resend_too_soon"
+                alert(p_("Login", "The activation e-mail has already been sent. Please wait at least 10 minutes before requesting another one."))
+              elsif e.code.to_s=="accounts.activation_not_found"
+                alert(p_("Login", "Activation could not be started for this account. It may already be active."))
+              else
+                alert(e.message)
+              end
+            end
+            next
+          end
+          while tries<3
+            code=input_text(label, flags: 0, text: "", escapable: true)
+            return false if code==nil
+            code=code.delete("\r\n ")
+            begin
+              EltenLink::Accounts.activate(elten_link, code: code)
+              alert(p_("Login", "Account activated. You can now log in."))
+              return true
+            rescue EltenLink::Error => e
+              if e.code.to_s=="accounts.invalid_activation_code"
+                tries+=1
+                if tries>=3
+                  alert(p_("Login", "Activation failed."))
+                  return false
+                else
+                  label=p_("Login", "The entered activation code is wrong, please try again.")
+                end
+              else
+                alert(e.message)
+                return false
+              end
+            end
+          end
+        end
       end
       def makepin
         return nil if !autologin_key_encryption_supported?

@@ -57,8 +57,12 @@ stamp = get_stamp(name)
 rescue Exception
 end
 begin
-EltenLink::Accounts.register(elten_link, name: name, password: password, mail: mail, stamp: stamp)
+result = EltenLink::Accounts.register(elten_link, name: name, password: password, mail: mail, stamp: stamp)
+if result.respond_to?(:activated?) && result.activated?
   alert(p_("Registration", "Registration is successful, thank you. You can log in using your username and  password."))
+else
+  alert(p_("Registration", "Registration is successful, thank you. An activation code has been sent to your e-mail address. You will need to enter it during login."))
+end
 rescue EltenLink::Error => e
   if e.code.to_s == "accounts.name_unavailable"
     alert(p_("Registration", "Account with the specified username already exists."))
