@@ -2,6 +2,36 @@ root = File.expand_path(__dir__)
 Dir.chdir(root)
 $LOAD_PATH.unshift(File.join(root, "src")) unless defined?(::EltenEmbedded)
 
+module Elten
+  VERSION_STRING = "ELTEN 3.0 BETA 20"
+  BRANCH = "beta"
+
+  class << self
+    def version
+      VERSION_STRING
+    end
+
+    def build_id
+      return nil if !const_defined?(:BuildID, false)
+
+      const_get(:BuildID)
+    end
+
+    def build_date
+      return nil if !const_defined?(:BuildDate, false) || const_get(:BuildDate) == nil
+
+      t = Time.at(const_get(:BuildDate))
+      sprintf("%04d-%02d-%02d %02d:%02d", t.year, t.month, t.day, t.hour, t.min)
+    rescue Exception
+      nil
+    end
+
+    def branch
+      BRANCH
+    end
+  end
+end
+
 module EltenBoot
   HIDDEN_FLAGS = ["/hidden", "-hidden", "--hidden"]
   DEVELOPER_FLAGS = ["/developer", "-developer", "--developer", "/dev", "-dev", "--dev"]
