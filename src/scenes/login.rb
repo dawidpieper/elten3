@@ -177,6 +177,7 @@ end
       Session.gender=logintemp.gender.to_i
       Session.languages = logintemp.languages
       Session.greeting = logintemp.greeting
+      update_premiumpackages(logintemp.premium_packages) if logintemp.premium_packages.is_a?(Array)
   end
 if logintemp != nil
 if Configuration.autologin==1 && autologin.to_i!=3

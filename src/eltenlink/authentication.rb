@@ -3,7 +3,7 @@
 
 module EltenLink
   class LoginResult
-    attr_reader :name, :token, :moderator, :fullname, :gender, :languages, :greeting, :auto_login_token, :issued_at
+    attr_reader :name, :token, :moderator, :fullname, :gender, :languages, :greeting, :auto_login_token, :issued_at, :premium_packages
 
     def initialize(data)
       @name = data["name"].to_s
@@ -15,6 +15,9 @@ module EltenLink
       @greeting = data["greeting"].to_s
       @auto_login_token = data["auto_login_token"].to_s
       @issued_at = data["issued_at"].to_i
+      packages = data["premiumpackages"]
+      packages = data["premium_packages"] if !packages.is_a?(Array)
+      @premium_packages = packages.is_a?(Array) ? packages.map(&:to_s) : nil
     end
 
     def success?
