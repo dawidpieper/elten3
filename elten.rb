@@ -11,6 +11,10 @@ module Elten
       VERSION_STRING
     end
 
+    def window_title
+      VERSION_STRING
+    end
+
     def build_id
       return nil if !const_defined?(:BuildID, false)
 
@@ -146,7 +150,11 @@ module EltenBoot
       set_foreground_window = Fiddle::Function.new(user32["SetForegroundWindow"], [type_ptr], type_int)
       set_active_window = Fiddle::Function.new(user32["SetActiveWindow"], [type_ptr], type_ptr)
       set_focus = Fiddle::Function.new(user32["SetFocus"], [type_ptr], type_ptr)
-      hwnd = find_window.call(wide_string("STATIC"), wide_string("Elten"))
+      hwnd = nil
+      [Elten.window_title, "Elten"].uniq.each do |title|
+        hwnd = find_window.call(wide_string("STATIC"), wide_string(title))
+        break if hwnd != nil && hwnd.to_i != 0
+      end
       return false if hwnd == nil || hwnd.to_i == 0
       show_window.call(hwnd, 5)
       show_window.call(hwnd, 9)
@@ -190,7 +198,7 @@ module EltenBoot
       hwnd = create_window_ex.call(
         0,
         wide_string("STATIC"),
-        wide_string("Elten"),
+        wide_string(Elten.window_title),
         0x00CA0000,
         -2147483648,
         -2147483648,

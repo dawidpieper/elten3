@@ -1491,12 +1491,16 @@ module EltenWindow
   class << self
     attr_reader :hwnd
 
+    def app_window_title
+      defined?(Elten) && Elten.respond_to?(:window_title) ? Elten.window_title : "Elten"
+    end
+
     def ensure_window
       @window_thread ||= Thread.current
       if @window_created != true
         @window_created = true
         hidden = $elten_start_hidden == true
-        native = OSXWindowNative.create("Elten", hidden)
+        native = OSXWindowNative.create(app_window_title, hidden)
         @native_window = native.to_i != 0
         @hwnd = @native_window ? native.to_i : 1
         @visible = !hidden

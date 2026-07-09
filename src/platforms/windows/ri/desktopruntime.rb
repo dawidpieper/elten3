@@ -319,6 +319,7 @@ module EltenWindow
   SET_KEYBOARD_STATE = Fiddle::Function.new(USER32["SetKeyboardState"], [PTR], INT, ABI)
   WINDOW_CLASS = "STATIC"
   WINDOW_TITLE = "Elten"
+  APP_WINDOW_TITLE = defined?(Elten) && Elten.respond_to?(:window_title) ? Elten.window_title : WINDOW_TITLE
   WS_CAPTION = 0x00C00000
   WS_SYSMENU = 0x00080000
   WS_MINIMIZEBOX = 0x00020000
@@ -372,7 +373,7 @@ module EltenWindow
         return @hwnd
       end
 
-      title = wide_string(WINDOW_TITLE)
+      title = wide_string(APP_WINDOW_TITLE)
       klass = wide_string(WINDOW_CLASS)
       instance = GET_MODULE_HANDLE.call(nil)
       @hwnd = CREATE_WINDOW_EX.call(
