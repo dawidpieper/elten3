@@ -60,7 +60,7 @@ class Scene_Notifications
   def context(menu)
     return if current_group == nil
 
-    menu.option(p_("Notifications", "Open"), nil, :enter) { open_current }
+    menu.option(p_("Notifications", "Open")) { open_current }
     if !current_group.revoked && (current_group.ids.size > 0 || current_group.virtual?)
       menu.option(p_("Notifications", "Mark as read"), nil, "w") { revoke_current }
     end

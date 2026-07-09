@@ -302,7 +302,7 @@ end
 
 def notifications_context(menu)
   return if current_notification_group==nil
-  menu.option(p_("Notifications", "Open"), nil, :enter) { notifications_open }
+  menu.option(p_("Notifications", "Open")) { notifications_open }
   menu.option(p_("Notifications", "Mark as read"), nil, "w") { notifications_revoke_current }
   if revocable_notification_groups?(@notification_groups)
     menu.option(p_("Notifications", "Mark all as read"), nil, "W") { notifications_revoke_all }
