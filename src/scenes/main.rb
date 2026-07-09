@@ -275,6 +275,7 @@ def notifications_open
   return if group==nil
   old_index = @notifications_sel.index
   if open_notification_group(group)
+    2.times{loop_update}
     @@notification_index = old_index
     if $scene == self
       previous_section = current_main_section

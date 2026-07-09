@@ -81,6 +81,7 @@ class Scene_Notifications
     old_index = @list.index
     opened = open_notification_group(group)
     if opened
+        2.times{loop_update}
       load_groups(old_index)
       @list.sayoption if @groups.size > 0
     end
