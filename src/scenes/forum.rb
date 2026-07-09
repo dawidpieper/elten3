@@ -75,6 +75,45 @@ class Scene_Forum
     @thrsel.set_row_state(index, forum_new_status) if thread.readposts < thread.posts and (list_id != -2 and list_id != -4 and list_id != -6 and list_id != -7)
   end
 
+  def forum_row_title(forum, group=@group)
+    name_parts = [forum.fullname]
+    if group == -5
+      for g in @groups
+        name_parts << " (#{g.name}) " if g.id == forum.group.id
+      end
+    end
+    name_parts << forum_closed_command if forum.closed
+    name_parts.size==1 ? name_parts[0] : EltenAPI::SpeechSequence.new(name_parts)
+  end
+
+  def thread_row_title(thread, list_id=@forum)
+    name_parts = [thread.name+""]
+    name_parts << forum_closed_command if thread.closed
+    name_parts << forum_pinned_command if thread.pinned
+    if list_id == -7 or list_id==-11
+      mention = thread.mention
+      name_parts << " . #{p_("Forum", "Mentioned by")}: #{mention.author} (#{mention.message})" if mention!=nil
+    end
+    if list_id == -3 or list_id == -6 or list_id == -7
+      name_parts << " (#{thread.forum.fullname}, #{thread.forum.group.name})"
+    end
+    name_parts.size==1 ? name_parts[0] : EltenAPI::SpeechSequence.new(name_parts)
+  end
+
+  def refresh_forum_row(index=nil)
+    index = @frmsel.index if index==nil && @frmsel!=nil
+    return if @frmsel==nil || @sforums==nil || @sforums[index]==nil || @frmsel.rows[index]==nil
+    @frmsel.rows[index][0] = forum_row_title(@sforums[index])
+    apply_forum_row_states(index, @sforums[index])
+  end
+
+  def refresh_thread_row(index=nil, list_id=@forum)
+    index = @thrsel.index if index==nil && @thrsel!=nil
+    return if @thrsel==nil || @sthreads==nil || @sthreads[index]==nil || @thrsel.rows[index]==nil
+    @thrsel.rows[index][0] = thread_row_title(@sthreads[index], list_id)
+    apply_thread_row_states(index, @sthreads[index], list_id)
+  end
+
   def forum_closed_command
     EltenAPI::SpeechCommands::SoundCommand.new("listbox_itemclosed", " "+p_("EAPI_Speech", "Closed")+" ", "⣏⣹⠉⢹", immediate: true)
   end
@@ -1364,14 +1403,7 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
     end
     frmselt = []
     for forum in @sforums
-      name_parts = [forum.fullname]
-      if group == -5
-        for g in @groups
-          name_parts << " (#{g.name}) " if g.id == forum.group.id
-        end
-      end
-      name_parts << forum_closed_command if forum.closed
-      ftm = [name_parts.size==1 ? name_parts[0] : EltenAPI::SpeechSequence.new(name_parts)]
+      ftm = [forum_row_title(forum, group)]
       ftm += [forum.threads.to_s, forum.posts.to_s, (forum.posts - forum.readposts).to_s, forum.description]
       frmselt.push(ftm)
     end
@@ -1626,14 +1658,14 @@ break
           }
             if @sforums[@frmsel.index].closed
               @sforums[@frmsel.index].closed = false
-              apply_forum_row_states(@frmsel.index, @sforums[@frmsel.index])
+              refresh_forum_row
               alert(p_("Forum", "The forum has been opened"))
             else
               @sforums[@frmsel.index].closed = true
-              apply_forum_row_states(@frmsel.index, @sforums[@frmsel.index])
+              refresh_forum_row
               alert(p_("Forum", "The forum has been closed"))
             end
-            @frmsel.setcolumn(0)
+            @frmsel.reload
           end
         }
         m.option(p_("Forum", "Edit forum tags"), nil, "t") {
@@ -1879,17 +1911,7 @@ break
         setindex = thread if @tc!=nil && @tc.mention!=nil && mention!=nil && mention.id == @tc.mention.id
       end
       end
-            name_parts = [thread.name+""]
-      name_parts << forum_closed_command if thread.closed
-      name_parts << forum_pinned_command if thread.pinned
-      if id == -7 or id==-11
-        mention = thread.mention
-        name_parts << " . #{p_("Forum", "Mentioned by")}: #{mention.author} (#{mention.message})" if mention!=nil
-      end
-      if id == -3 or id == -6 or id == -7
-        name_parts << " (#{thread.forum.fullname}, #{thread.forum.group.name})"
-      end
-      tmp = [name_parts.size==1 ? name_parts[0] : EltenAPI::SpeechSequence.new(name_parts)]
+            tmp = [thread_row_title(thread, id)]
       tmp[1]=thread.author#.lore
       tmp[2]=thread.posts.to_s
       tmp[3]=(thread.posts - thread.readposts).to_s
@@ -2087,14 +2109,14 @@ threadopen(@thrsel.index)
           }
             if @sthreads[@thrsel.index].closed
               @sthreads[@thrsel.index].closed = false
-              apply_thread_row_states(@thrsel.index, @sthreads[@thrsel.index])
+              refresh_thread_row
               alert(p_("Forum", "The thread has been opened"))
             else
               @sthreads[@thrsel.index].closed = true
-              apply_thread_row_states(@thrsel.index, @sthreads[@thrsel.index])
+              refresh_thread_row
               alert(p_("Forum", "The thread has been closed"))
             end
-            @thrsel.setcolumn(0)
+            @thrsel.reload
           end
         }
         s = p_("Forum", "Pin thread")
@@ -2106,14 +2128,14 @@ threadopen(@thrsel.index)
           }
             if @sthreads[@thrsel.index].pinned
               @sthreads[@thrsel.index].pinned = false
-              apply_thread_row_states(@thrsel.index, @sthreads[@thrsel.index])
+              refresh_thread_row
               alert(p_("Forum", "Thread has been unpinned"))
             else
               @sthreads[@thrsel.index].pinned = true
-              apply_thread_row_states(@thrsel.index, @sthreads[@thrsel.index])
+              refresh_thread_row
               alert(p_("Forum", "Thread has been pinned"))
             end
-            @thrsel.setcolumn(0)
+            @thrsel.reload
           end
         }
         if @sthreads[@thrsel.index].offered==0
