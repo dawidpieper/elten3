@@ -24,7 +24,7 @@ module EltenAPI
    @monitored = ui[14].to_b
     play_sound("menu_open") if submenu != true
 Menu.menubg_play if submenu != true and (Configuration.bgsounds==1 && Configuration.soundthemeactivation==1)
-sel = [p_("EAPI_Common", "Write a private message"),p_("EAPI_Common", "Visiting card"),p_("EAPI_Common", "Open user's blog"),p_("EAPI_Common", "badges of this user")]
+sel = [p_("EAPI_Common", "Write a private message"),p_("EAPI_Common", "Visiting card"),p_("EAPI_Common", "Show user blogs"),p_("EAPI_Common", "badges of this user")]
 if Session.name!="guest"
 if @incontacts == true
   sel.push(p_("EAPI_Common", "Remove from contacts' list"))
