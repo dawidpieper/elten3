@@ -154,7 +154,7 @@ Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f/100.0)
       alt_first_pressed = key_first_pressed?(0x12)
       @@altdown||=false
       @@altdown=true if alt_first_pressed
-      @@altdown=false if @@altdown && keyboard_first_press_except?(0x12)
+      @@altdown=false if @@altdown && (key_first_pressed?(0x10) || key_first_pressed?(0x11))
       if (@@altdowntime||0)<Time.now.to_f-1 && !alt_first_pressed
         @@altdowntime=Time.now.to_f
         return false
@@ -163,17 +163,6 @@ Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f/100.0)
               l=key_released?(0x12)&&@@altdown
               @@altdowntime=0 if l
     return l
-    end
-
-    def keyboard_first_press_except?(excluded_key)
-      state = EltenAPI::KeyboardState.current
-      for key in 0...256
-        next if key == excluded_key.to_i
-        return true if state.first_pressed[key] == true
-      end
-      false
-    rescue Exception
-      false
     end
 
     def context_menu_pressed?
