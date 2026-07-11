@@ -408,6 +408,21 @@ std::vector<ResourceEntry> EmbeddedResourceEntries(const Options &options) {
     }
   }
 
+  const std::string tlsCaResourceName = "ssl/cert.pem";
+  fs::path tlsCaPath = options.rubyRoot / "ssl" / "cert.pem";
+  std::vector<unsigned char> tlsCaData = ReadFile(tlsCaPath);
+  if (tlsCaData.empty()) {
+    throw std::runtime_error("Ruby OpenSSL CA bundle is empty: " + Slash(tlsCaPath));
+  }
+  auto tlsCaCollision = std::find_if(entries.begin(), entries.end(), [&](const ResourceEntry &entry) {
+    return Lower(entry.name) == Lower(tlsCaResourceName);
+  });
+  if (tlsCaCollision != entries.end()) {
+    throw std::runtime_error("Embedded resource name is reserved for the Ruby OpenSSL CA bundle: " +
+                             tlsCaResourceName);
+  }
+  entries.push_back({tlsCaResourceName, std::move(tlsCaData)});
+
   ec.clear();
   if (fs::is_directory(localeRoot, ec)) {
     for (const fs::path &path : RecursiveRegularFiles(localeRoot)) {

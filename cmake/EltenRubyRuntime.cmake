@@ -51,6 +51,16 @@ function(elten_configure_ruby_runtime)
   get_filename_component(runtime_build_root "${ELTEN_RUBY_BUILD_ROOT}" DIRECTORY)
   set(runtime_bundle_root "${runtime_build_root}/ruby-bundle-${runtime_id}")
   set(runtime_gem_lockfile "${runtime_bundle_root}/Gemfile.lock")
+  set(runtime_byproducts
+    "${runtime_bundle_root}/Gemfile"
+    "${runtime_gem_lockfile}"
+    "${runtime_root}/ssl/cert.pem"
+  )
+  if(ARG_PLATFORM STREQUAL "windows")
+    list(APPEND runtime_byproducts
+      "${runtime_bundle_root}/patchs/mini_portile_msys_path_patch.rb"
+    )
+  endif()
   set(runtime_stamp "${runtime_root}/elten-ruby-runtime.stamp")
   set(install_gems OFF)
   if(ELTEN_RUBY_INSTALL_GEMS)
@@ -138,8 +148,7 @@ function(elten_configure_ruby_runtime)
     OUTPUT "${runtime_stamp}"
     COMMAND "${CMAKE_COMMAND}" ${script_args} -P "${CMAKE_SOURCE_DIR}/cmake/prepare_ruby_runtime.cmake"
     BYPRODUCTS
-      "${runtime_bundle_root}/Gemfile"
-      "${runtime_gem_lockfile}"
+      ${runtime_byproducts}
     DEPENDS
       "${CMAKE_SOURCE_DIR}/cmake/prepare_ruby_runtime.cmake"
       "${CMAKE_SOURCE_DIR}/patchs/mini_portile_msys_path_patch.rb"

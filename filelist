@@ -23,6 +23,7 @@ src/eapi/core/cache.rb
 src/eapi/resources.rb
 src/eapi/structs.rb
 src/eapi/log.rb
+src/eapi/tls.rb
 src/platforms/windows/ri/desktopruntime.rb :windows
 src/platforms/osx/ri/desktopruntime.rb :osx
 src/eltenlink/__eltenlink.rb
