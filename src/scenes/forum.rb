@@ -3514,17 +3514,15 @@ users = []
 		
 		form = Form.new(fields)
 form.hide(btn_mentionOK)
-update_mention_button = proc {
-  if lst_users.multiselections.size > 0 && edt_message.text.to_s.size > 0
-    form.show(btn_mentionOK)
-  else
-    form.hide(btn_mentionOK)
-  end
+lst_users.on(:multiselection_changed) {
+ if lst_users.multiselections.size <= 0
+form.hide(btn_mentionOK)
+else
+form.show(btn_mentionOK)
+end
 }
-lst_users.on(:multiselection_changed, &update_mention_button)
-edt_message.on(:change, &update_mention_button)
 btn_mentionOK.on(:press) {
-if lst_users.multiselections.size > 0 && edt_message.text.to_s.size > 0
+if lst_users.multiselections.size >= 0
 selections = lst_users.multiselections()
 sent = forum_attempt(nil) {
   for i in 0..selections.size - 1
