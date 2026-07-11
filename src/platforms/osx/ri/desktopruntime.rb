@@ -35,6 +35,7 @@ module OSXWindowNative
   TIMER_INTERVAL_SECONDS = 1.0 / 30.0
   TIMER_STATE_REFRESH_SECONDS = 0.05
   TIMER_FOCUS_REPAIR_SECONDS = 0.10
+  TIMER_KEY_RECONCILE_SECONDS = 0.10
   MAX_KEY_EVENT_QUEUE = 1024
   MAC_KEY_Q = 12
   MAC_KEY_FN = 63
@@ -71,6 +72,7 @@ module OSXWindowNative
       @msg_void.call(hwnd, sel("center"))
       set_title(hwnd, title)
       install_content_view(hwnd)
+      install_window_focus_delegate(hwnd)
       show(hwnd) if hidden != true
       hwnd
     rescue Exception => e
@@ -182,13 +184,7 @@ module OSXWindowNative
 
     def keyboard_active?(hwnd)
       return @keyboard_allowed == true if @app_thread != nil && Thread.current != @app_thread
-      return false if hwnd.to_i == 0 || !visible?(hwnd) || !onscreen?(hwnd)
-      return false unless application_active?
-      return false unless active_space?(hwnd)
-      return false unless frontmost?
-      key = key_window
-      main = main_window
-      key.to_i == hwnd.to_i || main.to_i == hwnd.to_i || active?(hwnd)
+      keyboard_focus_active?(hwnd)
     rescue Exception
       false
     end
@@ -227,7 +223,6 @@ module OSXWindowNative
         result = handle_event(event)
         @msg_void_ptr.call(@application, sel("sendEvent:"), event) if result != :consumed
       end
-      clear_keyboard_state unless application_active?
       refresh_keyboard_active
       refresh_window_cache(@main_window) if @main_window.to_i != 0
       maybe_run_application_slice
@@ -251,6 +246,19 @@ module OSXWindowNative
       events
     rescue Exception
       []
+    end
+
+    def clear_input_state
+      clear_keyboard_state(true)
+    end
+
+    def consume_keyboard_reset
+      serial = @keyboard_reset_serial.to_i
+      return false if @keyboard_reset_consumed_serial.to_i == serial
+      @keyboard_reset_consumed_serial = serial
+      true
+    rescue Exception
+      false
     end
 
     def consume_close_request
@@ -482,6 +490,40 @@ module OSXWindowNative
       false
     end
 
+    def install_window_focus_delegate(hwnd)
+      return false if hwnd.to_i == 0
+      klass = window_focus_delegate_class
+      delegate = @msg_id.call(klass, sel("new"))
+      return false if delegate.to_i == 0
+      @msg_void_ptr.call(hwnd, sel("setDelegate:"), delegate)
+      @window_focus_delegate = delegate
+      @retained_objects ||= []
+      @retained_objects << delegate
+      true
+    rescue Exception => e
+      debug("window focus delegate failed: #{e.class}: #{e.message}")
+      false
+    end
+
+    def window_focus_delegate_class
+      return @window_focus_delegate_class if @window_focus_delegate_class.to_i != 0
+      klass_name = "EltenWindowFocusDelegate_#{Process.pid}_#{object_id}"
+      klass = @objc_allocate_class_pair.call(cls("NSObject"), klass_name.b + "\0".b, 0)
+      raise "objc_allocateClassPair failed" if klass.to_i == 0
+      @window_focus_delegate_closures ||= []
+      @window_focus_delegate_closures << add_objc_method(klass, "windowDidResignKey:", Fiddle::TYPE_VOID, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP], "v@:@") do |_self, _cmd, _notification|
+        OSXWindowNative.send(:window_focus_changed, false)
+      end
+      @window_focus_delegate_closures << add_objc_method(klass, "windowDidBecomeKey:", Fiddle::TYPE_VOID, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP], "v@:@") do |_self, _cmd, _notification|
+        OSXWindowNative.send(:window_focus_changed, true)
+      end
+      @window_focus_delegate_closures << add_objc_method(klass, "windowDidMiniaturize:", Fiddle::TYPE_VOID, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP], "v@:@") do |_self, _cmd, _notification|
+        OSXWindowNative.send(:window_focus_changed, false)
+      end
+      @objc_register_class_pair.call(klass)
+      @window_focus_delegate_class = klass
+    end
+
     def create_key_sink_view
       klass = key_sink_view_class
       view = @msg_id.call(klass, sel("alloc"))
@@ -609,8 +651,8 @@ module OSXWindowNative
       return true if defined?(@key_event_monitor) && @key_event_monitor.to_i != 0
       @key_monitor_closure = Fiddle::Closure::BlockCaller.new(Fiddle::TYPE_VOIDP, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP]) do |_block, event|
         begin
-          OSXWindowNative.send(:handle_event, event)
-          0
+          result = OSXWindowNative.send(:handle_event, event)
+          result == :consumed ? 0 : event
         rescue Exception => e
           OSXWindowNative.send(:debug, "key monitor failed: #{e.class}: #{e.message}")
           event
@@ -637,6 +679,7 @@ module OSXWindowNative
         refresh_window_cache(@main_window) if @main_window.to_i != 0
         refresh_keyboard_active
       end
+      reconcile_stale_keyboard_state(now) if @keyboard_allowed == true && timer_due?(:key_reconcile, TIMER_KEY_RECONCILE_SECONDS, now)
       refresh_key_sink_focus if timer_due?(:focus_repair, TIMER_FOCUS_REPAIR_SECONDS, now)
       if @exit_requested == true || (@worker_thread != nil && !@worker_thread.alive?)
         clear_keyboard_state
@@ -712,6 +755,7 @@ module OSXWindowNative
     end
 
     def handle_event(event)
+      return true if keyboard_state_allowed? != true
       type = @msg_int.call(event, sel("type")).to_i
       case type
       when NS_EVENT_TYPE_KEY_DOWN
@@ -909,10 +953,18 @@ module OSXWindowNative
     def set_keyboard_key(key, down, repeat = false)
       @keyboard_state ||= ("\0" * 256)
       @keyboard_allowed = true
+      @key_down_since ||= {}
       key = key.to_i & 0xff
       previous = (@keyboard_state.getbyte(key).to_i & 0x80) != 0
+      return false if down == true && repeat == true && previous != true
       @keyboard_state.setbyte(key, down ? 0x80 : 0)
+      if down == true
+        @key_down_since[key] = monotonic_time if previous != true
+      else
+        @key_down_since.delete(key)
+      end
       queue_key_event(key, down) if !repeat && previous != (down == true)
+      true
     end
 
     def event_repeat?(event)
@@ -928,10 +980,13 @@ module OSXWindowNative
       true
     end
 
-    def clear_keyboard_state
+    def clear_keyboard_state(notify = false)
+      @keyboard_reset_serial = @keyboard_reset_serial.to_i + 1 if notify == true
       @keyboard_state = "\0" * 256
       @key_event_queue ||= []
       @key_event_queue.clear
+      @key_down_since ||= {}
+      @key_down_since.clear
       @translated_key_chars ||= {}
       @translated_key_chars.clear
       @keyboard_allowed = false
@@ -940,19 +995,74 @@ module OSXWindowNative
 
     def keyboard_state_allowed?
       return @keyboard_allowed == true if @app_thread != nil && Thread.current != @app_thread
-      return false if @application.to_i == 0
-      application_active? && frontmost? && key_window.to_i != 0
+      keyboard_focus_active?(@main_window)
     rescue Exception
       false
     end
 
     def refresh_keyboard_active
       hwnd = @main_window
-      @keyboard_allowed = hwnd.to_i != 0 && visible?(hwnd) && onscreen?(hwnd) && application_active? && active_space?(hwnd) && frontmost? && (key_window.to_i == hwnd.to_i || main_window.to_i == hwnd.to_i || active?(hwnd))
-      clear_keyboard_state if @keyboard_allowed != true
+      was_allowed = @keyboard_allowed == true
+      allowed = keyboard_focus_active?(hwnd)
+      if allowed
+        @keyboard_allowed = true
+      else
+        clear_keyboard_state(was_allowed)
+      end
       @keyboard_allowed
     rescue Exception
       @keyboard_allowed = false
+    end
+
+    def keyboard_focus_active?(hwnd)
+      return false if hwnd.to_i == 0 || !visible?(hwnd) || !onscreen?(hwnd)
+      return false unless application_active?
+      return false unless active_space?(hwnd)
+      return false unless frontmost?
+      key_window.to_i == hwnd.to_i
+    rescue Exception
+      false
+    end
+
+    def window_focus_changed(active)
+      if active == true
+        refresh_keyboard_active
+      else
+        clear_keyboard_state(true)
+      end
+      true
+    rescue Exception
+      false
+    end
+
+    def reconcile_stale_keyboard_state(now = nil)
+      return false if @keyboard_allowed != true
+      @keyboard_state ||= ("\0" * 256)
+      @key_down_since ||= {}
+      now ||= monotonic_time
+      @key_down_since.to_a.each do |key, since|
+        if (@keyboard_state.getbyte(key).to_i & 0x80) == 0
+          @key_down_since.delete(key)
+          next
+        end
+        next if now - since.to_f <= stale_key_timeout(key)
+        physical = ::EltenKeyboard.physical_key_down?(key)
+        next if physical != false
+        set_keyboard_key(key, false)
+        Log.debug("Keyboard stale key released: #{key}") if defined?(Log)
+      end
+      true
+    rescue Exception => e
+      Log.warning("Keyboard state reconciliation failed: #{e.class}: #{e.message}") if defined?(Log)
+      false
+    end
+
+    def stale_key_timeout(key)
+      if ::EltenKeyboard::MODIFIER_KEYS.include?(key.to_i)
+        ::EltenKeyboard::STALE_MODIFIER_KEY_SECONDS
+      else
+        ::EltenKeyboard::STALE_REPEATABLE_KEY_SECONDS
+      end
     end
 
     def monotonic_time
@@ -1318,6 +1428,14 @@ module EltenKeyboard
       false
     end
 
+    def physical_key_down?(key)
+      mac_keys = mac_keys_for_virtual_key(key)
+      return nil if mac_keys.empty?
+      mac_keys.any? { |mac_key| cg_event_source_key_state.call(CG_EVENT_SOURCE_STATE_COMBINED_SESSION_STATE, mac_key.to_i).to_i != 0 }
+    rescue Exception
+      nil
+    end
+
     def translate_virtual_key(key, state = nil, _flags = 4)
       key = key.to_i
       state = normalize_keyboard_state(state)
@@ -1443,7 +1561,7 @@ module EltenKeyboard
       last = @last_down_event[key]
       return false if last == nil
       return false if now - last.to_f <= stale_key_timeout(key)
-      !physical_virtual_key_down?(key)
+      physical_virtual_key_down?(key) == false
     rescue Exception
       false
     end
@@ -1453,11 +1571,7 @@ module EltenKeyboard
     end
 
     def physical_virtual_key_down?(key)
-      mac_keys = mac_keys_for_virtual_key(key)
-      return false if mac_keys.empty?
-      mac_keys.any? { |mac_key| cg_event_source_key_state.call(CG_EVENT_SOURCE_STATE_COMBINED_SESSION_STATE, mac_key.to_i).to_i != 0 }
-    rescue Exception
-      false
+      physical_key_down?(key)
     end
 
     def mac_keys_for_virtual_key(key)
@@ -1593,6 +1707,9 @@ module EltenWindow
     end
 
     def activation_input_blocked?
+      return false if @native_window != true || !defined?(OSXWindowNative)
+      OSXWindowNative.consume_keyboard_reset
+    rescue Exception
       false
     end
 
@@ -1636,6 +1753,7 @@ module EltenWindow
 
     def clear_input_state
       @keyboard_state = "\0" * 256
+      OSXWindowNative.clear_input_state if @native_window == true && defined?(OSXWindowNative)
       EltenKeyboard.clear_state
       true
     end
