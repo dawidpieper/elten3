@@ -55,6 +55,7 @@ src/eltenlink/polls.rb
 src/eltenlink/messages.rb
 src/eltenlink/blog.rb
 src/eltenlink/notes.rb
+src/eltenlink/calendars.rb
 src/eltenlink/forum.rb
 src/scenes/faq.rb
 src/scenes/sponsors.rb
@@ -97,6 +98,7 @@ src/scenes/users_recentlyregistered.rb
 src/scenes/users_recentlyactived.rb
 src/scenes/usersearch.rb
 src/scenes/notes.rb
+src/scenes/calendar.rb
 src/scenes/forgotpassword.rb
 src/scenes/honors.rb
 src/scenes/console.rb
@@ -184,6 +186,7 @@ src/ui/controls/static.rb
 src/ui/controls/tree.rb
 src/ui/controls/table_box.rb
 src/ui/controls/grid_box.rb
+src/ui/controls/calendar_grid.rb
 src/ui/controls/player.rb
 src/ui/controls/menu.rb
 src/ui/controls/map.rb

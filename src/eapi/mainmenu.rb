@@ -56,6 +56,7 @@ module GlobalMenu
         m.scene(p_("MainMenu", "&Conferences"), Scene_Conference)
             if Session.name!=nil && Session.name!="guest"
         m.scene(p_("MainMenu", "No&tes"), Scene_Notes)
+        m.scene(p_("MainMenu", "Calenda&r"), Scene_Calendar)
             m.scene(p_("MainMenu", "&Notifications"), Scene_Notifications)
     m.scene(p_("MainMenu", "Po&lls"), Scene_Polls)
     end

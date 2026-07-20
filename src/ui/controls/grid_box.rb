@@ -70,12 +70,12 @@ module EltenAPI
              @x.to_f / (@width - 1).to_f * 100.0
            end
 
-           def focus(index=nil, count=nil, spk=true)
+           def focus(index=nil, count=nil, spk=true, include_header: true)
              pos = lpos
              play_sound("listbox_marker", volume: 100, pitch: 100, pan: pos) if spk && !@silent && Configuration.controlspresentation != 2
              return if !@speech
              text = ""
-             if @header != nil && @header != ""
+             if include_header && @header != nil && @header != ""
                text = @header.dup
                text += ": " if !" .:?!,".include?(text[-1..-1] || "")
              end
@@ -103,7 +103,7 @@ module EltenAPI
              if oldx != @x || oldy != @y
                play_sound("listbox_focus", volume: 100, pitch: 100, pan: lpos) if !@silent
                trigger(:move, @x, @y)
-               focus(nil, nil, true)
+               focus(nil, nil, true, include_header: false)
              end
            end
 

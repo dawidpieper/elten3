@@ -148,6 +148,71 @@ def format_date(date, justdate=false, secs=true)
   return str
   end
 
+def format_localized_date(date, include_weekday: true)
+  return "" if date == nil || !date.respond_to?(:year) || !date.respond_to?(:month) || !date.respond_to?(:day)
+
+  weekdays = [
+    p_("EAPI_Date_Weekday", "Monday"),
+    p_("EAPI_Date_Weekday", "Tuesday"),
+    p_("EAPI_Date_Weekday", "Wednesday"),
+    p_("EAPI_Date_Weekday", "Thursday"),
+    p_("EAPI_Date_Weekday", "Friday"),
+    p_("EAPI_Date_Weekday", "Saturday"),
+    p_("EAPI_Date_Weekday", "Sunday")
+  ]
+  months = [
+    p_("EAPI_Date_Month_Genitive", "January"),
+    p_("EAPI_Date_Month_Genitive", "February"),
+    p_("EAPI_Date_Month_Genitive", "March"),
+    p_("EAPI_Date_Month_Genitive", "April"),
+    p_("EAPI_Date_Month_Genitive", "May"),
+    p_("EAPI_Date_Month_Genitive", "June"),
+    p_("EAPI_Date_Month_Genitive", "July"),
+    p_("EAPI_Date_Month_Genitive", "August"),
+    p_("EAPI_Date_Month_Genitive", "September"),
+    p_("EAPI_Date_Month_Genitive", "October"),
+    p_("EAPI_Date_Month_Genitive", "November"),
+    p_("EAPI_Date_Month_Genitive", "December")
+  ]
+  day = localized_date_day(date.day)
+  weekday_index = if date.respond_to?(:cwday)
+                    date.cwday.to_i - 1
+                  else
+                    (Time.local(date.year, date.month, date.day).wday + 6) % 7
+                  end
+  values = {
+    weekday: weekdays[weekday_index],
+    month: months[date.month.to_i - 1],
+    day: day,
+    year: date.year.to_i
+  }
+  template = if include_weekday
+               p_("EAPI_Date_Format", "%{weekday}, %{month} %{day}, %{year}")
+             else
+               p_("EAPI_Date_Format", "%{month} %{day}, %{year}")
+             end
+  template % values
+rescue ArgumentError, KeyError, TypeError
+  sprintf("%04d-%02d-%02d", date.year.to_i, date.month.to_i, date.day.to_i)
+end
+
+def localized_date_day(day)
+  number = day.to_i
+  template = if (11..13).include?(number % 100)
+               p_("EAPI_Date_Day", "%{day}th")
+             else
+               case number % 10
+               when 1 then p_("EAPI_Date_Day", "%{day}st")
+               when 2 then p_("EAPI_Date_Day", "%{day}nd")
+               when 3 then p_("EAPI_Date_Day", "%{day}rd")
+               else p_("EAPI_Date_Day", "%{day}th")
+               end
+             end
+  template % { day: number }
+rescue ArgumentError, KeyError, TypeError
+  number.to_s
+end
+
 # Wait for a specified time
 #
 # @param time [Float] a time to delay, in seconds
