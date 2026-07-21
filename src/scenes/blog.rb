@@ -319,7 +319,7 @@ if @post.size==0 and @id=="NEW"
 end
 @sel.index=@postselindex
 @sel.focus
-@sel.on(:move) {play_sound("file_audio", volume: 50, pitch: 50, pan: @sel.lpos) if @post[@sel.index]!=nil && @post[@sel.index].audio && @post[@sel.index].audio_url.to_s==""}
+@sel.on(:move) {play_sound("file_audio", volume: 50, pitch: 50, pan: @sel.lpos) if @post[@sel.index]!=nil && (@post[@sel.index].audio || @post[@sel.index].audio_url.to_s!="")}
 @sel.trigger(:move)
 @sel.bind_context{|menu|context(menu)}
 loop do
