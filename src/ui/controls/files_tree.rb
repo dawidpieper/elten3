@@ -327,7 +327,7 @@ end
           else
                     hin=""
           hin=@header+": \r\n" if @header!=""
-                  hin += @file
+                  hin += text_utf8(@file)
         speak(hin)
         NVDA.braille(hin) if defined?(NVDA) && NVDA.check
         end
@@ -372,7 +372,7 @@ end
 
         def fdelete
           afile=self.selected
-          confirm(p_("EAPI_Form", "Do you really want to delete %{filename}?")%{:filename=>self.file}) {
+          confirm(p_("EAPI_Form", "Do you really want to delete %{filename}?")%{:filename=>text_utf8(self.file)}) {
     if File.directory?(afile)
       FileUtils.rm_rf(afile)
     else
