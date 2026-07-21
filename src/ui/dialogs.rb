@@ -106,6 +106,8 @@ def waiting_end
   end
 
   @@dialogvoice=nil
+  @@dialogvoice_generation=0
+  @@dialogvoice_muted_generation=nil
   @@dialogopened=false
 
   def dialog_opened
@@ -113,6 +115,7 @@ def waiting_end
     end
 
   def dialog_mute
+    @@dialogvoice_muted_generation=@@dialogvoice_generation
     @@dialogvoice.volume=0 if @@dialogvoice!=nil
     end
 
@@ -120,11 +123,10 @@ def waiting_end
   def dialog_open
             play_sound("dialog_open")
             dialog_close if @@dialogvoice!=nil
+            generation = (@@dialogvoice_generation += 1)
         if Configuration.bgsounds==1 && Configuration.soundthemeactivation==1
           snd=getsound("dialog_background")
           if snd!=nil
-                          @@dialogvoice_generation ||= 0
-                          generation = (@@dialogvoice_generation += 1)
                           Thread.new do
                             Thread.current.report_on_exception = false
                             begin
@@ -133,6 +135,7 @@ def waiting_end
                               sound.position=0
                               if @@dialogvoice_generation == generation
                                 @@dialogvoice = sound
+                                sound.volume=0 if @@dialogvoice_muted_generation == generation
                                 @@dialogvoice.play
                               else
                                 sound.close
@@ -148,7 +151,6 @@ end
 
 # Closes a dialog
 def dialog_close
-    @@dialogvoice_generation ||= 0
     @@dialogvoice_generation += 1
     if @@dialogvoice != nil
     @@dialogvoice.close
