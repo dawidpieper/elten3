@@ -351,6 +351,7 @@ def invite(user)
     @call_id=EltenLink::Calls.call_user(elten_link, Conference.channel, user)
   rescue EltenLink::Error => e
     Log.warning("Call invite failed: #{e.message}")
+    alert(p_("EAPI_UI", "You cannot call this user")) if e.code.to_s == "calls.not_callable"
   end
     end
 def channel_summary(ch)
