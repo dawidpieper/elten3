@@ -733,6 +733,11 @@ def context(menu)
       }
       }
     end
+    if @iseltenblog && Session.name!="guest"
+      menu.option(p_("Blog", "Mention post"), nil, "w") {
+        mention
+      }
+    end
     if @iseltenblog
         opt=""
       if @post.followed==false
@@ -791,6 +796,40 @@ def context(menu)
          main
          }
     }
+    end
+  end
+  def mention
+    users = []
+    begin
+      users = EltenLink::Contacts.added_me(elten_link)
+    rescue EltenLink::Error
+      alert(_("Error"))
+      return
+    end
+    if users.size == 0
+      alert(p_("Blog", "Nobody added you to their contact list."))
+      return
+    end
+    form = Form.new([ListBox.new(users, header: p_("Blog", "User to mention")), EditBox.new(p_("Blog", "Message"), type: 0, text: "", quiet: true), Button.new(p_("Blog", "Mention post")), Button.new(_("Cancel"))])
+    loop do
+      loop_update
+      form.update
+      if key_pressed?(:key_escape) or ((key_pressed?(:key_enter) or key_pressed?(:key_space)) and form.index == 3)
+        loop_update
+        @form.focus
+        break
+      end
+      if (key_pressed?(:key_enter) or key_pressed?(:key_space)) and form.index == 2
+        begin
+          EltenLink::Blog.send_mention(elten_link, user: users[form.fields[0].index], message: form.fields[1].text, blog: @post.owner, post_id: @post.id)
+        rescue EltenLink::Error
+          alert(_("Error"))
+        else
+          alert(p_("Blog", "The mention has been sent."))
+          @form.focus
+          break
+        end
+      end
     end
   end
 end
