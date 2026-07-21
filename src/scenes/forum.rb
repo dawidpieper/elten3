@@ -2020,6 +2020,7 @@ threadopen(@thrsel.index)
             alert(p_("Forum", "Removed from followed threads list."))
             @sthreads[@thrsel.index].followed = false
             if @forum == -1
+              @lastthreadindex = @thrsel.index
               threadsmain(@forum)
             end
           end
