@@ -1986,6 +1986,28 @@ threadopen(@thrsel.index)
         end
     end
   
+  def thread_move_forums(source_forum)
+    group_order = {}
+    @groups.each_with_index { |group, index| group_order[group.id] = index }
+    forum_order = {}
+    @forums.each_with_index { |forum, index| forum_order[forum.name] = index }
+    current_group_id = source_forum.group.id
+
+    @forums.select { |forum|
+      forum.group.role == 2 || (Session.moderator == 1 && forum.group.recommended)
+    }.sort_by { |forum|
+      priority = if forum.name == source_forum.name
+        0
+      elsif forum.group.id == current_group_id
+        1
+      else
+        2
+      end
+      group_index = priority == 2 ? group_order.fetch(forum.group.id, @groups.size) : 0
+      [priority, group_index, forum_order.fetch(forum.name, @forums.size)]
+    }
+  end
+
   def context_threads(menu)
     group = Struct_Forum_Group.new
     for f in @forums
@@ -2069,10 +2091,7 @@ threadopen(@thrsel.index)
         m.option(p_("Forum", "Move thread"), nil, "O") {
           selt = []
           ind = 0
-          mforums = []
-          for f in @forums
-            mforums.push(f) if f.group.role == 2 or (Session.moderator == 1 && f.group.recommended)
-          end
+          mforums = thread_move_forums(@sthreads[@thrsel.index].forum)
           for f in mforums
             selt.push(f.fullname + " (" + f.group.name + ")")
             ind = selt.size-1 if f.name == @sthreads[@thrsel.index].forum.name
@@ -2326,10 +2345,7 @@ case action
 when :move
           selt = []
           ind = 0
-          mforums = []
-          for f in @forums
-            mforums.push(f) if f.group.role == 2 or (Session.moderator == 1 && f.group.recommended)
-          end
+          mforums = thread_move_forums(threads[0].forum)
           for f in mforums
             selt.push(f.fullname + " (" + f.group.name + ")")
             ind = selt.size-1 if f.name == threads[0].forum.name
