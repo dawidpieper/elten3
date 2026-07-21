@@ -59,7 +59,8 @@ module EltenAPI
   class ChildProc
     attr_reader :pid, :process_id
 
-    def initialize(file, path = nil)
+    def initialize(file, l_path = nil, path: nil, show_window: false)
+      path ||= l_path
       path ||= Dir.pwd
       argv = EltenAPI.send(:child_process_arguments, file)
       raise Errno::ENOENT, file.to_s if argv.empty?
