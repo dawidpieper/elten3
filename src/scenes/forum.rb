@@ -733,6 +733,19 @@ if (((@sgroups[@grpsel.index - @grpheadindex].role==1 || (@sgroups[@grpsel.index
         end
         }
         end
+      if @sgroups[@grpsel.index - @grpheadindex].role == 2 && @sgroups[@grpsel.index - @grpheadindex].founder != Session.name
+        menu.option(p_("Forum", "Resign moderation privileges")) {
+          confirm(p_("Forum", "Are you sure you want to resign moderation privileges in %{groupname}?")%{ :groupname => @sgroups[@grpsel.index - @grpheadindex].name }) {
+            if forum_attempt(nil) {
+              EltenLink::Forum.update_member(elten_link, group_id: @sgroups[@grpsel.index - @grpheadindex].id, user: Session.name, action: "moderationresign")
+            }
+              @sgroups[@grpsel.index - @grpheadindex].role = 1
+              alert(p_("Forum", "You have resigned moderation privileges."))
+            end
+          }
+          @grpsel.focus
+        }
+      end
       s = ""
       s = p_("Forum", "Leave") if (@sgroups[@grpsel.index - @grpheadindex].role == 1 or @sgroups[@grpsel.index - @grpheadindex].role == 2 or @sgroups[@grpsel.index - @grpheadindex].role == 4) and @sgroups[@grpsel.index - @grpheadindex].founder != Session.name
       s = p_("Forum", "Refuse invitation") if @sgroups[@grpsel.index - @grpheadindex].role == 5
