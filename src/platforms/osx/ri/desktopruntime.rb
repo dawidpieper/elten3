@@ -28,6 +28,7 @@ module OSXWindowNative
   NS_EVENT_MASK_KEY_DOWN = 1 << 10
   NS_EVENT_MASK_KEY_UP = 1 << 11
   NS_EVENT_MASK_FLAGS_CHANGED = 1 << 12
+  NS_EVENT_MODIFIER_FLAG_CONTROL = 1 << 18
   NS_EVENT_MODIFIER_FLAG_OPTION = 1 << 19
   NS_EVENT_MODIFIER_FLAG_COMMAND = 1 << 20
   NS_EVENT_MODIFIER_FLAG_FUNCTION = 1 << 23
@@ -39,6 +40,8 @@ module OSXWindowNative
   MAX_KEY_EVENT_QUEUE = 1024
   MAC_KEY_Q = 12
   MAC_KEY_FN = 63
+  NX_DEVICE_LEFT_CONTROL_MASK = 0x00000001
+  NX_DEVICE_RIGHT_CONTROL_MASK = 0x00002000
   NX_DEVICE_LEFT_OPTION_MASK = 0x00000020
   NX_DEVICE_RIGHT_OPTION_MASK = 0x00000040
   TEXT_VIRTUAL_KEYS = [0x20, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF, 0xC0, 0xDB, 0xDC, 0xDD, 0xDE]
@@ -679,6 +682,7 @@ module OSXWindowNative
         refresh_window_cache(@main_window) if @main_window.to_i != 0
         refresh_keyboard_active
       end
+      reconcile_option_control_state if @keyboard_allowed == true
       reconcile_stale_keyboard_state(now) if @keyboard_allowed == true && timer_due?(:key_reconcile, TIMER_KEY_RECONCILE_SECONDS, now)
       refresh_key_sink_focus if timer_due?(:focus_repair, TIMER_FOCUS_REPAIR_SECONDS, now)
       if @exit_requested == true || (@worker_thread != nil && !@worker_thread.alive?)
@@ -893,9 +897,15 @@ module OSXWindowNative
 
     def update_modifier_keys(flags)
       set_keyboard_key(0x10, (flags & (1 << 17)) != 0)
-      set_keyboard_key(0x11, (flags & (1 << 18)) != 0 || (flags & (1 << 20)) != 0)
+      set_keyboard_key(0x11, control_modifier_down?(flags) || (flags & NS_EVENT_MODIFIER_FLAG_COMMAND) != 0)
       set_keyboard_key(0x12, left_option_modifier_down?(flags))
       true
+    end
+
+    def control_modifier_down?(flags)
+      (flags & NS_EVENT_MODIFIER_FLAG_CONTROL) != 0 ||
+        (flags & NX_DEVICE_LEFT_CONTROL_MASK) != 0 ||
+        (flags & NX_DEVICE_RIGHT_CONTROL_MASK) != 0
     end
 
     def left_option_modifier_down?(flags)
@@ -904,6 +914,16 @@ module OSXWindowNative
       right_option = (flags & NX_DEVICE_RIGHT_OPTION_MASK) != 0
       return left_option if left_option || right_option
       (flags & NS_EVENT_MODIFIER_FLAG_OPTION) != 0
+    end
+
+    def reconcile_option_control_state
+      return false if @keyboard_state == nil || (@keyboard_state.getbyte(0x12).to_i & 0x80) == 0
+      control_down = ::EltenKeyboard.physical_key_down?(0x11)
+      return false if control_down == nil
+      set_keyboard_key(0x11, control_down == true)
+      true
+    rescue Exception
+      false
     end
 
     def update_translated_key_character(key, event, down)
