@@ -464,7 +464,7 @@ end
     end
     def serialize_action(action)
       return ":"+action.to_s if action.is_a?(Symbol)
-      return action.name if action.is_a?(Class)
+      return action.to_s if action.is_a?(Class)
       return action.to_s if action.is_a?(String) && action!=""
       nil
     end
