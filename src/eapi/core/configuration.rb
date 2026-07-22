@@ -11,6 +11,7 @@ module EltenAPI
         lang=Configuration.language
   Configuration.listtype = readconfig("Interface", "ListType", 0)
   Configuration.keyboardscheme = readconfig("Interface", "KeyboardScheme", "default")
+  Configuration.macoscharacternavigation = readconfig("Interface", "MacOSCharacterNavigation", "default")
   Configuration.disablefeednotifications = readconfig("Interface", "DisableFeedNotifications", 0)
   Configuration.iimodifiers = readconfig("InvisibleInterface", "IIModifiers", 0)
   Configuration.iicards = readconfig("InvisibleInterface", "Cards", "messages,feed,conference")

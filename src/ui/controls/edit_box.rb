@@ -63,8 +63,9 @@ if idle_update_frame?
   return
 end
       oldindex=@index
-      oldtext=@text      if @audioplayer!=nil and key_pressed?(:key_escape)
-                if @audioplayer != nil and key_pressed?(:key_escape)
+      oldcheck=@check
+      oldtext=@text.dup
+      if @audioplayer!=nil and key_pressed?(:key_escape)
           blur
       elsif @audioplayer!=nil && key_first_pressed?(0x20)
         if @audioplayer.paused?
@@ -93,7 +94,7 @@ end
 navupdate
       editupdate
       ctrlupdate
-      if oldindex!=@index or oldtext!=@text
+      if oldindex!=@index or oldcheck!=@check or oldtext!=@text
           nvda_braille_text if defined?(NVDA) && NVDA.check
         end
             esay
@@ -224,6 +225,22 @@ url=nil
           elsif navigation_action==:text_next_paragraph
             @vindex=next_paragraph_index(@vindex)
             announce_navigation_position
+          elsif EltenAPI::KeyboardScheme.macos_character_navigation? && key_pressed?(:key_right) && !navigation_modifier_held?
+            if !raw_key_held?(:key_shift) && @index!=@check
+              @vindex=[@index,@check].max
+              @ch=true
+              announce_navigation_character(true)
+            else
+              move_character_macos(:right)
+            end
+          elsif EltenAPI::KeyboardScheme.macos_character_navigation? && key_pressed?(:key_left) && !navigation_modifier_held?
+            if !raw_key_held?(:key_shift) && @index!=@check
+              @vindex=[@index,@check].min
+              @ch=true
+              announce_navigation_character
+            else
+              move_character_macos(:left)
+            end
           elsif key_pressed?(:key_right) && !navigation_modifier_held?
                                   @vindex=char_borders(@vindex)[1]
           if @vindex>=text_len
@@ -315,6 +332,7 @@ espeech(p_("EAPI_Form", "End of line"))
                 end
               end
               lastcheck=get_check(true)
+              previous_selection=selection_bounds
               checked=false
                     select_all_action=keyboard_action_pressed?(:select_all)
                     if raw_key_held?(:key_shift)==false and select_all_action==nil and (@index!=@vindex or @ch!=false)
@@ -329,7 +347,9 @@ espeech(p_("EAPI_Form", "End of line"))
             @check=@vindex
           end
         end
-        if (lastcheck!="" || checked) && lastcheck!=get_check
+        if EltenAPI::KeyboardScheme.macos_character_navigation?
+          announce_macos_selection_change(previous_selection, selection_bounds) if raw_key_held?(:key_shift) || select_all_action!=nil
+        elsif (lastcheck!="" || checked) && lastcheck!=get_check
                                     if @index!=@check
                                       chk=get_check
                                       if chk.include?(lastcheck)
@@ -889,6 +909,64 @@ def line_ending(index=@vindex, absolute=false)
     character=text_char(@vindex)
     character="\n" if character=="" && end_of_line
     espeech(character) if character!=""
+  end
+  def move_character_macos(direction)
+    if direction==:right
+      if @vindex>=text_len
+        if Configuration.soundthemeactivation==1
+          play_sound("border")
+        else
+          espeech(p_("EAPI_Form", "End of line"))
+        end
+        return
+      end
+      from,to=char_borders(@vindex)
+      espeech(text_range(from,to))
+      @vindex=to+1
+    else
+      if @vindex<=0
+        if Configuration.soundthemeactivation==1
+          play_sound("border")
+        elsif text_len>0
+          from,to=char_borders(0)
+          espeech(text_range(from,to))
+        else
+          espeech(p_("EAPI_Form", "End of line"))
+        end
+        return
+      end
+      from,to=char_borders(@vindex-1)
+      espeech(text_range(from,to))
+      @vindex=from
+    end
+  end
+  def selection_bounds(index=@index, check=@check)
+    [clamp_text_index(index),clamp_text_index(check)].sort
+  end
+  def interval_difference(range, other)
+    from,to=range
+    return [] if from>=to
+    ranges=[]
+    left_to=[to,other[0]].min
+    ranges.push([from,left_to]) if from<left_to
+    right_from=[from,other[1]].max
+    ranges.push([right_from,to]) if right_from<to
+    ranges
+  end
+  def announce_macos_selection_change(previous, current)
+    return if previous==current
+    added=interval_difference(current,previous)
+    removed=interval_difference(previous,current)
+    if !added.empty?
+      play_sound("editbox_textselected")
+      ranges=added
+    elsif !removed.empty?
+      play_sound("editbox_textunselected")
+      ranges=removed
+    else
+      return
+    end
+    @tosay=ranges.map{|range|text_range_exclusive(range[0],range[1])}.join
   end
   def char_borders(ind)
     ind = clamp_text_index(ind)

@@ -128,6 +128,16 @@ module EltenAPI
         }.fetch(modifier.to_sym, modifier.to_s.upcase)
       end
 
+      def macos_character_navigation?
+        configured = defined?(Configuration) ? Configuration.macoscharacternavigation.to_s.downcase : "default"
+        return true if configured == "enabled"
+        return false if configured == "disabled"
+
+        current == :macos
+      rescue Exception
+        current == :macos
+      end
+
       def key_code(key)
         return key.to_i & 0xff if key.is_a?(Integer)
 
