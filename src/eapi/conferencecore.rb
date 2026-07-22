@@ -2574,6 +2574,15 @@ end
 def onping(t)
 @ping_hooks.each{|h|h.call(t)}
 end
+def round_table_direction(index, listener_index, count)
+return [0.0, -1.0] if count<=1 || index==listener_index
+angle=2.0*Math::PI*((index-listener_index)%count)/count
+x=Math.sin(angle)
+y=Math.cos(angle)-1.0
+length=Math.sqrt(x*x+y*y)
+[x/length, y/length]
+end
+private :round_table_direction
 def onparams(params)
 @position.mutex.synchronize {
 @encoder_mutex.synchronize {
@@ -2658,13 +2667,10 @@ pch=false
 n=params['channel']['users'].size
 c = params['channel']['users'].find_index{|u|u['id']==@voip.uid}
 c=0 if c==nil
-da = 2.0*Math::PI/n
 for i in 0...params['channel']['users'].size
 u = params['channel']['users'][i]
 uid=u['id']
-a = ((n-c+i)%n) * da
-x = 0 + 1*Math::sin(a)
-y = -1*(0.5 - 0.5*Math::cos(a))
+x, y = round_table_direction(i, c, n)
 upusers.push(uid)
 if @transmitters.include?(uid)
 @transmitters[uid].set_hrtf(@hrtf)
