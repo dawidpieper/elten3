@@ -549,7 +549,7 @@ if $setkeys.is_a?(Array)
       main_menu_opened = false
       if !GlobalMenu.opened? && (main_menu_requested || key_pressed?(:key_alt))
         main_menu_opened = true
-        GlobalMenu.show
+        GlobalMenu.show(force_context: main_menu_requested)
       end
       if !main_menu_opened && !GlobalMenu.opened? && key_pressed?(:key_context_menu)
         GlobalMenu.show(false)

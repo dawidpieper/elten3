@@ -11,9 +11,9 @@ module GlobalMenu
 
   class <<self
     @@activecontrols=[]
-  def show(defaults=true)
+  def show(defaults=true, force_context: false)
         return if opened?
-        return if construct(defaults)==false
+        return if construct(defaults, force_context: force_context)==false
         loop_update(false)
         return if @menu.size==0
         @currentmenu = @menu
@@ -21,7 +21,7 @@ module GlobalMenu
         @currentmenu = nil
         loop_update(false)
           end
-  def construct(defaults=true)
+  def construct(defaults=true, force_context: false)
     @header=""
     @header = p_("MainMenu", "Menu") if defaults
     style=:menu
@@ -32,7 +32,7 @@ module GlobalMenu
       if !c.menu_enabled?
         return
         end
-      if defaults != :defaults && (Configuration.contextmenubar==1 || defaults==false)
+      if defaults != :defaults && (Configuration.contextmenubar==1 || defaults==false || force_context)
         c.context(@menu, defaults)
     end
   end
