@@ -528,9 +528,17 @@ if $setkeys.is_a?(Array)
       false
     end
 
+    def consume_native_main_menu_request
+      return false unless EltenWindow.respond_to?(:consume_main_menu_request)
+      EltenWindow.consume_main_menu_request
+    rescue Exception
+      false
+    end
+
     def keyprocs
       return if $windowminimized == true
-      return if keyprocs_idle_frame?
+      main_menu_requested = consume_native_main_menu_request
+      return if keyprocs_idle_frame? && !main_menu_requested
       if keyboard_modifier_state?(:control, :first_pressed)
         speech_stop(false)
         $speech_wait = false
@@ -539,7 +547,7 @@ if $setkeys.is_a?(Array)
         insert_scene(Scene_Piano.new)
       end
       main_menu_opened = false
-      if !GlobalMenu.opened? && key_pressed?(:key_alt)
+      if !GlobalMenu.opened? && (main_menu_requested || key_pressed?(:key_alt))
         main_menu_opened = true
         GlobalMenu.show
       end

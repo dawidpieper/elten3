@@ -280,6 +280,14 @@ module OSXWindowNative
       false
     end
 
+    def consume_main_menu_request
+      requested = @main_menu_requested == true
+      @main_menu_requested = false
+      requested
+    rescue Exception
+      false
+    end
+
     def translated_character_for_key(key)
       @translated_key_chars ||= {}
       @translated_key_chars[key.to_i & 0xff].to_s
@@ -419,6 +427,7 @@ module OSXWindowNative
       refresh_window_cache(0)
       @msg_bool_int.call(@application, sel("setActivationPolicy:"), NS_APPLICATION_ACTIVATION_POLICY_REGULAR)
       install_application_terminate_hook
+      install_main_menu_open_hook
       install_main_menu
       @application
     end
@@ -440,6 +449,10 @@ module OSXWindowNative
       @msg_void_ptr.call(main_menu, sel("addItem:"), app_menu_item)
       app_menu = new_obj("NSMenu")
       @msg_void_bool.call(app_menu, sel("setAutoenablesItems:"), 0)
+      open_menu_item = @msg_id_id_sel_id.call(alloc("NSMenuItem"), sel("initWithTitle:action:keyEquivalent:"), ns_string("Open Elten Menu (ALT)"), sel("eltenOpenMainMenu:"), ns_string(""))
+      @msg_void_ptr.call(open_menu_item, sel("setTarget:"), @application)
+      @msg_void_bool.call(open_menu_item, sel("setEnabled:"), 1)
+      @msg_void_ptr.call(app_menu, sel("addItem:"), open_menu_item)
       quit_item = @msg_id_id_sel_id.call(alloc("NSMenuItem"), sel("initWithTitle:action:keyEquivalent:"), ns_string("Quit Elten"), sel("terminate:"), ns_string("q"))
       @msg_void_ptr.call(quit_item, sel("setTarget:"), @application)
       @msg_void_bool.call(quit_item, sel("setEnabled:"), 1)
@@ -447,7 +460,7 @@ module OSXWindowNative
       @msg_void_ptr.call(app_menu_item, sel("setSubmenu:"), app_menu)
       @msg_void_ptr.call(@application, sel("setMainMenu:"), main_menu)
       @retained_objects ||= []
-      @retained_objects.concat([main_menu, app_menu_item, app_menu, quit_item])
+      @retained_objects.concat([main_menu, app_menu_item, app_menu, open_menu_item, quit_item])
       @main_menu_installed = true
       true
     rescue Exception => e
@@ -465,6 +478,19 @@ module OSXWindowNative
       true
     rescue Exception => e
       debug("application terminate hook failed: #{e.class}: #{e.message}")
+      false
+    end
+
+    def install_main_menu_open_hook
+      return true if @main_menu_open_hook_installed == true
+      @main_menu_open_hook = Fiddle::Closure::BlockCaller.new(Fiddle::TYPE_VOID, [Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP]) do |_self, _cmd, _sender|
+        OSXWindowNative.send(:request_main_menu)
+      end
+      @class_replace_method.call(cls("NSApplication"), sel("eltenOpenMainMenu:"), @main_menu_open_hook, "v@:@".b + "\0".b)
+      @main_menu_open_hook_installed = true
+      true
+    rescue Exception => e
+      debug("main menu open hook failed: #{e.class}: #{e.message}")
       false
     end
 
@@ -791,6 +817,13 @@ module OSXWindowNative
     def request_close(quit_shortcut = false)
       @close_requested = true
       @quit_shortcut_requested = true if quit_shortcut
+      true
+    rescue Exception
+      false
+    end
+
+    def request_main_menu
+      @main_menu_requested = true
       true
     rescue Exception
       false
@@ -1770,6 +1803,13 @@ module EltenWindow
     def consume_quit_shortcut_request
       return false unless @native_window == true && defined?(OSXWindowNative) && OSXWindowNative.respond_to?(:consume_quit_shortcut_request)
       OSXWindowNative.consume_quit_shortcut_request
+    rescue Exception
+      false
+    end
+
+    def consume_main_menu_request
+      return false unless @native_window == true && defined?(OSXWindowNative) && OSXWindowNative.respond_to?(:consume_main_menu_request)
+      OSXWindowNative.consume_main_menu_request
     rescue Exception
       false
     end
