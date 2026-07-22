@@ -248,25 +248,24 @@ module NotificationGroups
     case cat
     when "message"
       if messages_grouped_by_subject?
-        notification.internal_id2.to_s.empty? ? ["message", message_participant(payload), normalized_subject(payload)].join(":") : notification.internal_id2.to_s
+        ["message", message_participant(payload), normalized_subject(payload)].join(":")
       else
-        notification.internal_id3.to_s.empty? ? ["message", message_participant(payload)].join(":") : notification.internal_id3.to_s
+        ["message", message_participant(payload)].join(":")
       end
     when "followedthread", "followedforum", "followedforumpost", "mention"
-      notification.internal_id.to_s.empty? ? ["forum", payload["threadid"].to_i].join(":") : notification.internal_id.to_s
+      ["forum", payload["threadid"].to_i].join(":")
     when "followedblog", "blogcomment", "followedblogpost", "blogmention"
-      notification.internal_id.to_s.empty? ? ["blog", payload["blog"], payload["postid"].to_i].join(":") : notification.internal_id.to_s
+      ["blog", payload["blog"], payload["postid"].to_i].join(":")
     when "blogfollower"
-      notification.internal_id2.to_s.empty? ? ["blog", payload["blog"]].join(":") : notification.internal_id2.to_s
-    when "friend", "birthday", "mtr"
-      notification.internal_id.to_s.empty? ? [cat, payload["user"]].join(":") : notification.internal_id.to_s
+      ["blog", payload["blog"]].join(":")
+    when "birthday"
+      [cat, payload["user"], payload["date"]].join(":")
+    when "friend", "mtr"
+      [cat, payload["user"]].join(":")
     when "groupinvitation"
-      notification.internal_id.to_s.empty? ? [cat, payload["groupid"].to_i].join(":") : notification.internal_id.to_s
+      [cat, payload["groupid"].to_i].join(":")
     else
-      key = notification.internal_id.to_s
-      key = notification.internal_id2.to_s if key.empty?
-      key = notification.internal_id3.to_s if key.empty?
-      key.empty? ? [cat, notification.id.to_i].join(":") : key
+      [cat, notification.id.to_i].join(":")
     end
   end
 
