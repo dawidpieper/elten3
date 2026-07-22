@@ -105,9 +105,13 @@ class Menu
         o=c
         o=c[0] if c.is_a?(Array)
         if c.is_a?(Array) and c[3]!="" and c[3]!=nil
-          k=(c[3].is_a?(Symbol))?(c[3].to_s):(get_character_name(c[3]))
-          k="SHIFT+"+k.to_s if k.to_s.downcase!=k
-          o+=(c[3].is_a?(Symbol))?(" "+k.gsub("_","+")):(" (CTRL+"+k.to_s+")")
+          if c[3].is_a?(EltenAPI::KeyboardScheme::Action)
+            o+=" ("+keyboard_action_label(c[3].name)+")"
+          else
+            k=(c[3].is_a?(Symbol))?(c[3].to_s):(get_character_name(c[3]))
+            k="SHIFT+"+k.to_s if k.to_s.downcase!=k
+            o+=(c[3].is_a?(Symbol))?(" "+k.gsub("_","+")):(" ("+main_modifier_name+"+"+k.to_s+")")
+          end
           end
         opts.push(o)
                 acs.push(c)

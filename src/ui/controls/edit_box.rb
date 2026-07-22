@@ -10,7 +10,6 @@ module EltenAPI
   class EditBox < FormField
     BRAILLE_CONTEXT_CHARS = 25_000
     READ_TEXT_BREAK_PATTERN = /\n|[!?\.,] /.freeze
-    WORD_NAVIGATION_SCAN_CHARS = 3_000
     @@customactions=[]
     @@lastedits=[]
     attr_accessor :index
@@ -121,44 +120,38 @@ elsif Configuration.typingecho==0 or Configuration.typingecho==2
       end
     if key_pressed?(:key_enter)
       speech_stop
-          if (@flags&Flags::MultiLine)>0 and key_held?(0x11)==false and (@flags&Flags::ReadOnly)==0
+      submit = keyboard_action_pressed?(:submit)
+          if (@flags&Flags::MultiLine)>0 and submit==nil and (@flags&Flags::ReadOnly)==0
       einsert("\n")
       play_sound("editbox_endofline")
-    elsif ((@flags&Flags::MultiLine)==0 or key_held?(0x11)) and (@flags&Flags::ReadOnly)==0
+    elsif ((@flags&Flags::MultiLine)==0 or submit!=nil) and (@flags&Flags::ReadOnly)==0
       play_sound("listbox_select")
       trigger(:select, @index)
             end
           end
-          if key_pressed?(0x2e) and (@index<text_len or @check<text_len) and (@flags&Flags::ReadOnly)==0
+          delete_action = keyboard_action_pressed?(:delete_next_word, :delete_line_end)
+          if raw_key_pressed?(:key_delete) and (@index<text_len or @check<text_len) and (@flags&Flags::ReadOnly)==0
             play_sound("editbox_delete")
-            c=selected_range || selected_or_current_range
-                                                                                                        edelete(c[0],c[1])
-                                                                          espeech(text_char(@index))
+            c=selected_range || deletion_range(delete_action)
+            c=selected_or_current_range if c==nil && delete_action==nil
+            if c!=nil
+              edelete(c[0],c[1])
+              espeech(text_char(@index))
+            end
           end
-          if key_pressed?(0x08) and (@index>0 or @check>0) and (@flags&Flags::ReadOnly)==0
-if key_held?(0x11) && @index==@check && @index>0
-  from=@index-1
-    to=@index-1
-      from-=1 while from>0 && (text_char(from)=="\n" || text_char(from)==" ")
-  from-=1 while from>0 && text_char(from-1)!=" " && text_char(from-1)!="\n"
-  if from<=to
-  espeech(text_range(from,to))
-  edelete(from, to)
-  play_sound("editbox_delete")
-  end
-else
+          delete_action = keyboard_action_pressed?(:delete_previous_word, :delete_line_start)
+          if raw_key_pressed?(:backspace) and (@index>0 or @check>0) and (@flags&Flags::ReadOnly)==0
             play_sound("editbox_delete")
-c=[]
-if (range=selected_range)
-c=range
-else
-  oind=ind=@index-1
-  ind=char_borders(ind)[0]
-  c=[ind,oind]
-end
-                                                                                                                                espeech(text_range(c[0],c[1]).split("")[0])
-            edelete(c[0],c[1])
-end
+            c=selected_range || deletion_range(delete_action)
+            if c==nil && delete_action==nil
+              oind=ind=@index-1
+              ind=char_borders(ind)[0]
+              c=[ind,oind]
+            end
+            if c!=nil
+              espeech(text_range(c[0],c[1]).split("")[0])
+              edelete(c[0],c[1])
+            end
                                                 end
                     end
 def readupdate
@@ -173,7 +166,7 @@ url=nil
         loop_update
         end
       end
-      if key_held?(0x10) && key_held?(0x11)
+      if raw_key_held?(:key_shift) && modifier_held?(:main_modifier)
         if key_pressed?(67)
           copy
         elsif key_pressed?(88)
@@ -184,15 +177,15 @@ url=nil
         end
               e=nil
       if key_pressed?(72)
-      e=find_element(Element::Header,nil,key_held?(0x10),@index)
+      e=find_element(Element::Header,nil,raw_key_held?(:key_shift),@index)
     elsif (0x31..0x36).any? { |key| key_pressed?(key) }
       k=1
       (1..6).each {|i| k=i if key_pressed?(0x30+i)}
-        e=find_element(Element::Header,k,key_held?(0x10),@index)
+        e=find_element(Element::Header,k,raw_key_held?(:key_shift),@index)
       elsif key_pressed?(75)
-        e=find_element([Element::Link,Element::Frame],nil,key_held?(0x10),@index)
+        e=find_element([Element::Link,Element::Frame],nil,raw_key_held?(:key_shift),@index)
         elsif key_pressed?(73)
-        e=find_element(Element::ListItem,nil,key_held?(0x10),@index)
+        e=find_element(Element::ListItem,nil,raw_key_held?(:key_shift),@index)
         end
   if e!=nil
     @index=e.from
@@ -201,12 +194,37 @@ url=nil
     play_sound("border")
     end
   end
-                    def navupdate
-            @vindex=key_held?(0x10)?@check:@index
+          def navupdate
+            @vindex=raw_key_held?(:key_shift)?@check:@index
             prvindex=@vindex
             last=@vindex
             @ch=false
-          if key_pressed?(:key_right)
+            navigation_action=keyboard_action_pressed?(:text_start, :text_end, :text_line_start, :text_line_end, :text_previous_word, :text_next_word, :text_previous_paragraph, :text_next_paragraph)
+          if navigation_action==:text_start
+            @vindex=0
+            announce_navigation_position
+          elsif navigation_action==:text_end
+            @vindex=text_len
+            announce_navigation_position
+          elsif navigation_action==:text_line_start
+            @vindex=line_beginning
+            announce_navigation_character
+          elsif navigation_action==:text_line_end
+            @vindex=line_ending
+            announce_navigation_character(true)
+          elsif navigation_action==:text_previous_word
+            @vindex=previous_word_index(@vindex)
+            espeech(text_range(@vindex,last-1)) if @vindex<last
+          elsif navigation_action==:text_next_word
+            @vindex=next_word_index(@vindex)
+            espeech(text_range(last,@vindex-1)) if @vindex>last
+          elsif navigation_action==:text_previous_paragraph
+            @vindex=previous_paragraph_index(@vindex)
+            announce_navigation_position
+          elsif navigation_action==:text_next_paragraph
+            @vindex=next_paragraph_index(@vindex)
+            announce_navigation_position
+          elsif key_pressed?(:key_right) && !navigation_modifier_held?
                                   @vindex=char_borders(@vindex)[1]
           if @vindex>=text_len
             if Configuration.soundthemeactivation == 1
@@ -222,21 +240,13 @@ espeech(p_("EAPI_Form", "End of line"))
                     espeech(p_("EAPI_Form", "End of line"))
                     end
                   else
-                    if key_held?(0x11)==false
                               ind=char_borders(@vindex)[1]+1
         oi=ind
         e=char_borders(ind)[1]
                         espeech(text_range(oi,e))
                 @vindex=oi
-              else
-                scan_to=[@vindex+WORD_NAVIGATION_SCAN_CHARS,text_len].min
-                fallback=key_held?(0x10)?scan_to:scan_to-1
-                @vindex=((@vindex+(key_held?(0x10)?((@vindex>=(text_len-1))?1:2):1) ... scan_to).find_all { |i| text_char(i)==" " or text_char(i)=="\n"}.sort[0]||fallback)
-                                @vindex+=(key_held?(0x10) ? 0 : 1)
-                                                                                                (@vindex==text_len)?play_sound("editbox_endofline"):espeech(text_range((key_held?(0x10)?((0 .. @vindex).find_all { |i| text_char(i)==" " or text_char(i)=="\n"}.sort.last||0):@vindex),(@vindex+1 .. text_len).find_all { |i| text_char(i)==" " or text_char(i)=="\n"}.sort[0]||text_len-1))
-                                                                                              end
                               end
-                                              elsif key_pressed?(:key_left)
+                                              elsif key_pressed?(:key_left) && !navigation_modifier_held?
         if @vindex<=0
           if Configuration.soundthemeactivation == 1
           play_sound("border")
@@ -249,18 +259,12 @@ espeech(p_("EAPI_Form", "End of line"))
             end
           end
                   else
-        if key_held?(0x11)==false
                     ind=@vindex-1
                   ind=char_borders(ind)[0]
                                             espeech(text_range(ind,@vindex-1))
                 @vindex=ind
-              else
-                                scan_from=[@vindex-WORD_NAVIGATION_SCAN_CHARS,0].max
-                @vindex=((scan_from ... @vindex-1).find_all { |i| text_char(i)==" " or text_char(i)=="\n"}.sort.last||(scan_from-1))+1
-                espeech(text_range(@vindex,(@vindex+1 ... text_len).find_all { |i| text_char(i)==" " or text_char(i)=="\n"}.sort[0]||text_len-1))
-                end
               end
-            elsif key_pressed?(:key_up) and !key_held?(0x2d)
+            elsif key_pressed?(:key_up) and !raw_key_held?(:key_insert) && !navigation_modifier_held?
               b=line_beginning
               e=line_ending
                             if b==0
@@ -272,11 +276,11 @@ espeech(p_("EAPI_Form", "End of line"))
                 bm=line_beginning(b-1)
                 l=em-bm if em-bm<l
                 l=0 if e-b<=1
-                l=line_ending(bm-1)-bm-1 if key_held?(0x10)
+                l=line_ending(bm-1)-bm-1 if raw_key_held?(:key_shift)
                                 @vindex=bm+l
                 espeech(em>0?(text_range(bm,em-1)):"")
                 end
-            elsif key_pressed?(:key_down) and !key_held?(0x2D)
+            elsif key_pressed?(:key_down) and !raw_key_held?(:key_insert) && !navigation_modifier_held?
               b=line_beginning
               e=line_ending
               if e==text_len
@@ -288,24 +292,12 @@ espeech(p_("EAPI_Form", "End of line"))
                 bp=line_beginning(e+1)
                 l=ep-bp if ep-bp<l
                 l=0 if e-b<=1
-                l=line_ending(@vindex+1)-bp if key_held?(0x10)
+                l=line_ending(@vindex+1)-bp if raw_key_held?(:key_shift)
                                 @vindex=bp+l
                 espeech(text_range(bp,ep-1))
                 end
         end
-        if key_pressed?(0x24)  && !key_held?(0x5B) && !key_held?(0x5C)
-                    @ch=@vindex=key_held?(0x11)?0:line_beginning
-                            espeech(key_held?(0x11)?text_range(line_beginning,line_ending):text_range(@vindex,text_len-1).split("")[0]) if @vindex<text_len
-                          elsif key_pressed?(0x23) && !key_held?(0x5B) && !key_held?(0x5C)
-                            if !key_held?(0x10)
-          @ch=@vindex=key_held?(0x11)?(text_len):line_ending
-          espeech(key_held?(0x11)?text_range(line_beginning,line_ending):(((t=text_char(line_ending))=="")?"\n":t))
-        else
-          @ch=@vindex=key_held?(0x11)?(text_len):line_ending(@vindex+1)
-          espeech(key_held?(0x11)?text_range(line_beginning,line_ending):(((t=text_char(line_ending))=="")?"\n":t))
-          end
-                                                end
-                                                        if key_pressed?(0x21)  && !key_held?(0x5B) && !key_held?(0x5C)
+                                                        if key_pressed?(:key_page_up) && !modifier_held?(:command)
                     if line_beginning==0
                 play_sound("border")
                 espeech(text_range(0,line_ending-1))
@@ -313,7 +305,7 @@ espeech(p_("EAPI_Form", "End of line"))
                 @vindex=move_page_lines(-15)
                 espeech(text_range(line_beginning,line_ending-1))
                 end
-            elsif key_pressed?(0x22)  && !key_held?(0x5B) && !key_held?(0x5C)
+            elsif key_pressed?(:key_page_down) && !modifier_held?(:command)
               if line_ending==text_len
                 play_sound("border")
                                 espeech(text_range(line_beginning,line_ending-1))
@@ -324,12 +316,13 @@ espeech(p_("EAPI_Form", "End of line"))
               end
               lastcheck=get_check(true)
               checked=false
-                    if key_held?(0x10)==false and (@index!=@vindex or @ch!=false)
+                    select_all_action=keyboard_action_pressed?(:select_all)
+                    if raw_key_held?(:key_shift)==false and select_all_action==nil and (@index!=@vindex or @ch!=false)
                       checked=true if @check!=@index
                       @check=@index=@vindex
-                    elsif (key_held?(0x10)==true and @check!=@vindex) or (key_held?(0x11) and key_pressed?(65) and !key_held?(0x12))
+                    elsif (raw_key_held?(:key_shift)==true and @check!=@vindex) or select_all_action!=nil
                       checked=true
-            if key_held?(0x11) and key_pressed?(65) and !key_held?(0x12)
+            if select_all_action!=nil
                         @index=0
             @check=text_len
           else
@@ -543,7 +536,7 @@ paste
   menu.option(p_("EAPI_Form", "Undo"), nil, "z") {
 eundo
   }
-  menu.option(p_("EAPI_Form", "Redo"), nil, "y") {
+  menu.option(p_("EAPI_Form", "Redo"), nil, EltenAPI::KeyboardScheme.action(:redo)) {
 eredo
   }
   if defined?(SpellCheck) && (!SpellCheck.respond_to?(:available?) || SpellCheck.available?)
@@ -828,6 +821,48 @@ l=((((index>3000?index-3000:0) ... index).find_all { |i| text_char(i)=="\n"}[-1]
   end
       return ind
 end
+def previous_word_index(index)
+  index = clamp_text_index(index)
+  index -= 1 while index>0 && word_separator?(text_char(index-1))
+  index -= 1 while index>0 && !word_separator?(text_char(index-1))
+  index
+end
+def next_word_index(index)
+  index = clamp_text_index(index)
+  index += 1 while index<text_len && !word_separator?(text_char(index))
+  index += 1 while index<text_len && word_separator?(text_char(index))
+  index
+end
+def previous_paragraph_index(index)
+  index = clamp_text_index(index)
+  beginning = line_beginning(index, true)
+  return beginning if index>beginning
+  return 0 if beginning<=0
+  line_beginning(beginning-1, true)
+end
+def next_paragraph_index(index)
+  ending = line_ending(clamp_text_index(index), true)
+  ending<text_len ? ending+1 : text_len
+end
+def word_separator?(character)
+  character==" " || character=="\n" || character=="\t"
+end
+def deletion_range(action)
+  case action
+  when :delete_previous_word
+    from=previous_word_index(@index)
+    from<@index ? [from,@index-1] : nil
+  when :delete_next_word
+    to=next_word_index(@index)
+    to>@index ? [@index,to-1] : nil
+  when :delete_line_start
+    from=line_beginning(@index)
+    from<@index ? [from,@index-1] : nil
+  when :delete_line_end
+    to=line_ending(@index)
+    to>@index ? [@index,to-1] : nil
+  end
+end
 def line_ending(index=@vindex, absolute=false)
   index = clamp_text_index(index)
               return 0 if text_len==0
@@ -840,6 +875,20 @@ def line_ending(index=@vindex, absolute=false)
   end
   ind=ls[ln+1]-1
     return ind
+  end
+  def announce_navigation_position
+    if text_len==0
+      espeech("")
+      return
+    end
+    beginning=line_beginning(@vindex, true)
+    ending=line_ending(@vindex, true)
+    espeech(ending>beginning ? text_range(beginning,ending-1) : "")
+  end
+  def announce_navigation_character(end_of_line=false)
+    character=text_char(@vindex)
+    character="\n" if character=="" && end_of_line
+    espeech(character) if character!=""
   end
   def char_borders(ind)
     ind = clamp_text_index(ind)
@@ -1538,7 +1587,7 @@ end
       end
     end
     def key_processed(k)
-      return false if k==:enter && (key_held?(0x11) || (@flags&Flags::MultiLine)==0)
+      return false if k==:enter && (modifier_held?(:main_modifier) || (@flags&Flags::MultiLine)==0)
      return true
    end
    def self.add_customaction(name, cls, &b)

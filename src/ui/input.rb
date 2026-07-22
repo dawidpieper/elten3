@@ -109,40 +109,101 @@ Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f/100.0)
       return alt_pressed? if [:key_alt, :alt].include?(key)
       return context_menu_pressed? if [:key_context_menu, :context_menu, :context_menu_key].include?(key)
       return enter_pressed? if [:key_enter, :enter].include?(key)
-      code, shift = keyboard_code(key)
-      return false if code == 0
-      return false if shift && !key_held?(0x10)
-      EltenAPI::KeyboardState.pressed?(code)
+      return main_modifier_pressed? if main_modifier_key?(key)
+      raw_key_pressed?(key)
     end
 
     def arrow_pressed?(code, repeat=false)
-      return false if key_held?(0x5B) || key_held?(0x5C)
-      EltenAPI::KeyboardState.pressed?(code)
+      return false if modifier_held?(:command)
+      raw_key_pressed?(code)
     end
 
     def key_held?(key)
       ensure_keyboard_state
-      code, shift = keyboard_code(key)
-      return false if code == 0
-      return false if shift && !key_held?(0x10)
-      return true if EltenWindow.keyboard_key_held?(code)
-      EltenAPI::KeyboardState.held?(code)
+      return main_modifier_held? if main_modifier_key?(key)
+      raw_key_held?(key)
     end
 
     def key_released?(key)
       ensure_keyboard_state
-      code, shift = keyboard_code(key)
-      return false if code == 0
-      return false if shift && !EltenAPI::KeyboardState.held?(0x10)
-      EltenAPI::KeyboardState.released?(code)
+      return main_modifier_released? if main_modifier_key?(key)
+      raw_key_released?(key)
     end
 
     def key_first_pressed?(key)
       ensure_keyboard_state
-      code, shift = keyboard_code(key)
+      return main_modifier_first_pressed? if main_modifier_key?(key)
+      raw_key_first_pressed?(key)
+    end
+
+    def keyboard_action_pressed?(*actions)
+      actions.flatten.each do |action|
+        binding = EltenAPI::KeyboardScheme.binding(action)
+        next if binding == nil
+        if keyboard_binding_pressed?(binding)
+          @@altdown = false if binding.include?(:option)
+          return action
+        end
+      end
+      nil
+    end
+
+    def main_shortcut_pressed?(key, shift: false, first: false)
+      code, implied_shift = keyboard_code(key)
       return false if code == 0
-      return false if shift && !EltenAPI::KeyboardState.held?(0x10)
-      EltenAPI::KeyboardState.first_pressed?(code)
+      binding = [code, EltenAPI::KeyboardScheme.main_modifier]
+      binding << :shift if shift || implied_shift
+      keyboard_binding_pressed?(binding, first: first)
+    end
+
+    def modifier_held?(modifier)
+      modifier = EltenAPI::KeyboardScheme.main_modifier if modifier.to_sym == :main_modifier
+      modifier = EltenAPI::KeyboardScheme.word_modifier if modifier.to_sym == :word_modifier
+      keyboard_modifier_state?(modifier, :held)
+    end
+
+    def main_modifier_held?
+      modifier_held?(:main_modifier)
+    end
+
+    def physical_control_held?
+      modifier_held?(:control)
+    end
+
+    def navigation_modifier_held?
+      [:control, :option, :command].any? { |modifier| modifier_held?(modifier) }
+    end
+
+    def main_modifier_name
+      EltenAPI::KeyboardScheme.modifier_name
+    end
+
+    def keyboard_action_label(action)
+      binding = EltenAPI::KeyboardScheme.binding(action)
+      return "" if binding == nil
+      key, *requirements = binding
+      requirements.delete(:shift_optional)
+      parts = requirements.map do |modifier|
+        EltenAPI::KeyboardScheme.modifier_name(modifier)
+      end
+      parts << key.to_s.upcase
+      parts.join("+")
+    end
+
+    def raw_key_pressed?(key)
+      raw_key_state?(key, :pressed)
+    end
+
+    def raw_key_held?(key)
+      raw_key_state?(key, :held)
+    end
+
+    def raw_key_released?(key)
+      raw_key_state?(key, :released)
+    end
+
+    def raw_key_first_pressed?(key)
+      raw_key_state?(key, :first_pressed)
     end
 
     def key_any_pressed?
@@ -151,28 +212,98 @@ Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f/100.0)
     end
 
     def alt_pressed?
-      alt_first_pressed = key_first_pressed?(0x12)
+      alt_first_pressed = raw_key_first_pressed?(:key_alt)
       @@altdown||=false
       @@altdown=true if alt_first_pressed
-      @@altdown=false if @@altdown && (key_first_pressed?(0x10) || key_first_pressed?(0x11))
+      @@altdown=false if @@altdown && (raw_key_first_pressed?(:key_shift) || keyboard_modifier_state?(:control, :first_pressed) || keyboard_modifier_state?(:command, :first_pressed))
       if (@@altdowntime||0)<Time.now.to_f-1 && !alt_first_pressed
         @@altdowntime=Time.now.to_f
         return false
       end
-      @@altdown=false if key_held?(0x11) || key_held?(0x5B) || key_held?(0x5C) || key_held?(0x10) || key_held?(0x09) || key_pressed?(0x09) || key_first_pressed?(0x09)
-              l=key_released?(0x12)&&@@altdown
+      @@altdown=false if modifier_held?(:control) || modifier_held?(:command) || raw_key_held?(:key_shift) || raw_key_held?(:key_tab) || raw_key_pressed?(:key_tab) || raw_key_first_pressed?(:key_tab)
+              l=raw_key_released?(:key_alt)&&@@altdown
               @@altdowntime=0 if l
     return l
     end
 
     def context_menu_pressed?
-      return false if key_held?(0x12) || key_released?(0x12) || key_first_pressed?(0x12)
-      return false if key_held?(0x11) || key_held?(0x10) || key_held?(0x5B) || key_held?(0x5C)
-      key_first_pressed?(0x5D)
+      return false if raw_key_held?(:key_alt) || raw_key_released?(:key_alt) || raw_key_first_pressed?(:key_alt)
+      return false if modifier_held?(:control) || modifier_held?(:command) || raw_key_held?(:key_shift)
+      raw_key_first_pressed?(:context_menu)
     end
 
     def enter_pressed?
-    return EltenAPI::KeyboardState.pressed?(0x0D)
+    raw_key_pressed?(:key_enter)
+    end
+
+    def main_modifier_pressed?
+      keyboard_modifier_state?(EltenAPI::KeyboardScheme.main_modifier, :pressed)
+    end
+
+    def main_modifier_released?
+      keyboard_modifier_state?(EltenAPI::KeyboardScheme.main_modifier, :released)
+    end
+
+    def main_modifier_first_pressed?
+      keyboard_modifier_state?(EltenAPI::KeyboardScheme.main_modifier, :first_pressed)
+    end
+
+    def main_modifier_key?(key)
+      [:main_modifier, :key_control, :control, :ctrl, EltenAPI::KeyboardScheme.key_code(:control)].include?(key)
+    end
+
+    def keyboard_binding_pressed?(binding, first: false)
+      key, *requirements = binding
+      shift_optional = requirements.delete(:shift_optional) != nil
+      shift_required = requirements.delete(:shift) != nil
+      key_pressed = first ? raw_key_first_pressed?(key) : raw_key_pressed?(key)
+      return false unless key_pressed
+
+      required_modifiers = requirements.map(&:to_sym).sort
+      active_modifiers = [:control, :option, :command].select { |modifier| keyboard_modifier_state?(modifier, :held) }.sort
+      return false unless active_modifiers == required_modifiers
+      return true if shift_optional
+
+      raw_key_held?(:key_shift) == shift_required
+    end
+
+    def keyboard_modifier_state?(modifier, state)
+      modifier_keys(modifier).any? { |key| raw_key_state?(key, state) }
+    end
+
+    def modifier_keys(modifier)
+      case modifier.to_sym
+      when :control
+        keys = [:control_left, :control_right]
+        keys << :control if current_platform_os != "osx"
+        keys
+      when :command
+        [:command_left, :command_right]
+      when :option
+        [:option]
+      when :shift
+        [:shift]
+      else
+        []
+      end
+    end
+
+    def current_platform_os
+      defined?(EltenSystemHelpers) ? EltenSystemHelpers.platform_os.to_s : ""
+    rescue Exception
+      ""
+    end
+
+    def raw_key_state?(key, state)
+      ensure_keyboard_state
+      code = EltenAPI::KeyboardScheme.key_code(key)
+      code, shift = keyboard_code(key) if code == nil
+      return false if code == nil || code == 0
+      return false if shift && !EltenAPI::KeyboardState.held?(EltenAPI::KeyboardScheme.key_code(:shift))
+      return true if state == :held && EltenWindow.keyboard_key_held?(code)
+      EltenAPI::KeyboardState.public_send("#{state}?", code)
+    rescue Exception
+      false
     end
 
     def ensure_keyboard_state
@@ -203,6 +334,16 @@ Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f/100.0)
         [0x27, false]
       when :key_down, :key_arrow_down, :arrow_down, :down
         [0x28, false]
+      when :key_home, :home
+        [EltenAPI::KeyboardScheme.key_code(:home), false]
+      when :key_end, :end
+        [EltenAPI::KeyboardScheme.key_code(:end), false]
+      when :key_page_up, :page_up
+        [EltenAPI::KeyboardScheme.key_code(:page_up), false]
+      when :key_page_down, :page_down
+        [EltenAPI::KeyboardScheme.key_code(:page_down), false]
+      when :key_context_menu, :context_menu
+        [EltenAPI::KeyboardScheme.key_code(:context_menu), false]
       when :key_shift, :shift
         [0x10, false]
       when :key_control, :control, :ctrl
@@ -390,11 +531,11 @@ if $setkeys.is_a?(Array)
     def keyprocs
       return if $windowminimized == true
       return if keyprocs_idle_frame?
-      if key_first_pressed?(0x11)
+      if keyboard_modifier_state?(:control, :first_pressed)
         speech_stop(false)
         $speech_wait = false
       end
-      if key_held?(0x11) && key_held?(0x12) && key_held?(0x10) && key_first_pressed?(80)
+      if modifier_held?(:control) && modifier_held?(:option) && raw_key_held?(:key_shift) && raw_key_first_pressed?(80)
         insert_scene(Scene_Piano.new)
       end
       main_menu_opened = false
@@ -426,14 +567,14 @@ if $setkeys.is_a?(Array)
           $resetting=false
         end
       end
-      if !key_held?(0x12)
-        ctrl_held = key_held?(0x11)
-        shift_held = key_held?(0x10)
+      if !modifier_held?(:option)
+        main_modifier_held = modifier_held?(:main_modifier)
+        shift_held = raw_key_held?(:key_shift)
         for i in 1..11
           k=0x6F+i
-          if key_first_pressed?(k)
+          if raw_key_first_pressed?(k)
             l=i
-            l+=12 if ctrl_held
+            l+=12 if main_modifier_held
             l*=-1 if shift_held
             for a in QuickActions.hotkey_actions(l)
               a.call
@@ -442,12 +583,21 @@ if $setkeys.is_a?(Array)
         end
       end
       any_key_pressed = key_any_pressed?
-      if !key_held?(0x12) && any_key_pressed
+      if any_key_pressed
         t=GlobalMenu.ctitems
         for m in t
           l=m[3]
-          k, shift = keycode(l)
-          if key_first_pressed?(k) && key_held?(0x10)==shift && ((key_held?(0x11) && !l.is_a?(Symbol)) || (l.is_a?(Symbol) && !key_held?(0x11))) && m[1].is_a?(Proc)
+          k, shift = keycode(l) unless l.is_a?(EltenAPI::KeyboardScheme::Action)
+          shortcut_pressed = if l.is_a?(EltenAPI::KeyboardScheme::Action)
+            keyboard_action_pressed?(l.name)!=nil
+          elsif modifier_held?(:option)
+            false
+          elsif l.is_a?(Symbol)
+            raw_key_first_pressed?(k) && raw_key_held?(:key_shift) == shift && !modifier_held?(:control) && !modifier_held?(:command)
+          else
+            main_shortcut_pressed?(k, shift: shift, first: true)
+          end
+          if shortcut_pressed && m[1].is_a?(Proc)
             m[1].call(m[2])
             loop_update(false)
           end

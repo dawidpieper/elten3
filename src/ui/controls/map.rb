@@ -147,7 +147,7 @@ def play(sound,x=nil,y=nil)
         end
       end
       if d<@range
-          keyevents.each {|a| trigger(a[0], key_held?(0x10), key_held?(0x11), key_held?(0x12))}
+          keyevents.each {|a| trigger(a[0], raw_key_held?(:key_shift), modifier_held?(:main_modifier), modifier_held?(:option))}
           trigger(:range)
         end
         trigger(:touch) if x==@x&&y==@y
@@ -283,7 +283,7 @@ end
         laststep=0
         loop do
       loop_update
-      keyevents.each {|a| trigger(a[0], key_held?(0x10), key_held?(0x11), key_held?(0x12))}
+      keyevents.each {|a| trigger(a[0], raw_key_held?(:key_shift), modifier_held?(:main_modifier), modifier_held?(:option))}
       if (laststep+@move_delay)<Time.now.to_f
       if key_pressed?(:key_down, repeat: true)
         laststep=Time.now.to_f

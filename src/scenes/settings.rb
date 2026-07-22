@@ -151,6 +151,7 @@ def make_window
             make_setting(p_("Settings", "Round up the forms"), :bool, "Interface", "RoundUpForms")                    
             make_setting(p_("Settings", "Disable feed notifications"), :bool, "Interface", "DisableFeedNotifications")
             make_setting(p_("Settings", "Automatically play audio content"), [p_("Settings", "Always"),p_("Settings", "Only when transcription is not available"), p_("Settings", "Never")], "Interface", "AutoPlay")                    
+            make_setting(p_("Settings", "Keyboard scheme"), [p_("Settings", "Default"), p_("Settings", "Windows"), p_("Settings", "macOS")], "Interface", "KeyboardScheme", ["default", "windows", "macos"])
             on_load {
             @form.fields[1].on(:change) {
             if @form.fields[1].checked

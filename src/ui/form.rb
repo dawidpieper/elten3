@@ -124,7 +124,7 @@ end
 
         def update(*arg)
       if @events!=nil && @events.size>0 && !keyboard_idle_frame?
-        keyevents.each {|a| trigger(a[0], key_held?(0x10), key_held?(0x11), key_held?(0x12)) if !key_processed(a[1])}
+        keyevents.each {|a| trigger(a[0], raw_key_held?(:key_shift), modifier_held?(:main_modifier), modifier_held?(:option)) if !key_processed(a[1])}
       end
       $activecontrols.push(self) if $activecontrols.is_a?(Array)
     end
@@ -393,9 +393,8 @@ def delete_timer(timer)
   loop do
 loop_update
     inp.update
-    rtmp = false
-    rtmp = true if ml == false or key_held?(0x11) == true
-    break if key_pressed?(:key_enter) and rtmp == true
+    submit = keyboard_action_pressed?(:submit)
+    break if key_pressed?(:key_enter) and (ml == false or submit != nil)
     if (ro == true or (flags.is_a?(Numeric) and (flags&EditBox::Flags::ReadOnly)>0)) and (key_pressed?(:key_escape) or key_pressed?(:key_alt) or key_pressed?(:key_enter))
       r = ""
   r = nil if key_pressed?(:key_alt)

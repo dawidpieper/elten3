@@ -20,7 +20,7 @@ module EltenAPI
         l=@label
         if @key!=0
           l+=" ("
-          l+="CTRL+" if @key.abs>12
+          l+=KeyboardScheme.modifier_name+"+" if @key.abs>12
           l+="SHIFT+" if @key<0
           l+="F"+(@key.abs%12).to_s
           l+=")"

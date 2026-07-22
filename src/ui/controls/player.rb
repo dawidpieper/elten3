@@ -66,7 +66,12 @@ return @sound
 def update
 super
   return if @sound!=nil && @sound.closed?
-    if key_held?(0x10)              ==false && key_held?(0x11)==false
+    boundary_action=keyboard_action_pressed?(:player_start, :player_end)
+    if boundary_action==:player_start && get_sound!=nil
+      get_sound.position=0
+    elsif boundary_action==:player_end && get_sound!=nil
+      get_sound.position=get_sound.length-1
+    elsif raw_key_held?(:key_shift)==false && !modifier_held?(:main_modifier)
       if get_sound!=nil
       if key_pressed?(0x21)
         chapters=get_sound.chapters
@@ -82,10 +87,6 @@ if ch!=nil
           get_sound.position=ch.time
           speak(ch.name)
           end
-        elsif key_pressed?(0x24)
-          get_sound.position = 0
-        elsif key_pressed?(0x23)
-          get_sound.position = get_sound.length-1
         end
         end
             if key_pressed?(:key_right)
@@ -106,7 +107,7 @@ get_sound.volume = 10 if get_sound.volume > 10
         get_sound.volume -= pl
 get_sound.volume = 0.05 if get_sound.volume < 0.05
 end
-elsif key_held?(0x11)==true and key_held?(0x10)==false
+elsif modifier_held?(:main_modifier) && raw_key_held?(:key_shift)==false
   if key_pressed?(:key_up, repeat: true)
                       get_sound.tempo += 2
 get_sound.tempo = 100 if get_sound.tempo > 100
@@ -117,7 +118,7 @@ play_sound("listbox_focus") if get_sound.tempo==0
 get_sound.tempo = -50 if get_sound.tempo < -50
 play_sound("listbox_focus") if get_sound.tempo==0
 end
-elsif key_held?(0x10)==true and key_held?(0x11)==false
+elsif raw_key_held?(:key_shift) && !modifier_held?(:main_modifier)
   if key_pressed?(:key_right, repeat: true)
         get_sound.pan += 0.02
         get_sound.pan = 1 if get_sound.pan > 1
@@ -426,7 +427,7 @@ h=d/3600
     tips.push(p_("EAPI_Form", "Use up/down arrows to change playback volume"))
     tips.push(p_("EAPI_Form", "Use SHIFT with left/right arrows to change panning"))
     tips.push(p_("EAPI_Form", "Use SHIFT with up/down arrows to change pitch"))
-    tips.push(p_("EAPI_Form", "Use CTRL with up/down arrows to change tempo"))
+    tips.push(p_("EAPI_Form", "Use CTRL with up/down arrows to change tempo").sub(/CTRL/i, main_modifier_name))
     tips.push(p_("EAPI_Form", "Use backspace to return to the default settings"))
     tips.push(p_("EAPI_Form", "Use home or end to move to the beginning or ending of a track"))
     tips.push(p_("EAPI_Form", "Use page up or page down to navigate to the previous or next chapter"))

@@ -21,7 +21,7 @@ module EltenAPI
       loop do
         loop_update
         sel.update
-        if key_held?(0x11) and key_pressed?(81)
+        if physical_control_held? and key_pressed?(81)
 sel.options=["Zabieraj mi to okno","Spadaj z mojego pulpitu","Mam ciebie dość, zamknij się","Zejdź mi z oczu"]
           sel.focus
           end
@@ -167,7 +167,7 @@ loop_update
       loop do
         loop_update
         form.update
-        if form.fields[2].pressed? or (key_held?(0x11) and key_pressed?(:key_enter))
+        if form.fields[2].pressed? or keyboard_action_pressed?(:submit)
           kom = form.fields[0].text
           if LocalConfig['ConsoleDontCopySource']==1
             outKom=""

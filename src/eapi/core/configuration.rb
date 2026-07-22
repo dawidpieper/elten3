@@ -10,6 +10,7 @@ module EltenAPI
         Log.info("Loading configuration")
         lang=Configuration.language
   Configuration.listtype = readconfig("Interface", "ListType", 0)
+  Configuration.keyboardscheme = readconfig("Interface", "KeyboardScheme", "default")
   Configuration.disablefeednotifications = readconfig("Interface", "DisableFeedNotifications", 0)
   Configuration.iimodifiers = readconfig("InvisibleInterface", "IIModifiers", 0)
   Configuration.iicards = readconfig("InvisibleInterface", "Cards", "messages,feed,conference")

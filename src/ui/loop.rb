@@ -177,7 +177,7 @@ end
       raise SystemExit if EltenWindow.consume_close_request
       key_update
       EltenTray.restore_hotkey_pressed? if tray_supported? && defined?(EltenTray) && loop_update_due?(:tray_restore_hotkey, PERIODIC_FAST_SECONDS, loop_now)
-      if key_held?(0x10) && key_held?(0x11)
+      if raw_key_held?(:key_shift) && modifier_held?(:control)
         $errcou||=0
         $errcou+=1 if key_released?(0x2E)
       if $errcou==3

@@ -896,9 +896,21 @@ module OSXWindowNative
     end
 
     def update_modifier_keys(flags)
-      set_keyboard_key(0x10, (flags & (1 << 17)) != 0)
-      set_keyboard_key(0x11, control_modifier_down?(flags) || (flags & NS_EVENT_MODIFIER_FLAG_COMMAND) != 0)
-      set_keyboard_key(0x12, left_option_modifier_down?(flags))
+      set_keyboard_key(::EltenKeyboard::VK_SHIFT, (flags & (1 << 17)) != 0)
+      control_down = control_modifier_down?(flags)
+      command_down = (flags & NS_EVENT_MODIFIER_FLAG_COMMAND) != 0
+      left_control = ::EltenKeyboard.physical_key_down?(::EltenKeyboard::VK_CONTROL_LEFT) == true
+      right_control = ::EltenKeyboard.physical_key_down?(::EltenKeyboard::VK_CONTROL_RIGHT) == true
+      left_command = ::EltenKeyboard.physical_key_down?(::EltenKeyboard::VK_COMMAND_LEFT) == true
+      right_command = ::EltenKeyboard.physical_key_down?(::EltenKeyboard::VK_COMMAND_RIGHT) == true
+      left_control = true if control_down && !left_control && !right_control
+      left_command = true if command_down && !left_command && !right_command
+      set_keyboard_key(::EltenKeyboard::VK_CONTROL_LEFT, left_control)
+      set_keyboard_key(::EltenKeyboard::VK_CONTROL_RIGHT, right_control)
+      set_keyboard_key(::EltenKeyboard::VK_COMMAND_LEFT, left_command)
+      set_keyboard_key(::EltenKeyboard::VK_COMMAND_RIGHT, right_command)
+      set_keyboard_key(::EltenKeyboard::VK_CONTROL, control_down || command_down)
+      set_keyboard_key(::EltenKeyboard::VK_OPTION, left_option_modifier_down?(flags))
       true
     end
 
@@ -917,10 +929,15 @@ module OSXWindowNative
     end
 
     def reconcile_option_control_state
-      return false if @keyboard_state == nil || (@keyboard_state.getbyte(0x12).to_i & 0x80) == 0
-      control_down = ::EltenKeyboard.physical_key_down?(0x11)
-      return false if control_down == nil
-      set_keyboard_key(0x11, control_down == true)
+      return false if @keyboard_state == nil || (@keyboard_state.getbyte(::EltenKeyboard::VK_OPTION).to_i & 0x80) == 0
+      left_control = ::EltenKeyboard.physical_key_down?(::EltenKeyboard::VK_CONTROL_LEFT)
+      right_control = ::EltenKeyboard.physical_key_down?(::EltenKeyboard::VK_CONTROL_RIGHT)
+      return false if left_control == nil && right_control == nil
+      set_keyboard_key(::EltenKeyboard::VK_CONTROL_LEFT, left_control == true)
+      set_keyboard_key(::EltenKeyboard::VK_CONTROL_RIGHT, right_control == true)
+      command_down = (@keyboard_state.getbyte(::EltenKeyboard::VK_COMMAND_LEFT).to_i & 0x80) != 0 ||
+        (@keyboard_state.getbyte(::EltenKeyboard::VK_COMMAND_RIGHT).to_i & 0x80) != 0
+      set_keyboard_key(::EltenKeyboard::VK_CONTROL, left_control == true || right_control == true || command_down)
       true
     rescue Exception
       false
@@ -1310,11 +1327,17 @@ end
 module EltenKeyboard
   VK_SHIFT = 0x10
   VK_CONTROL = 0x11
-  VK_MENU = 0x12
+  VK_OPTION = 0x12
+  VK_MENU = VK_OPTION
+  VK_COMMAND_LEFT = 0x5B
+  VK_COMMAND_RIGHT = 0x5C
+  VK_CONTROL_LEFT = 0xA2
+  VK_CONTROL_RIGHT = 0xA3
+  VK_CONTEXT_MENU = 0x5D
   CG_EVENT_SOURCE_STATE_COMBINED_SESSION_STATE = 0
   STALE_REPEATABLE_KEY_SECONDS = 1.0
   STALE_MODIFIER_KEY_SECONDS = 15.0
-  MODIFIER_KEYS = [VK_SHIFT, VK_CONTROL, VK_MENU, 0x5B, 0x5C, 0x5D]
+  MODIFIER_KEYS = [VK_SHIFT, VK_CONTROL, VK_OPTION, VK_COMMAND_LEFT, VK_COMMAND_RIGHT, VK_CONTROL_LEFT, VK_CONTROL_RIGHT, VK_CONTEXT_MENU]
 
   MAC_TO_VK = {
     0 => 0x41, 1 => 0x53, 2 => 0x44, 3 => 0x46, 4 => 0x48, 5 => 0x47,
@@ -1325,9 +1348,9 @@ module EltenKeyboard
     31 => 0x4F, 32 => 0x55, 33 => 0xDB, 34 => 0x49, 35 => 0x50, 36 => 0x0D,
     37 => 0x4C, 38 => 0x4A, 39 => 0xDE, 40 => 0x4B, 41 => 0xBA, 42 => 0xDC,
     43 => 0xBC, 44 => 0xBF, 45 => 0x4E, 46 => 0x4D, 47 => 0xBE, 48 => 0x09,
-    49 => 0x20, 50 => 0xC0, 51 => 0x08, 53 => 0x1B, 54 => 0x11, 55 => 0x11,
-    56 => 0x10, 57 => 0x14, 58 => 0x12, 59 => 0x11, 60 => 0x10,
-    62 => 0x11, 96 => 0x74, 97 => 0x75, 98 => 0x76, 99 => 0x72,
+    49 => 0x20, 50 => 0xC0, 51 => 0x08, 53 => 0x1B, 54 => VK_COMMAND_RIGHT, 55 => VK_COMMAND_LEFT,
+    56 => 0x10, 57 => 0x14, 58 => 0x12, 59 => VK_CONTROL_LEFT, 60 => 0x10,
+    62 => VK_CONTROL_RIGHT, 96 => 0x74, 97 => 0x75, 98 => 0x76, 99 => 0x72,
     100 => 0x77, 101 => 0x78, 103 => 0x7A, 109 => 0x79, 111 => 0x7B,
     114 => 0x2D, 115 => 0x24, 116 => 0x21, 117 => 0x2E, 118 => 0x73,
     119 => 0x23, 120 => 0x71, 121 => 0x22, 122 => 0x70, 123 => 0x25,

@@ -440,9 +440,9 @@ def accontext(menu)
     k.push(i)
     s.push("SHIFT+F"+i.to_s)
     k.push(-i)
-    s.push("CTRL+F"+i.to_s)
+    s.push(EltenAPI::KeyboardScheme.modifier_name+"+F"+i.to_s)
     k.push(i+12)
-    s.push("CTRL+SHIFT+F"+i.to_s)
+    s.push(EltenAPI::KeyboardScheme.modifier_name+"+SHIFT+F"+i.to_s)
     k.push(-(i+12))
   end
   ind=k.find_index(@actions[qacindex].key)||0

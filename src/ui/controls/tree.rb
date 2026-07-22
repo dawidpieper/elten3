@@ -39,7 +39,7 @@ super
           @opfocused=true
           end
     end
-              if @way.size>0 and (@lr!=2 and @sel.collapsed?) or (key_pressed?(:key_up) and sel.index==0)
+              if @way.size>0 and (@lr!=2 and @sel.collapsed?) or (key_pressed?(:key_up) and !navigation_modifier_held? and sel.index==0)
       ind=@way.last
       @way.delete_at(@way.size-1)
       @sel=createselect(@way,ind)

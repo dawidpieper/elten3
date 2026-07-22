@@ -392,7 +392,7 @@ end
 
 def self.wait_for_speech_interrupt
   while speech_actived
-    speech_stop if key_held?(0x11)
+    speech_stop if physical_control_held?
     sleep 0.01
   end
 rescue Exception

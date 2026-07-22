@@ -51,7 +51,7 @@ module EltenAPI
         target = @date + 7 if key_pressed?(:key_down)
         target = shift_month(-1) if key_pressed?(0x21)
         target = shift_month(1) if key_pressed?(0x22)
-        target = Date.today if key_pressed?(0x24)
+        target = Date.today if keyboard_action_pressed?(:calendar_today)
 
         move_to(target) if target != nil
         trigger(:select, @date) if key_pressed?(:key_enter) || key_pressed?(:key_space)

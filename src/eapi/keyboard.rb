@@ -3,10 +3,152 @@
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
 
 module EltenAPI
+  module KeyboardScheme
+    Action = Struct.new(:name, keyword_init: true)
+
+    KEY_CODES = {
+      shift: 0x10,
+      control: 0x11,
+      option: 0x12,
+      command_left: 0x5B,
+      command_right: 0x5C,
+      context_menu: 0x5D,
+      control_left: 0xA2,
+      control_right: 0xA3,
+      caps_lock: 0x14,
+      backspace: 0x08,
+      delete: 0x2E,
+      enter: 0x0D,
+      left: 0x25,
+      up: 0x26,
+      right: 0x27,
+      down: 0x28,
+      home: 0x24,
+      end: 0x23,
+      page_up: 0x21,
+      page_down: 0x22,
+      a: 0x41,
+      t: 0x54,
+      y: 0x59,
+      z: 0x5A
+    }.freeze
+
+    PROFILES = {
+      windows: {
+        main_modifier: :control,
+        word_modifier: :control,
+        actions: {
+          list_position: [:up, :control],
+          list_count: [:down, :control],
+          list_start: [:home],
+          list_end: [:end],
+          text_start: [:home, :control, :shift_optional],
+          text_end: [:end, :control, :shift_optional],
+          text_line_start: [:home, :shift_optional],
+          text_line_end: [:end, :shift_optional],
+          text_previous_word: [:left, :control, :shift_optional],
+          text_next_word: [:right, :control, :shift_optional],
+          text_previous_paragraph: [:up, :control, :shift_optional],
+          text_next_paragraph: [:down, :control, :shift_optional],
+          delete_previous_word: [:backspace, :control],
+          delete_next_word: [:delete, :control],
+          select_all: [:a, :control],
+          undo: [:z, :control],
+          redo: [:y, :control],
+          submit: [:enter, :control],
+          player_start: [:home],
+          player_end: [:end],
+          calendar_today: [:home]
+        }.freeze
+      }.freeze,
+      macos: {
+        main_modifier: :command,
+        word_modifier: :option,
+        actions: {
+          list_position: [:up, :command],
+          list_count: [:down, :command],
+          list_start: [:up, :option],
+          list_end: [:down, :option],
+          text_start: [:up, :command, :shift_optional],
+          text_end: [:down, :command, :shift_optional],
+          text_line_start: [:left, :command, :shift_optional],
+          text_line_end: [:right, :command, :shift_optional],
+          text_previous_word: [:left, :option, :shift_optional],
+          text_next_word: [:right, :option, :shift_optional],
+          text_previous_paragraph: [:up, :option, :shift_optional],
+          text_next_paragraph: [:down, :option, :shift_optional],
+          delete_previous_word: [:backspace, :option],
+          delete_next_word: [:delete, :option],
+          delete_line_start: [:backspace, :command],
+          delete_line_end: [:delete, :command],
+          select_all: [:a, :command],
+          undo: [:z, :command],
+          redo: [:z, :command, :shift],
+          submit: [:enter, :command],
+          player_start: [:left, :command],
+          player_end: [:right, :command],
+          calendar_today: [:t, :command]
+        }.freeze
+      }.freeze
+    }.freeze
+
+    class << self
+      def current
+        configured = defined?(Configuration) ? Configuration.keyboardscheme.to_s.downcase.to_sym : :default
+        return configured if PROFILES.key?(configured)
+
+        default_profile
+      rescue Exception
+        default_profile
+      end
+
+      def binding(action)
+        PROFILES.fetch(current).fetch(:actions).fetch(action.to_sym, nil)
+      end
+
+      def action(name)
+        Action.new(name: name.to_sym).freeze
+      end
+
+      def main_modifier
+        PROFILES.fetch(current).fetch(:main_modifier)
+      end
+
+      def word_modifier
+        PROFILES.fetch(current).fetch(:word_modifier)
+      end
+
+      def modifier_name(modifier = :main_modifier)
+        modifier = main_modifier if modifier.to_sym == :main_modifier
+        {
+          control: "CTRL",
+          command: "COMMAND",
+          option: "OPTION",
+          shift: "SHIFT"
+        }.fetch(modifier.to_sym, modifier.to_s.upcase)
+      end
+
+      def key_code(key)
+        return key.to_i & 0xff if key.is_a?(Integer)
+
+        KEY_CODES[key.to_sym]
+      end
+
+      private
+
+      def default_profile
+        os = defined?(EltenSystemHelpers) ? EltenSystemHelpers.platform_os.to_s : ""
+        os == "osx" ? :macos : :windows
+      rescue Exception
+        :windows
+      end
+    end
+  end
+
   module KeyboardState
     Result = Struct.new(:pressed, :held, :released, :first_pressed, :repeated, :state, keyword_init: true)
 
-    MODIFIER_KEYS = [0x10, 0x11, 0x12, 0x14, 0x5B, 0x5C, 0x5D]
+    MODIFIER_KEYS = [:shift, :control, :option, :caps_lock, :command_left, :command_right, :context_menu, :control_left, :control_right].map { |key| KeyboardScheme.key_code(key) }.freeze
     DEFAULT_REPEAT_DELAY = 0.45
     DEFAULT_REPEAT_INTERVAL = 1.0 / 30.0
 

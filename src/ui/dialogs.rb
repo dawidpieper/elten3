@@ -60,7 +60,7 @@ elsif form.fields[0].text!="" and form.fields[1]==nil
   form.fields[1]=snd
   end
         form.update
-        if (((key_pressed?(:key_enter) or key_pressed?(:key_space)) and form.index==1) or (key_pressed?(:key_enter) and key_held?(0x11) and form.index==0)) and form.fields[0].text!=""
+        if (((key_pressed?(:key_enter) or key_pressed?(:key_space)) and form.index==1) or (keyboard_action_pressed?(:submit) and form.index==0)) and form.fields[0].text!=""
           dialog_close
           return legacy_line_to_text(form.fields[0].text)
           break

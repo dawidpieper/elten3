@@ -492,16 +492,21 @@ return idle_update if idle_update_frame?
 super
 @selected_now=false
 mark_item_audio_active(self.index) if item_audio?(self.index)
-if key_held?(0x11) && !key_held?(0x10)
-  if key_pressed?(:key_up)
-    speak((@index+1).to_s)
-  elsif key_pressed?(:key_down)
-    speak(@options.size.to_s)
-    end
-  end
+position_action = keyboard_action_pressed?(:list_position, :list_count)
+speak((@index+1).to_s) if position_action == :list_position
+speak(@options.size.to_s) if position_action == :list_count
     oldindex = self.index
       options = @options
-if ((@lr and key_pressed?(:key_left)) or (!@lr and key_pressed?(:key_up)) or (@anydir and (key_pressed?(:key_left) or key_pressed?(:key_up)))) and !key_held?(0x10) and !key_held?(0x2D) and !key_held?(0x11)
+boundary_action = keyboard_action_pressed?(:list_start, :list_end)
+if boundary_action == :list_start && !options.empty?
+  @run = true
+  self.index = 0
+  self.index += 1 while hidden?(self.index) == true
+elsif boundary_action == :list_end && !options.empty?
+  @run = true
+  self.index = options.size - 1
+  self.index -= 1 while hidden?(self.index) == true
+elsif ((@lr and key_pressed?(:key_left)) or (!@lr and key_pressed?(:key_up)) or (@anydir and (key_pressed?(:key_left) or key_pressed?(:key_up)))) and !raw_key_held?(:key_shift) and !raw_key_held?(:key_insert) and !navigation_modifier_held?
   @run = true
   self.index -= 1
         while hidden?(self.index) == true && self.index>=0
@@ -521,7 +526,7 @@ if ((@lr and key_pressed?(:key_left)) or (!@lr and key_pressed?(:key_up)) or (@a
     end
     end
   end
-  elsif ((@lr and key_pressed?(:key_right)) or (!@lr and key_pressed?(:key_down)) or (@anydir and (key_pressed?(:key_right) or key_pressed?(:key_down)))) and !key_held?(0x10)  and !key_held?(0x2D) and !key_held?(0x11)
+  elsif ((@lr and key_pressed?(:key_right)) or (!@lr and key_pressed?(:key_down)) or (@anydir and (key_pressed?(:key_right) or key_pressed?(:key_down)))) and !raw_key_held?(:key_shift) and !raw_key_held?(:key_insert) and !navigation_modifier_held?
 @run = true
     self.index += 1
     while hidden?(self.index) == true
@@ -567,21 +572,7 @@ end
     speak(tag+": "+o)
     end
   end
-  if key_pressed?(0x23) == true  && !key_held?(0x5B) && !key_held?(0x5C)
-@run = true
-        self.index = options.size - 1
-      while hidden?(self.index) == true
-    self.index -= 1
-    end
-    end
-  if key_pressed?(0x24) == true  && !key_held?(0x5B) && !key_held?(0x5C)
-@run = true
-        self.index = 0
-      while hidden?(self.index) == true
-    self.index += 1
-    end
-    end
-  if key_pressed?(0x21) == true and @lr==false  && !key_held?(0x5B) && !key_held?(0x5C)
+  if key_pressed?(:key_page_up) == true and @lr==false && !modifier_held?(:command)
     if self.index > 14
             for i in 1..15
               self.index-=1
@@ -597,7 +588,7 @@ end
     self.index += 1
   end
     end
-        if key_pressed?(0x22) == true and @lr==false  && !key_held?(0x5B) && !key_held?(0x5C)
+        if key_pressed?(:key_page_down) == true and @lr==false && !modifier_held?(:command)
        if self.index < (options.size - 15)
             for i in 1..15
               self.index+=1
@@ -881,8 +872,8 @@ def key_processed(k)
     if @tagged
       tps.push(p_("EAPI_Form", "Use shift with up/down arrows to filter content by tags"))
       end
-    tps.push(p_("EAPI_Form", "Press CTRL + up arrow to read item index"))
-    tps.push(p_("EAPI_Form", "Press CTRL + down arrow to read count of items"))
+    tps.push(p_("EAPI_Form", "Press CTRL + up arrow to read item index").sub(/CTRL/i, main_modifier_name))
+    tps.push(p_("EAPI_Form", "Press CTRL + down arrow to read count of items").sub(/CTRL/i, main_modifier_name))
     return tps
     end
 end
