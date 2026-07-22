@@ -247,7 +247,11 @@ module NotificationGroups
     cat = notification.cat.to_s
     case cat
     when "message"
-      notification.internal_id2.to_s.empty? ? ["message", message_participant(payload), normalized_subject(payload)].join(":") : notification.internal_id2.to_s
+      if messages_grouped_by_subject?
+        notification.internal_id2.to_s.empty? ? ["message", message_participant(payload), normalized_subject(payload)].join(":") : notification.internal_id2.to_s
+      else
+        notification.internal_id3.to_s.empty? ? ["message", message_participant(payload)].join(":") : notification.internal_id3.to_s
+      end
     when "followedthread", "followedforum", "followedforumpost", "mention"
       notification.internal_id.to_s.empty? ? ["forum", payload["threadid"].to_i].join(":") : notification.internal_id.to_s
     when "followedblog", "blogcomment", "followedblogpost", "blogmention"
@@ -353,6 +357,8 @@ module NotificationGroups
     participant = message_participant(payload)
     title = payload["groupname"].to_s
     title = participant if title.empty?
+    return title unless messages_grouped_by_subject?
+
     subject = payload["subject"].to_s
     subject = p_("Notifications", "No subject") if subject.empty?
     [title, subject].reject(&:empty?).join(": ")
@@ -409,9 +415,14 @@ module NotificationGroups
     scene = if participant.to_s.empty?
       Scene_Messages.new(true, close_to_main: true)
     else
-      Scene_Messages.new(user: participant, subject: message_subject(payload), close_to_main: true)
+      subject = message_subject(payload) if messages_grouped_by_subject?
+      Scene_Messages.new(user: participant, subject: subject, close_to_main: true)
     end
     insert_scene(scene, true, return_to_main: true)
+  end
+
+  def messages_grouped_by_subject?
+    LocalConfig['MessagesDefaultToAllMessages'].to_i == 0
   end
 
   def message_participant(payload)
