@@ -338,7 +338,7 @@ module NotificationGroups
     when "blogmention"
       [blog_post_title(payload), payload["author"].to_s, payload["message"].to_s].reject(&:empty?).join(" - ")
     when "blogfollower"
-      [payload["user"].to_s, payload["blog"].to_s].reject(&:empty?).join(" - ")
+      [payload["user"].to_s, blog_display_name(payload)].reject(&:empty?).join(" - ")
     when "friend", "mtr"
       payload["user"].to_s
     when "groupinvitation"
@@ -365,9 +365,14 @@ module NotificationGroups
 
   def blog_post_title(payload)
     title = payload["title"].to_s
-    blog = payload["blog"].to_s
+    blog = blog_display_name(payload)
     return title if blog.empty? || title.include?(blog)
     title.empty? ? blog : "#{blog}: #{title}"
+  end
+
+  def blog_display_name(payload)
+    name = payload["blogname"].to_s
+    name.empty? ? payload["blog"].to_s : name
   end
 
   def update_title(payload)
@@ -395,7 +400,7 @@ module NotificationGroups
     when "followedthread", "followedforum", "followedforumpost", "mention"
       Proc.new { open_forum_thread(payload, cat.to_s) }
     when "followedblog", "blogcomment", "followedblogpost", "blogmention"
-      Proc.new { open_blog_post(payload) }
+      Proc.new { open_blog_post(payload, cat.to_s) }
     when "blogfollower"
       Proc.new { insert_scene(Scene_Blog_Followers.new(nil), true) }
     when "friend"
@@ -461,7 +466,7 @@ module NotificationGroups
     mention
   end
 
-  def open_blog_post(payload)
+  def open_blog_post(payload, cat=nil)
     blog = payload["blog"].to_s
     post_id = payload["postid"].to_i
     if blog.empty? || post_id <= 0
@@ -473,7 +478,18 @@ module NotificationGroups
     post.owner = blog
     post.name = payload["title"].to_s
     post.author = payload["author"].to_s
+    post.mention = blog_mention_from_payload(payload) if cat.to_s == "blogmention" && payload["mentionid"].to_i > 0
     insert_scene(Scene_Blog_Read.new(post, -1, 0, 0), true)
+  end
+
+  def blog_mention_from_payload(payload)
+    mention = Struct_Blog_Mention.new
+    mention.id = payload["mentionid"].to_i
+    mention.blog = payload["blog"].to_s
+    mention.postid = payload["postid"].to_i
+    mention.author = payload["author"].to_s
+    mention.message = payload["message"].to_s
+    mention
   end
 
   def open_notification_group(group)
