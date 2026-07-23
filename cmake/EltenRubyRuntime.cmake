@@ -22,8 +22,8 @@ set(ELTEN_WINDOWS_ARM64_RUBY_VERSION "${ELTEN_RUBY_VERSION}" CACHE STRING "Ruby 
 set(ELTEN_OSX_ARM64_RUBY_VERSION "${ELTEN_RUBY_VERSION}" CACHE STRING "Ruby version used by macOS arm64 launcher builds")
 set(ELTEN_MSYS2_BASE_URL "https://github.com/msys2/msys2-installer/releases/download/nightly-x86_64/msys2-base-x86_64-latest.tar.xz" CACHE STRING "MSYS2 base archive URL used by Windows launcher builds")
 set(ELTEN_WINDOWS_X64_MSYS2_PACKAGES "base-devel mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-make mingw-w64-ucrt-x86_64-pkgconf" CACHE STRING "MSYS2 packages installed for Windows x64 native gem builds")
-set(ELTEN_WINDOWS_X86_MSYS2_PACKAGES "base-devel mingw-w64-i686-gcc mingw-w64-i686-make mingw-w64-i686-pkgconf" CACHE STRING "MSYS2 packages installed for Windows x86 native gem builds")
-set(ELTEN_WINDOWS_ARM64_MSYS2_PACKAGES "base-devel mingw-w64-clang-aarch64-gcc mingw-w64-clang-aarch64-make mingw-w64-clang-aarch64-pkgconf" CACHE STRING "MSYS2 packages installed for Windows arm64 native gem builds")
+set(ELTEN_WINDOWS_X86_MSYS2_PACKAGES "base-devel mingw-w64-i686-gcc mingw-w64-i686-make mingw-w64-i686-pkgconf mingw-w64-i686-sqlite3" CACHE STRING "MSYS2 packages installed for Windows x86 native gem builds")
+set(ELTEN_WINDOWS_ARM64_MSYS2_PACKAGES "base-devel mingw-w64-clang-aarch64-gcc mingw-w64-clang-aarch64-make mingw-w64-clang-aarch64-pkgconf mingw-w64-clang-aarch64-sqlite3" CACHE STRING "MSYS2 packages installed for Windows arm64 native gem builds")
 
 function(elten_ruby_version_parts version out_major out_minor out_api out_dll_abi)
   string(REGEX MATCH "^([0-9]+)\\.([0-9]+)" version_match "${version}")

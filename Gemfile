@@ -30,4 +30,5 @@ end
 gem "http-2", "1.1.3"
 gem "ostruct", "0.6.3"
 gem "ruby-xz", "1.0.3"
+gem "sqlite3", "2.9.5"
 gem "zstd-ruby", "2.0.6"
