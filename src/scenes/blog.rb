@@ -1590,6 +1590,7 @@ def load_comments
   make_setting(p_("Blog", "Split comments on the website into pages"), :bool, "page_comments")
   make_setting(p_("Blog", "Comments per page"), :number, "comments_per_page")
   make_setting(p_("Blog", "Firstly display"), [p_("Blog", "Newest comments"), p_("Blog", "Oldest comments")], "default_comments_page", ["newest", "oldest"])
+  make_setting(p_("Blog", "Automatically approve comments from Elten users"), :bool, "elten_autoapprove_comments")
   make_setting(p_("Blog", "Pending comments"), :custom, Proc.new{insert_scene(Scene_Blog_Comments.new(@blog))})
   on_load {
   if currentconfig("comment_registration").to_i==1
