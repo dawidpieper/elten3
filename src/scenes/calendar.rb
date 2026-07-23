@@ -696,7 +696,7 @@ class Scene_Calendar_Public
 
   def apply_language_filter
     known_languages = Session.languages.to_s.split(",").map { |language| language[0..1].to_s.upcase }
-    show_unknown = LocalConfig["CalendarShowUnknownLanguages"] == 1
+    show_unknown = LocalConfig["CalendarShowUnknownLanguages", type: :bool]
     @calendars = (@all_calendars || []).select do |calendar|
       show_unknown || known_languages.empty? || known_languages.include?(calendar.lang.to_s[0..1].upcase)
     end
@@ -721,11 +721,11 @@ class Scene_Calendar_Public
     end
     if Session.languages.to_s != ""
       label = p_("Calendar", "Show calendars in unknown languages")
-      if LocalConfig["CalendarShowUnknownLanguages"] == 1
+      if LocalConfig["CalendarShowUnknownLanguages", type: :bool]
         label = p_("Calendar", "Hide calendars in unknown languages")
       end
       menu.option(label) do
-        LocalConfig["CalendarShowUnknownLanguages"] = LocalConfig["CalendarShowUnknownLanguages"] == 1 ? 0 : 1
+        LocalConfig["CalendarShowUnknownLanguages"] = !LocalConfig["CalendarShowUnknownLanguages", type: :bool]
         build_list(calendar && calendar.id)
       end
     end

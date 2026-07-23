@@ -426,7 +426,7 @@ module NotificationGroups
   end
 
   def messages_grouped_by_subject?
-    LocalConfig['MessagesDefaultToAllMessages'].to_i == 0
+    !LocalConfig['MessagesDefaultToAllMessages', type: :bool]
   end
 
   def message_participant(payload)

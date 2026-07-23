@@ -16,7 +16,7 @@ class Scene_Main
 
   def main
     if @@feed_id==-1
-      @@feed_id = LocalConfig['MainFeedId']
+      @@feed_id = LocalConfig['MainFeedId', type: :numeric]
     end
     if Session.name==nil||Session.name==""
       $scene=Scene_Loading.new

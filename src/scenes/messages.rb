@@ -143,7 +143,7 @@ def update_users
     @sel_users.update
   if key_pressed?(:key_enter) or key_pressed?(:key_right)
     if @sel_users.index<@users.size
-    if LocalConfig['MessagesDefaultToAllMessages']==0
+    if !LocalConfig['MessagesDefaultToAllMessages', type: :bool]
       load_conversations(@users[@sel_users.index].user)
     @cat=1
   else
@@ -165,7 +165,7 @@ def context_users(menu)
 menu.option(p_("Messages", "Reply"), nil, "o") {
   $scene = Scene_Messages_New.new(@users[@sel_users.index].user,"","",export)
 }
-if LocalConfig['MessagesDefaultToAllMessages']==0
+if !LocalConfig['MessagesDefaultToAllMessages', type: :bool]
 menu.option(p_("Messages", "Show all messages"), nil, :shift_enter) {
   load_messages(@users[@sel_users.index].user,nil)
   @cat=2
@@ -245,9 +245,9 @@ else
 end
 end
 s=p_("Messages", "Set all messages as a default view")
-s=p_("Messages", "Set subjects as a default view") if LocalConfig['MessagesDefaultToAllMessages']==1
+s=p_("Messages", "Set subjects as a default view") if LocalConfig['MessagesDefaultToAllMessages', type: :bool]
 menu.option(s) {
-LocalConfig['MessagesDefaultToAllMessages']=((LocalConfig['MessagesDefaultToAllMessages']==0)?(1):(0))
+LocalConfig['MessagesDefaultToAllMessages'] = !LocalConfig['MessagesDefaultToAllMessages', type: :bool]
 alert(_("Saved"))
 }
 menu.option(p_("Messages", "Create new conversation"), nil, "t") {

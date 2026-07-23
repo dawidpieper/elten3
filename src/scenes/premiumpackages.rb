@@ -1,15 +1,16 @@
 class Scene_PremiumPackages
+  CURRENCIES = ["PLN", "EUR", "USD", "GBP"].freeze
+
   def main
     if Session.name=="guest"
       alert(_("This section is unavailable for guests"))
       $scene=Scene_Main.new
       return
     end
-    currencies = ["PLN", "EUR", "USD", "GBP"]
-    if LocalConfig['PremiumPackagesCurrency']==0
-            select_currency
-end
-@currency = currencies[LocalConfig['PremiumPackagesCurrency']-1]||currencies[0]
+    currency = LocalConfig['PremiumPackagesCurrency', "unset", type: :string]
+    select_currency if currency == "unset"
+    currency = LocalConfig['PremiumPackagesCurrency', "unset", type: :string]
+    @currency = CURRENCIES.include?(currency) ? currency : CURRENCIES[0]
     @sel = TableBox.new([nil, p_("PremiumPackages", "status"), p_("PremiumPackages", "Yearly price"), p_("PremiumPackages", "Monthly price"), p_("PremiumPackages", "Conversion price")], [], index: 0, header: p_("PremiumPackages", "Premium packages"))
       @sel.bind_context{|menu|context(menu)}
       refresh
@@ -137,9 +138,9 @@ show(package)
   end
   def select_currency
     c = selector([p_("PremiumPackages", "Polish zloty")+" (PLN)", p_("PremiumPackages", "Euro")+" (EUR)", p_("PremiumPackages", "US dollar")+" (USD)", p_("PremiumPackages", "British pound")+" (GBP)"], header: p_("PremiumPackages", "Select your currency."))
-LocalConfig['PremiumPackagesCurrency'] = c+1
-currencies = ["PLN", "EUR", "USD", "GBP"]
-@currency = currencies[c]
+    return if c < 0 || c >= CURRENCIES.size
+    @currency = CURRENCIES[c]
+    LocalConfig['PremiumPackagesCurrency'] = @currency
 end
   def show(package)
     sbuy=p_("PremiumPackages", "Buy")

@@ -158,7 +158,7 @@ module EltenAPI
   when :conference_pushtotalk
     if Conference.opened?
       Conference.pushtotalk=!Conference.pushtotalk
-  LocalConfig["ConferencePushToTalk"]=(Conference.pushtotalk)?(1):(0)
+  LocalConfig["ConferencePushToTalk"] = Conference.pushtotalk
       end
     when :conference_diceroll
       Conference.diceroll(6)

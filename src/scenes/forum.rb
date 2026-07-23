@@ -43,6 +43,12 @@ end
 
 class Scene_Forum
   include ForumSceneClient
+  SORT_DEFAULT = "default"
+  SORT_NAME_ASCENDING = "name_ascending"
+  SORT_NAME_DESCENDING = "name_descending"
+  SORT_UNREAD_ASCENDING = "unread_ascending"
+  SORT_UNREAD_DESCENDING = "unread_descending"
+
   @@lastCache=nil
   @@lastCacheIdent=nil
   @@lastCacheTime=nil
@@ -207,13 +213,18 @@ forumsload(cat)
 end
 end
 
+def forum_sort
+LocalConfig["ForumSort", SORT_DEFAULT, type: :string]
+end
+
 def sortermenu(type, cat, menu)
+sort = forum_sort
 menu.submenu(p_("Forum", "Sort")) {|m|
-m.option(p_("Forum", "Default")) {makesort(type,cat,0)} if LocalConfig["ForumSort"]!=0
-m.option(p_("Forum", "By name (ascending)")) {makesort(type,cat,1)} if LocalConfig["ForumSort"]!=1
-m.option(p_("Forum", "By name (descending)")) {makesort(type,cat,-1)} if LocalConfig["ForumSort"]!=-1
-m.option(p_("Forum", "By unread posts (ascending)")) {makesort(type,cat,2)} if LocalConfig["ForumSort"]!=2
-m.option(p_("Forum", "By unread posts (descending)")) {makesort(type,cat,-2)} if LocalConfig["ForumSort"]!=-2
+m.option(p_("Forum", "Default")) {makesort(type,cat,SORT_DEFAULT)} if sort!=SORT_DEFAULT
+m.option(p_("Forum", "By name (ascending)")) {makesort(type,cat,SORT_NAME_ASCENDING)} if sort!=SORT_NAME_ASCENDING
+m.option(p_("Forum", "By name (descending)")) {makesort(type,cat,SORT_NAME_DESCENDING)} if sort!=SORT_NAME_DESCENDING
+m.option(p_("Forum", "By unread posts (ascending)")) {makesort(type,cat,SORT_UNREAD_ASCENDING)} if sort!=SORT_UNREAD_ASCENDING
+m.option(p_("Forum", "By unread posts (descending)")) {makesort(type,cat,SORT_UNREAD_DESCENDING)} if sort!=SORT_UNREAD_DESCENDING
 }
 end
 
@@ -227,7 +238,7 @@ end
     loop do
       loop_update
       @grpsel.update
-     LocalConfig["ForumColumnGroup"] = @grpsel.column if LocalConfig["ForumColumnGroup"] != @grpsel.column
+     LocalConfig["ForumColumnGroup"] = @grpsel.column if LocalConfig["ForumColumnGroup", type: :numeric] != @grpsel.column
       return $scene=Scene_Main.new if key_pressed?(:key_escape) and type==0
       return groupsmain(0) if (key_pressed?(:key_escape) or (key_pressed?(:key_left) and !key_held?(0x10))) and type!=0
       break if $scene!=self
@@ -247,7 +258,7 @@ break
     end
     knownlanguages = (Session.languages||"").split(",").map{|lg|lg.upcase}
     pinned=[]
-        pinned=LocalConfig["ForumGroupsPinned", []] if holds_premiumpackage("courier")
+        pinned=LocalConfig["ForumGroupsPinned", [], type: :array_of_numerics] if holds_premiumpackage("courier")
     case type
     when 0
       @grpindex.delete_at(-1) while @grpindex.size > 1
@@ -275,7 +286,7 @@ break
           end
           
       @sgroups.sort! { |a, b|
-      if LocalConfig["ForumSort"]==0
+      if forum_sort==SORT_DEFAULT
         x,y=sorts[a.id],sorts[b.id]
         x=1.0/0.0 if pinned.include?(a.id)
         y=1.0/0.0 if pinned.include?(b.id)
@@ -340,7 +351,7 @@ break
       when       1 #Recently active
               @sgroups = []
       for g in @groups
-        next if LocalConfig['ForumShowUnknownLanguages']==0 && knownlanguages.size>0 && !knownlanguages.include?(g.lang[0..1].upcase)
+        next if !LocalConfig['ForumShowUnknownLanguages', type: :bool] && knownlanguages.size>0 && !knownlanguages.include?(g.lang[0..1].upcase)
         next if g.hidden
         if (g.public || g.open) && g.posts > 0
           @sgroups.push(g)
@@ -365,7 +376,7 @@ break
       @sgroups = []
       spgroups = []
       for g in @groups
-        next if LocalConfig['ForumShowUnknownLanguages']==0 && knownlanguages.size>0 && !knownlanguages.include?(g.lang[0..1].upcase)
+        next if !LocalConfig['ForumShowUnknownLanguages', type: :bool] && knownlanguages.size>0 && !knownlanguages.include?(g.lang[0..1].upcase)
         if g.recommended
           if Configuration.language[0..1].downcase == g.lang.downcase
             @sgroups.push(g)
@@ -375,7 +386,7 @@ break
         end
       end
       @sgroups += spgroups
-      @sgroups.sort {|a,b| groupsorter(a,b)} if LocalConfig["ForumSort"]!=0
+      @sgroups.sort {|a,b| groupsorter(a,b)} if forum_sort!=SORT_DEFAULT
       @grpheadindex = 0
       grpselt = []
       for group in @sgroups
@@ -385,7 +396,7 @@ break
     when 3 #Open
       @sgroups = []
       for g in @groups
-        next if LocalConfig['ForumShowUnknownLanguages']==0 && knownlanguages.size>0 && !knownlanguages.include?(g.lang[0..1].upcase)
+        next if !LocalConfig['ForumShowUnknownLanguages', type: :bool] && knownlanguages.size>0 && !knownlanguages.include?(g.lang[0..1].upcase)
         next if g.hidden
         if g.open && g.public && !g.recommended && g.posts > 0
           @sgroups.push(g)
@@ -412,7 +423,7 @@ break
         end
       end
       @sgroups.sort! {|a,b|
-      if LocalConfig["ForumSort"]==0
+      if forum_sort==SORT_DEFAULT
       (b.posts * b.acmembers ** 2) <=> (a.posts * a.acmembers ** 2)
     else
       groupsorter(a,b)
@@ -432,7 +443,7 @@ break
         end
       end
       @sgroups.sort! { |a, b|
-      if LocalConfig["ForumSort"]==0
+      if forum_sort==SORT_DEFAULT
         (b.posts * b.acmembers ** 2) <=> (a.posts * a.acmembers ** 2)
       else
         groupsorter(a,b)
@@ -447,13 +458,13 @@ break
     when 6 #All
       @sgroups = []
       for g in @groups
-        next if LocalConfig['ForumShowUnknownLanguages']==0 && knownlanguages.size>0 && !knownlanguages.include?(g.lang[0..1].upcase)
+        next if !LocalConfig['ForumShowUnknownLanguages', type: :bool] && knownlanguages.size>0 && !knownlanguages.include?(g.lang[0..1].upcase)
         if g.forums > 0
           @sgroups.push(g)
         end
       end
       @sgroups.sort! { |a, b|
-      if LocalConfig["ForumSort"]==0
+      if forum_sort==SORT_DEFAULT
       (b.posts * b.acmembers ** 2) <=> (a.posts * a.acmembers ** 2)
     else
       groupsorter(a,b)
@@ -468,7 +479,7 @@ break
     when 7 #Recently created
       @sgroups = []
       for g in @groups
-        next if LocalConfig['ForumShowUnknownLanguages']==0 && knownlanguages.size>0 && !knownlanguages.include?(g.lang[0..1].upcase)
+        next if !LocalConfig['ForumShowUnknownLanguages', type: :bool] && knownlanguages.size>0 && !knownlanguages.include?(g.lang[0..1].upcase)
         next if g.hidden
         if g.forums > 0
           @sgroups.push(g)
@@ -488,7 +499,7 @@ break
           g = nil
           @groups.each { |r| g = r if r.id == l.to_i }
           if g!=nil
-            next if LocalConfig['ForumShowUnknownLanguages']==0 && knownlanguages.size>0 && !knownlanguages.include?(g.lang[0..1].upcase)
+            next if !LocalConfig['ForumShowUnknownLanguages', type: :bool] && knownlanguages.size>0 && !knownlanguages.include?(g.lang[0..1].upcase)
             next if g.hidden
           @sgroups.push(g) if g.forums>0
           end
@@ -508,7 +519,7 @@ break
         @grpsetindex = nil
     @grpsel = TableBox.new(grpselh, grpselt, index: @grpindex[type], header: p_("Forum", "Forum"))
     @grpsel.trigger(:move)
-    @grpsel.column = LocalConfig["ForumColumnGroup"] if LocalConfig["ForumColumnGroup"] != nil
+    @grpsel.column = LocalConfig["ForumColumnGroup", type: :numeric] if LocalConfig["ForumColumnGroup", type: :numeric] != nil
     @grpsel.bind_context(p_("Forum", "Forum")) { |menu| context_groups(menu, type) }
     @grpsel.focus
     return [@sgroups, @grpheadindex]
@@ -516,15 +527,16 @@ break
   
   def groupsorter(a,b)
     result=0
-    case LocalConfig["ForumSort"].abs
-    when 1
+    sort = forum_sort
+    case sort
+    when SORT_NAME_ASCENDING, SORT_NAME_DESCENDING
       result=polsorter(a.name,b.name)
-      when 2
+      when SORT_UNREAD_ASCENDING, SORT_UNREAD_DESCENDING
         result=(a.posts-a.readposts)<=>(b.posts-b.readposts)
   else
     result=1
   end
-result*=-1 if LocalConfig["ForumSort"]<0
+result*=-1 if sort.end_with?("_descending")
 return result
     end
 
@@ -592,7 +604,7 @@ return result
       groupopen(@grpsel.index, type, true)
       }
       if holds_premiumpackage("courier")
-        pinned=LocalConfig["ForumGroupsPinned", []]
+        pinned=LocalConfig["ForumGroupsPinned", [], type: :array_of_numerics]
         g = @sgroups[@grpsel.index - @grpheadindex]
           s=p_("Forum", "Pin this group")
           s=p_("Forum", "Unpin this group") if pinned.include?(g.id)
@@ -815,11 +827,9 @@ if (((@sgroups[@grpsel.index - @grpheadindex].role==1 || (@sgroups[@grpsel.index
     end
     if Session.languages!=nil && Session.languages.size>0
       s=p_("Forum", "Show groups in unknown languages")
-      s=p_("Forum", "Hide groups in unknown languages") if LocalConfig['ForumShowUnknownLanguages']==1
+      s=p_("Forum", "Hide groups in unknown languages") if LocalConfig['ForumShowUnknownLanguages', type: :bool]
       menu.option(s) {
-      l=1
-      l=0 if LocalConfig['ForumShowUnknownLanguages']==1
-      LocalConfig['ForumShowUnknownLanguages']=l
+      LocalConfig['ForumShowUnknownLanguages'] = !LocalConfig['ForumShowUnknownLanguages', type: :bool]
       getcache
       groupsmain
       }
@@ -1389,7 +1399,7 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
     loop do
       loop_update
       @frmsel.update
-      LocalConfig["ForumColumnForum"] = @frmsel.column if LocalConfig["ForumColumnForum"] != @frmsel.column
+      LocalConfig["ForumColumnForum"] = @frmsel.column if LocalConfig["ForumColumnForum", type: :numeric] != @frmsel.column
       if (key_pressed?(:key_left) and !key_held?(0x10)) or key_pressed?(:key_escape)
         return $scene=Scene_Main.new if @pre==nil && @preparam.is_a?(Integer)
         @frmindex = nil
@@ -1416,7 +1426,7 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
         @sforums.push(f) if f.followed
       end
     end
-    if LocalConfig["ForumSort"] == 0
+    if forum_sort == SORT_DEFAULT
       forum_order = {}
       @sforums.each_with_index { |forum, i| forum_order[forum.name] = i }
       forum_last_update = Hash.new(0)
@@ -1451,22 +1461,23 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
       apply_forum_row_states(i, forum)
     end
     @frmsel.trigger(:move)
-    @frmsel.column = LocalConfig["ForumColumnForum"] if LocalConfig["ForumColumnForum"] != nil
+    @frmsel.column = LocalConfig["ForumColumnForum", type: :numeric] if LocalConfig["ForumColumnForum", type: :numeric] != nil
           @frmsel.bind_context(p_("Forum", "Forum")) { |menu| context_forums(menu) }
     @frmsel.focus
     end
   
     def forumsorter(a,b)
     result=0
-    case LocalConfig["ForumSort"].abs
-    when 1
+    sort = forum_sort
+    case sort
+    when SORT_NAME_ASCENDING, SORT_NAME_DESCENDING
       result=polsorter(a.fullname,b.fullname)
-      when 2
+      when SORT_UNREAD_ASCENDING, SORT_UNREAD_DESCENDING
         result=(a.posts-a.readposts)<=>(b.posts-b.readposts)
   else
     result=1
   end
-result*=-1 if LocalConfig["ForumSort"]<0
+result*=-1 if sort.end_with?("_descending")
 return result
 end
 
@@ -1967,7 +1978,7 @@ break
       apply_thread_row_states(i, thread, id)
     end
     @thrsel.trigger(:move)
-    @thrsel.column = LocalConfig["ForumColumnThread"] if LocalConfig["ForumColumnThread"] != nil
+    @thrsel.column = LocalConfig["ForumColumnThread", type: :numeric] if LocalConfig["ForumColumnThread", type: :numeric] != nil
           @thrsel.bind_context(p_("Forum", "Forum")) { |menu| context_threads(menu) }
     if @tag!=nil
           @thrsel.tag=@tag
@@ -1977,7 +1988,7 @@ break
     loop do
       loop_update
       @thrsel.update
-      LocalConfig["ForumColumnThread"] = @thrsel.column if LocalConfig["ForumColumnThread"] != @thrsel.column
+      LocalConfig["ForumColumnThread"] = @thrsel.column if LocalConfig["ForumColumnThread", type: :numeric] != @thrsel.column
       if (key_pressed?(:key_left) and !key_held?(0x10)) or key_pressed?(:key_escape)
         return $scene=Scene_Main.new if @pre==nil && @preparam.is_a?(String)
         if id.is_a?(String)
@@ -2999,7 +3010,7 @@ end
     if post.likes > 0
       segments.push(np_("Forum", "%{count} user likes this post", "%{count} users like this post", post.likes)%{:count=>post.likes.to_s})
     end
-    if !(LocalConfig["ForumHideSignatures"] == 1 && holds_premiumpackage("courier"))
+    if !(LocalConfig["ForumHideSignatures", type: :bool] && holds_premiumpackage("courier"))
       segments.push(post.signature)
     end
     segments.push(post.date)
@@ -3303,14 +3314,10 @@ if post.edited && !post.locked
       end
     }
           s=p_("Forum", "Hide signatures")
-  s=p_("Forum", "Show signatures") if LocalConfig["ForumHideSignatures"]==1
+  s=p_("Forum", "Show signatures") if LocalConfig["ForumHideSignatures", type: :bool]
   menu.option(s) {
   if requires_premiumpackage("courier")
-  if LocalConfig["ForumHideSignatures"]==0
-  LocalConfig["ForumHideSignatures"]=1
-else
-  LocalConfig["ForumHideSignatures"]=0
-end
+  LocalConfig["ForumHideSignatures"] = !LocalConfig["ForumHideSignatures", type: :bool]
 refresh
 end  
 }

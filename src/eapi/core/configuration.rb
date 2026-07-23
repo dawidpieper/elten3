@@ -40,6 +40,7 @@ module EltenAPI
     def load_configuration
         Log.info("Loading configuration")
         migrate_configuration
+        LocalConfig.load
         lang=Configuration.language
   Configuration.listtype = load_configuration_choice("Interface", "ListType", [:linear, :circular], :linear)
   Configuration.keyboardscheme = load_configuration_choice("Interface", "KeyboardScheme", [:default, :windows, :macos], :default)

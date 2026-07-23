@@ -106,46 +106,46 @@ loop_update
       container = Console.new
       container.on_str { |str| form.fields[1].set_text(form.fields[1].text + "\r\n" + str) }
       form.bind_context { |menu|
-        if LocalConfig['ConsoleAutoClearInput']==1
+        if LocalConfig['ConsoleAutoClearInput', type: :bool]
           s=p_("EAPI_Common", "Disable auto clear input")
         else
           s=p_("EAPI_Common", "Enable auto clear input")
         end
         menu.option(s, nil, "i") {
-          if LocalConfig['ConsoleAutoClearInput']==1
-            LocalConfig['ConsoleAutoClearInput']=0
+          if LocalConfig['ConsoleAutoClearInput', type: :bool]
+            LocalConfig['ConsoleAutoClearInput']=false
             alert(p_("EAPI_Common", "Disabled"))
           else
-            LocalConfig['ConsoleAutoClearInput']=1
+            LocalConfig['ConsoleAutoClearInput']=true
             alert(p_("EAPI_Common", "Enabled"))
           end
         }
-        if LocalConfig['ConsoleAutoClearOutput']==1
+        if LocalConfig['ConsoleAutoClearOutput', type: :bool]
           s=p_("EAPI_Common", "Disable auto clear output")
         else
           s=p_("EAPI_Common", "Enable auto clear output")
         end
         menu.option(s, nil, "o") {
-          if LocalConfig['ConsoleAutoClearOutput']==1
-            LocalConfig['ConsoleAutoClearOutput']=0
+          if LocalConfig['ConsoleAutoClearOutput', type: :bool]
+            LocalConfig['ConsoleAutoClearOutput']=false
             alert(p_("EAPI_Common", "Disabled"))
           else
-            LocalConfig['ConsoleAutoClearOutput']=1
+            LocalConfig['ConsoleAutoClearOutput']=true
             alert(p_("EAPI_Common", "Enabled"))
           end
         }
         #By default, source should be copied to output.
-        if LocalConfig['ConsoleDontCopySource']==1
+        if LocalConfig['ConsoleDontCopySource', type: :bool]
           s=p_("EAPI_Common", "Enable source in output")
         else
           s=p_("EAPI_Common", "Disable source in output")
         end
         menu.option(s, nil, "s") {
-          if LocalConfig['ConsoleDontCopySource']==1
-            LocalConfig['ConsoleDontCopySource']=0
+          if LocalConfig['ConsoleDontCopySource', type: :bool]
+            LocalConfig['ConsoleDontCopySource']=false
             alert(p_("EAPI_Common", "Enabled"))
           else
-            LocalConfig['ConsoleDontCopySource']=1
+            LocalConfig['ConsoleDontCopySource']=true
             alert(p_("EAPI_Common", "Disabled"))
           end
         }
@@ -169,12 +169,12 @@ loop_update
         form.update
         if form.fields[2].pressed? or keyboard_action_pressed?(:submit)
           kom = form.fields[0].text
-          if LocalConfig['ConsoleDontCopySource']==1
+          if LocalConfig['ConsoleDontCopySource', type: :bool]
             outKom=""
           else
             outKom=kom
           end
-          if LocalConfig['ConsoleAutoClearOutput']==1
+          if LocalConfig['ConsoleAutoClearOutput', type: :bool]
             form.fields[1].set_text(outKom)
           else
             form.fields[1].set_text(form.fields[1].text + "\r\n\r\n" + outKom)
@@ -195,7 +195,7 @@ loop_update
             r = $!.class.to_s + " (" + $!.to_s + ")\n" + plc
           end
           speak(r)
-          form.fields[0].set_text("") if LocalConfig['ConsoleAutoClearInput']==1
+          form.fields[0].set_text("") if LocalConfig['ConsoleAutoClearInput', type: :bool]
           form.fields[1].set_text(form.fields[1].text + "\r\n#=> " + r, false)
           loop_update
         end

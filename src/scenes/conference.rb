@@ -371,7 +371,7 @@ def list_channels(user=nil)
       locha = Proc.new{|chans|
       knownlanguages = Session.languages.split(",").map{|lg|lg.upcase}
       channels = chans.find_all{|c|
-      if LocalConfig["ConferenceShowUnknownLanguages"]==1 || knownlanguages.size==0 || knownlanguages.include?(c.lang[0..1].upcase)
+      if LocalConfig["ConferenceShowUnknownLanguages", type: :bool] || knownlanguages.size==0 || knownlanguages.include?(c.lang[0..1].upcase)
       if user==nil
         c.users.size>0 || (c.groupid!=nil && c.groupid!=0) || c.creator==Session.name
       else
@@ -478,11 +478,9 @@ when 1
   }
   if Session.languages.size>0
          s=p_("Conference", "Show channels in unknown languages")
-      s=p_("Conference", "Hide channels in unknown languages") if LocalConfig['ConferenceShowUnknownLanguages']==1
+      s=p_("Conference", "Hide channels in unknown languages") if LocalConfig['ConferenceShowUnknownLanguages', type: :bool]
       menu.option(s) {
-      l=1
-      l=0 if LocalConfig['ConferenceShowUnknownLanguages']==1
-      LocalConfig['ConferenceShowUnknownLanguages']=l
+      LocalConfig['ConferenceShowUnknownLanguages'] = !LocalConfig['ConferenceShowUnknownLanguages', type: :bool]
 @chans=get_channelslist
   locha.call(@chans)
   lst_channels.focus
@@ -490,7 +488,7 @@ when 1
     end
     menu.option(p_("Conference", "Show private channels"), nil, "p") {
     knownlanguages = Session.languages.split(",").map{|lg|lg.upcase}
-    users = @chans.find_all{|ch|LocalConfig["ConferenceShowUnknownLanguages"]==1 || knownlanguages.size==0 || knownlanguages.include?(ch.lang[0..1].upcase)}.map{|c|c.creator}.find_all{|u|u!=nil}.uniq.polsort
+    users = @chans.find_all{|ch|LocalConfig["ConferenceShowUnknownLanguages", type: :bool] || knownlanguages.size==0 || knownlanguages.include?(ch.lang[0..1].upcase)}.map{|c|c.creator}.find_all{|u|u!=nil}.uniq.polsort
     ind = selector(users, header: p_("Conference", "Select user"), start_index: 0, cancel_index: -1)
     if ind>=0
       user = users[ind]
@@ -1300,7 +1298,7 @@ end
 else
   alert(p_("Conference", "Push to talk enabled"))
     end
-  LocalConfig["ConferencePushToTalk"]=(Conference.pushtotalk)?(1):(0)
+  LocalConfig["ConferencePushToTalk"] = Conference.pushtotalk
   }
   end
 s=generate_pushtotalkkeyslabel

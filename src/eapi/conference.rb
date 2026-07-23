@@ -433,17 +433,17 @@ def self.add_card_to_core(card, listen=false)
 end
 def self.open(ignorePTT=false, nick=nil)
   @@opened=false
-  volume=LocalConfig["ConferenceVolume", -1]
-  input_volume=LocalConfig["ConferenceInputVolume", -1]
-  stream_volume=LocalConfig["ConferenceStreamVolume", -1]
-  pushtotalk=LocalConfig["ConferencePushToTalk", -1]
-  pushtotalk_keys=LocalConfig["ConferencePushToTalkKeys", []]
+  volume=LocalConfig["ConferenceVolume", -1, type: :numeric]
+  input_volume=LocalConfig["ConferenceInputVolume", -1, type: :numeric]
+  stream_volume=LocalConfig["ConferenceStreamVolume", -1, type: :numeric]
+  pushtotalk=LocalConfig["ConferencePushToTalk", type: :bool_or_nil]
+  pushtotalk_keys=LocalConfig["ConferencePushToTalkKeys", [], type: :array_of_numerics]
   safe { 
     open_core(nick)
     @@core.volume=volume if volume!=-1
     @@core.stream_volume=stream_volume if stream_volume!=-1
     @@core.input_volume=input_volume if input_volume!=-1
-    @@core.pushtotalk=(pushtotalk==1) if ignorePTT!=true && pushtotalk!=-1
+    @@core.pushtotalk=pushtotalk if ignorePTT!=true && pushtotalk!=nil
     @@core.pushtotalk_keys=pushtotalk_keys.map{|k|k.to_i} if ignorePTT!=true && pushtotalk_keys!=[]
     refresh_open_state
   }

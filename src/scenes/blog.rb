@@ -257,8 +257,8 @@ $scene=Scene_Blog_Options.new(blog_id, @scene)
 end
 
 class Scene_Blog_Posts
-  SORT_POSTS_BY_BLOG = 0
-  SORT_POSTS_BY_DATE = 1
+  SORT_POSTS_BY_BLOG = "blog"
+  SORT_POSTS_BY_DATE = "date"
   def initialize(owner,id,categoryselindex=0,postselindex=0,search=nil,page=0)
     @owner=owner
     @id = id
@@ -385,7 +385,7 @@ for source in blogtemp.posts
   @post.push(post)
   end
 end
-if @id == "NEWFOLLOWEDBLOGS" and LocalConfig["BlogPostsSortBy"] == SORT_POSTS_BY_DATE
+if @id == "NEWFOLLOWEDBLOGS" and LocalConfig["BlogPostsSortBy", SORT_POSTS_BY_BLOG, type: :string] == SORT_POSTS_BY_DATE
   @post = @post.sort_by { |p| p.date * -1 }
 end
 @sel.rows=@post.map{|s|
@@ -452,13 +452,13 @@ else
     }
   end
   if @id == "NEWFOLLOWEDBLOGS"
-    if LocalConfig["BlogPostsSortBy"] == SORT_POSTS_BY_BLOG
+    if LocalConfig["BlogPostsSortBy", SORT_POSTS_BY_BLOG, type: :string] == SORT_POSTS_BY_BLOG
       opt = p_("Blog", "Sort posts by date")
     else
       opt = p_("Blog", "Sort posts by blog")
     end
     menu.option(opt) {
-    if LocalConfig["BlogPostsSortBy"] == SORT_POSTS_BY_BLOG
+    if LocalConfig["BlogPostsSortBy", SORT_POSTS_BY_BLOG, type: :string] == SORT_POSTS_BY_BLOG
       LocalConfig["BlogPostsSortBy"] = SORT_POSTS_BY_DATE
       info = p_("Blog", "Posts sorted by date.")
     else
@@ -1012,7 +1012,7 @@ for source in blogtemp
   b.followed=source.followed
   b.lang=source.lang
   b.elten=true
-    @blogs.push(b) if LocalConfig["BlogShowUnknownLanguages",1]==1 || knownlanguages.size==0 || knownlanguages.include?(b.lang[0..1].upcase) || (@type.is_a?(String) || @type==3)
+    @blogs.push(b) if LocalConfig["BlogShowUnknownLanguages", true, type: :bool] || knownlanguages.size==0 || knownlanguages.include?(b.lang[0..1].upcase) || (@type.is_a?(String) || @type==3)
 end
 for b in @blogs
   bo=blogowners(b.id)
@@ -1215,11 +1215,9 @@ else
 if !@type.is_a?(String)
 if Session.languages.size>0
          s=p_("Blog", "Show blogs in unknown languages")
-      s=p_("Blog", "Hide blogs in unknown languages") if LocalConfig['BlogShowUnknownLanguages',1]==1
+      s=p_("Blog", "Hide blogs in unknown languages") if LocalConfig['BlogShowUnknownLanguages', true, type: :bool]
       menu.option(s) {
-      l=1
-      l=0 if LocalConfig['BlogShowUnknownLanguages',1]==1
-      LocalConfig['BlogShowUnknownLanguages']=l
+      LocalConfig['BlogShowUnknownLanguages'] = !LocalConfig['BlogShowUnknownLanguages', true, type: :bool]
 refresh
 @sel.focus
       }
