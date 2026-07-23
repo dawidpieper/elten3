@@ -17,6 +17,7 @@ module LocalConfig
 
   TYPES = [:array, :numeric, :string, :hash, :bool, :bool_or_nil, :array_of_numerics, :array_of_strings].freeze
   DEFAULT_UNSPECIFIED = Object.new.freeze
+  CONFERENCE_MOTDS_KEY = "ConferenceMOTDs"
   LEGACY_BOOLEAN_KEYS = [
     "BlogShowUnknownLanguages",
     "CalendarShowUnknownLanguages",
@@ -124,21 +125,23 @@ module LocalConfig
       @values = {}
       @dirty = false
       @legacy_pending = false
+      @legacy_conference_motds_pending = false
       if File.file?(data_path)
         @values = read_json
         @legacy_pending = legacy_section?
-        cleanup_legacy_unlocked
       else
         @values, @legacy_pending = read_legacy
         @dirty = true
-        persist_unlocked
       end
+      migrate_legacy_conference_motds_unlocked
+      @dirty ? persist_unlocked : cleanup_legacy_unlocked
       @loaded = true
     rescue Exception => e
       Log.warning("Cannot load local configuration: #{e.class}: #{e.message}")
       @values = {}
       @dirty = false
       @legacy_pending = false
+      @legacy_conference_motds_pending = false
       @loaded = true
     end
 
@@ -148,6 +151,10 @@ module LocalConfig
 
     def legacy_path
       EltenPath.join(Dirs.eltendata, "elten.ini")
+    end
+
+    def legacy_conference_motds_path
+      EltenPath.join(Dirs.eltendata, "conferences_motds.json")
     end
 
     def read_json
@@ -198,7 +205,34 @@ module LocalConfig
       read_legacy[1]
     end
 
+    def migrate_legacy_conference_motds_unlocked
+      path = legacy_conference_motds_path
+      return if !File.file?(path)
+
+      motds = JSON.parse(File.binread(path).to_s)
+      if !conference_motds?(motds)
+        raise TypeError, "Conference MOTDs must be a JSON object with string keys and values"
+      end
+      if !conference_motds?(@values[CONFERENCE_MOTDS_KEY])
+        @values[CONFERENCE_MOTDS_KEY] = motds
+        @dirty = true
+      end
+      @legacy_conference_motds_pending = true
+    rescue Exception => e
+      Log.warning("Cannot migrate conferences_motds.json: #{e.class}: #{e.message}")
+    end
+
+    def conference_motds?(value)
+      value.is_a?(Hash) && value.all? { |uuid, digest| uuid.is_a?(String) && digest.is_a?(String) }
+    end
+
     def cleanup_legacy_unlocked
+      ini_cleaned = cleanup_legacy_ini_unlocked
+      motds_cleaned = cleanup_legacy_conference_motds_unlocked
+      ini_cleaned && motds_cleaned
+    end
+
+    def cleanup_legacy_ini_unlocked
       return true if !@legacy_pending
 
       lines = elten_read_ini_lines(legacy_path)
@@ -219,6 +253,18 @@ module LocalConfig
       true
     rescue Exception => e
       Log.warning("Cannot remove migrated local configuration from elten.ini: #{e.class}: #{e.message}")
+      false
+    end
+
+    def cleanup_legacy_conference_motds_unlocked
+      return true if !@legacy_conference_motds_pending
+
+      path = legacy_conference_motds_path
+      File.delete(path) if File.file?(path)
+      @legacy_conference_motds_pending = false
+      true
+    rescue Exception => e
+      Log.warning("Cannot remove migrated conferences_motds.json: #{e.class}: #{e.message}")
       false
     end
 

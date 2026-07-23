@@ -230,30 +230,19 @@ end
     motd=Conference.channel.motd||""
     if motd!=""
       motdh=Digest::SHA1.hexdigest(motd.to_s)
-            motds={}
-      motdsfile=EltenPath.join(Dirs.eltendata, "conferences_motds.json")
-      if FileTest.exists?(motdsfile)
-        begin
-          m=JSON.load(File.binread(motdsfile))
-          motds=m if m.is_a?(Hash)
-          rescue Exception
-          end
-        end
-        if motds[Conference.channel.uuid]!=motdh
-          motds[Conference.channel.uuid]=motdh
-          begin
-          File.binwrite(motdsfile, JSON.generate(motds))
-        rescue Exception
-        end
+      motds=LocalConfig[LocalConfig::CONFERENCE_MOTDS_KEY, type: :hash]
+      if motds[Conference.channel.uuid]!=motdh
+        motds[Conference.channel.uuid]=motdh
+        LocalConfig[LocalConfig::CONFERENCE_MOTDS_KEY]=motds
         form=Form.new([
-        edt_motd=EditBox.new(p_("Conference", "Message of the day"), type: EditBox::Flags::ReadOnly|EditBox::Flags::MultiLine, text: motd, quiet: true),
-        btn_ok = Button.new(p_("Conference", "OK"))
+          edt_motd=EditBox.new(p_("Conference", "Message of the day"), type: EditBox::Flags::ReadOnly|EditBox::Flags::MultiLine, text: motd, quiet: true),
+          btn_ok = Button.new(p_("Conference", "OK"))
         ], index: 0, silent: false, quiet: true)
         form.cancel_button=btn_ok
         btn_ok.on(:press) {form.resume}
         form.wait
-          end
       end
+    end
       }
     @users_hook.block.call
     @text_hook = Conference.on(:text) {
