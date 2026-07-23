@@ -143,6 +143,11 @@ use_soundtheme(stheme)
                           Configuration.enableaudiobuffering = readconfig("Advanced", "EnableAudioBuffering", 0)
                           Configuration.sessiontime = readconfig("Advanced", "AgentSessionTime", 2)
                           Configuration.disablehttp2 = readconfig("Advanced", "DisableHTTP2", 0)
+                          Configuration.requestresponsecachemode = readconfig("Advanced", "RequestResponseCacheMode", "mutating")
+                          unless ["disabled", "mutating", "all"].include?(Configuration.requestresponsecachemode)
+                            Configuration.requestresponsecachemode = "mutating"
+                            writeconfig("Advanced", "RequestResponseCacheMode", Configuration.requestresponsecachemode)
+                          end
                       Configuration.tcpconferences = readconfig("Advanced", "ConferencesTCPOnly", 0)
                       Configuration.conferencesaudiobuffer = readconfig("Advanced", "ConferencesAudioBuffer", 0)
                       Configuration.conferencesaudiobuffercutoff = readconfig("Advanced", "ConferencesAudioBufferCutOff", 250)

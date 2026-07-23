@@ -311,6 +311,7 @@ def make_window
     make_setting(p_("Settings", "Use bilinear HRTF interpolation"), :bool, "Advanced", "UseBilinearHRTF")
     make_setting(p_("Settings", "Session refresh time in seconds"), :number, "Advanced", "AgentSessionTime")
     make_setting(p_("Settings", "Disable concurrent requests (HTTP2)"), :bool, "Advanced", "DisableHTTP2")
+    make_setting(p_("Settings", "Recover responses after request timeout"), [p_("Settings", "Disabled"), p_("Settings", "Mutating requests"), p_("Settings", "All requests")], "Advanced", "RequestResponseCacheMode", ["disabled", "mutating", "all"])
     make_setting(p_("Settings", "Use only TCP packets in conferences"), :bool, "Advanced", "ConferencesTCPOnly")
     make_setting(p_("Settings", "Maximum UDP packet payload size"), :number, "Advanced", "UDPMaxPacketSize")
     make_setting(p_("Settings", "Conferences audio buffer in frames"), :number, "Advanced", "ConferencesAudioBuffer")

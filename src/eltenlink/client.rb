@@ -2,12 +2,19 @@
 # Copyright (C) 2014-2026 Dawid Pieper
 
 require "json"
+require "securerandom"
 require "uri"
 
 module EltenLink
   class Client
     API_BASE_URL = "https://api.elten.link".freeze
     DEFAULT_TIMEOUT = 15
+    REQUEST_RESPONSE_CACHE_TIMEOUT = 1.0
+    REQUEST_RESPONSE_CACHE_PATH = "/api/v1/system/request-responses".freeze
+    REQUEST_ID_HEADER = "X-Elten-Request-ID".freeze
+    REQUEST_ID_LENGTH = 48
+    MUTATING_METHODS = %w[POST PUT PATCH DELETE].freeze
+    REQUEST_RESPONSE_CACHE_MODES = %w[disabled mutating all].freeze
 
     attr_reader :context, :last_error
 
@@ -19,12 +26,18 @@ module EltenLink
     def json(method, path, params = nil, timeout: DEFAULT_TIMEOUT, headers: nil)
       Log.debug("Server JSON request to #{self.class.redacted_path(path)}")
       call_context(:play, "signal") if $netsignal
+      method = method.to_s.upcase
       params = params.is_a?(Hash) ? params.dup : {}
       headers = headers.is_a?(Hash) ? headers.dup : {}
+      request_id = nil
+      if self.class.cache_response_for_method?(method)
+        request_id = SecureRandom.alphanumeric(REQUEST_ID_LENGTH)
+        headers[REQUEST_ID_HEADER] = request_id
+      end
       auth_params = self.class.headers_have_auth?(headers) ? {} : self.class.session_auth_params
       request_path = path
       request_params = params
-      if ["GET", "DELETE"].include?(method.to_s.upcase)
+      if ["GET", "DELETE"].include?(method)
         request_path = self.class.append_query(path, auth_params.merge(params))
         request_params = {}
       elsif auth_params.size > 0 && !self.class.path_has_auth?(request_path)
@@ -33,17 +46,25 @@ module EltenLink
 
       response = nil
       done = false
+      accept_response = true
+      state_mutex = Mutex.new
+      timed_out = false
+      timeout_error = nil
       @last_error = nil
       safe_request_path = self.class.redacted_path(request_path)
       submit_json_request(method, request_path, request_params, headers: headers) do |resp, _data|
-        response = resp == :error ? nil : resp
-        @last_error = Error.network(module_name: safe_request_path) if resp == :error
-        done = true
+        state_mutex.synchronize do
+          next unless accept_response
+
+          response = resp == :error ? nil : resp
+          @last_error = Error.network(module_name: safe_request_path) if resp == :error
+          done = true
+        end
       end
 
       started = Time.now.to_f
       waiting_visible = false
-      while done == false
+      while state_mutex.synchronize { done == false }
         if @context != nil
           call_context(:loop_update, false)
         else
@@ -54,20 +75,50 @@ module EltenLink
           call_context(:waiting)
           waiting_visible = true
         elsif elapsed > timeout.to_f
-          Log.warning("Session timed out for JSON request to #{safe_request_path}")
-          @last_error = Error.timeout(module_name: safe_request_path)
-          call_context(:waiting_end)
-          break
+          should_timeout = state_mutex.synchronize do
+            if done
+              false
+            else
+              accept_response = false
+              true
+            end
+          end
+          if should_timeout
+            Log.warning("Session timed out for JSON request to #{safe_request_path}")
+            timeout_error = Error.timeout(module_name: safe_request_path)
+            @last_error = timeout_error
+            timed_out = true
+            break
+          end
         end
         if call_context(:key_pressed?, :key_escape) && waiting_visible
-          call_context(:play, "cancel")
-          Log.debug("Server JSON request to #{safe_request_path} cancelled by user")
-          @last_error = Error.cancelled(module_name: safe_request_path)
-          call_context(:waiting_end)
-          return nil
+          should_cancel = state_mutex.synchronize do
+            if done
+              false
+            else
+              accept_response = false
+              true
+            end
+          end
+          if should_cancel
+            call_context(:play, "cancel")
+            Log.debug("Server JSON request to #{safe_request_path} cancelled by user")
+            @last_error = Error.cancelled(module_name: safe_request_path)
+            call_context(:waiting_end)
+            return nil
+          end
         end
       end
+      state_mutex.synchronize { accept_response = false }
       call_context(:waiting_end) if waiting_visible
+      if timed_out && request_id != nil
+        recovered = recover_cached_response(request_id)
+        if recovered != nil
+          @last_error = nil
+          return recovered
+        end
+        @last_error = timeout_error
+      end
       response
     end
 
@@ -256,7 +307,56 @@ module EltenLink
       value == true || value.to_s == "1" || value.to_s.downcase == "true"
     end
 
+    def self.request_response_cache_mode
+      mode = if defined?(::EltenAPI::Configuration) && ::EltenAPI::Configuration.respond_to?(:requestresponsecachemode)
+               ::EltenAPI::Configuration.requestresponsecachemode.to_s
+             else
+               "mutating"
+             end
+      REQUEST_RESPONSE_CACHE_MODES.include?(mode) ? mode : "mutating"
+    end
+
+    def self.cache_response_for_method?(method)
+      mode = request_response_cache_mode
+      mode == "all" || (mode == "mutating" && MUTATING_METHODS.include?(method.to_s.upcase))
+    end
+
     private
+
+    def recover_cached_response(request_id)
+      response = nil
+      done = false
+      accept_response = true
+      state_mutex = Mutex.new
+      submit_json_request("GET", REQUEST_RESPONSE_CACHE_PATH, {}, headers: { REQUEST_ID_HEADER => request_id }) do |resp, _data|
+        state_mutex.synchronize do
+          next unless accept_response
+
+          response = resp == :error ? nil : resp
+          done = true
+        end
+      end
+
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + REQUEST_RESPONSE_CACHE_TIMEOUT
+      while state_mutex.synchronize { done == false }
+        break if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+
+        @context == nil ? sleep(0.01) : call_context(:loop_update, false)
+      end
+      state_mutex.synchronize { accept_response = false }
+      return nil if response == nil
+
+      payload = JSON.parse(response.to_s)
+      return nil unless payload.is_a?(Hash) && self.class.truthy?(payload["success"])
+
+      data = payload["data"]
+      return nil unless data.is_a?(Hash) && self.class.truthy?(data["found"])
+
+      cached_response = data["response"]
+      cached_response.is_a?(String) ? cached_response : nil
+    rescue JSON::ParserError, TypeError
+      nil
+    end
 
     def api_error(payload, path)
       code = nil
