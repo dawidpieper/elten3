@@ -1200,10 +1200,30 @@ void CopyNativeCompanions(const Options &options, const fs::path &source, const 
   }
 }
 
+int RemoveStaleNativeExtensions(const Options &options,
+                                const std::set<std::string> &expectedFiles) {
+  if (!options.copyRuntimeAssets) return 0;
+
+  int removed = 0;
+  for (const fs::path &path : RecursiveFiles(options.nativeOutput, {".bundle", ".so"})) {
+    if (expectedFiles.count(Lower(WeaklyCanonicalSlash(path))) > 0) continue;
+
+    std::error_code ec;
+    fs::remove(path, ec);
+    if (ec) {
+      throw std::runtime_error("Cannot remove stale native extension: " +
+                               Slash(path) + " (" + ec.message() + ")");
+    }
+    ++removed;
+  }
+  return removed;
+}
+
 std::map<std::string, std::string> PrepareNativeFiles(const Options &options) {
   EnsureDirectory(options.nativeOutput, "native extension output");
 
   std::map<std::string, std::string> map;
+  std::set<std::string> expectedFiles;
   std::vector<fs::path> files = RecursiveFiles(options.rubyRoot / "lib", {".bundle", ".so"});
   for (const fs::path &source : files) {
     if (Lower(Slash(source)).find(".dsym/") != std::string::npos) continue;
@@ -1219,6 +1239,7 @@ std::map<std::string, std::string> PrepareNativeFiles(const Options &options) {
     if (options.copyRuntimeAssets) {
       RemoveStaleNativeFileDirectory(destination.parent_path(), options.nativeOutput);
       CopyIfChanged(source, destination);
+      expectedFiles.insert(Lower(WeaklyCanonicalSlash(destination)));
       fs::path staleFlatAlias = options.nativeOutput / source.filename();
       if (staleFlatAlias != destination && SameFileContent(source, staleFlatAlias)) {
         std::error_code removeEc;
@@ -1237,6 +1258,11 @@ std::map<std::string, std::string> PrepareNativeFiles(const Options &options) {
     }
     std::string relativeDestination = Relative(destination, options.packageRoot);
     for (const std::string &key : keys) map.emplace(Lower(key), relativeDestination);
+  }
+  int staleRemoved = RemoveStaleNativeExtensions(options, expectedFiles);
+  if (staleRemoved > 0) {
+    std::cerr << "Removed " << staleRemoved << " stale native extension"
+              << (staleRemoved == 1 ? "" : "s") << ".\n";
   }
   RemoveDuplicateWindowsNativeCompanionDlls(options);
   RemoveDuplicateWindowsRuntimeRootNativeDlls(options);
