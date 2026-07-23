@@ -114,6 +114,27 @@ class Scene_Forum
     apply_thread_row_states(index, @sthreads[index], list_id)
   end
 
+  def mark_thread_read_locally(thread_id)
+    thread_id = thread_id.to_i
+    thread = @threads.find { |candidate| candidate.id == thread_id }
+    return if thread == nil
+
+    forum = thread.forum
+    @threads.each { |candidate| candidate.readposts = candidate.posts if candidate.id == thread_id }
+    @sthreads.each { |candidate| candidate.readposts = candidate.posts if candidate.id == thread_id }
+
+    forum.readposts = @threads.select { |candidate| candidate.forum.name == forum.name }.map(&:readposts).sum
+    forum.group.readposts = @forums.select { |candidate| candidate.group.id == forum.group.id }.map(&:readposts).sum
+
+    @sthreads.each_with_index do |candidate, index|
+      next if candidate.id != thread_id || @thrsel.rows[index] == nil
+
+      @thrsel.rows[index][3] = "0"
+      refresh_thread_row(index)
+    end
+    @thrsel.reload
+  end
+
   def forum_closed_command
     EltenAPI::SpeechCommands::SoundCommand.new("listbox_itemclosed", " "+p_("EAPI_Speech", "Closed")+" ", "⣏⣹⠉⢹", immediate: true)
   end
@@ -2017,6 +2038,20 @@ threadopen(@thrsel.index)
       menu.option(p_("Forum", "Open")) {
         threadopen(@thrsel.index)
       }
+      thread = @sthreads[@thrsel.index]
+      if thread.readposts < thread.posts
+        menu.option(p_("Forum", "Mark this thread as read"), nil, "w") {
+          unread = thread.posts - thread.readposts
+          if unread < 100 or confirm(p_("Forum", "All posts in this thread will be marked as read. Are you sure you want to continue?"))
+            if forum_attempt(nil) {
+              EltenLink::Forum.mark_thread_as_read(elten_link, thread_id: thread.id)
+            }
+              mark_thread_read_locally(thread.id)
+              alert(p_("Forum", "The thread has been marked as read."))
+            end
+          end
+        }
+      end
             s = p_("Forum", "Mark this thread")
       s = p_("Forum", "Unmark this thread") if @sthreads[@thrsel.index].marked== true
       menu.option(s, nil, "h") {

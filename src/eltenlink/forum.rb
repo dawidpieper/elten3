@@ -98,6 +98,11 @@ module EltenLink
         true
       end
 
+      def mark_thread_as_read(client, thread_id:)
+        client.api_data("PATCH", "/api/v1/forum", { "thread" => thread_id })
+        true
+      end
+
       def follow_thread(client, thread_id:, forum: nil)
         client.api_data("POST", "/api/v1/forum/followed-threads", clean_hash("thread" => thread_id, "forum" => forum))
         true
