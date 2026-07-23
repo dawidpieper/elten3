@@ -226,7 +226,7 @@ module EltenAPI
       end
 
       def disable_http2?
-        Configuration.disablehttp2.to_i == 1
+        Configuration.disablehttp2 == true
       end
 
       def encrypted_transport?

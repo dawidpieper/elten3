@@ -173,10 +173,10 @@ module Cache
   end
 
   def get_updatesbranch
-    if Configuration.branch==""
+    if Configuration.branch==:auto
       return Elten.branch
     else
-      return Configuration.branch
+      return Configuration.branch.to_s
       end
     end
 end

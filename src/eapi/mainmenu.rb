@@ -32,7 +32,7 @@ module GlobalMenu
       if !c.menu_enabled?
         return
         end
-      if defaults != :defaults && (Configuration.contextmenubar==1 || defaults==false || force_context)
+      if defaults != :defaults && (Configuration.contextmenubar==true || defaults==false || force_context)
         c.context(@menu, defaults)
     end
   end

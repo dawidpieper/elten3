@@ -19,8 +19,7 @@ module EltenAPI
         tm = nil
         tm = NotificationService.server_time
         tm = $wnlasttime if tm == nil && $wnlasttime != nil
-        synctime = Configuration.synctime.to_i
-        tm = Time.now.to_i if synctime == 0 || tm == nil
+        tm = Time.now.to_i if Configuration.synctime == false || tm == nil
         Time.at(tm)
       rescue Exception
         Time.now
@@ -178,26 +177,28 @@ module EltenAPI
         minute = now.hour * 60 + now.min
         return nil if @last_announced_minute == minute
         @last_announced_minute = minute
-        period = config_int(:saytimeperiod, 1)
-        type = config_int(:saytimetype, 1)
-        return nil if type <= 0
+        period = Configuration.saytimeperiod
+        type = Configuration.saytimetype
+        return nil if type == :none
         m = now.min
-        due = (period > 0 && m == 0) || (period > 1 && m == 30) || (period >= 2 && (m == 15 || m == 45))
+        due = case period
+              when :hourly
+                m == 0
+              when :half_hourly
+                m == 0 || m == 30
+              when :quarter_hourly
+                [0, 15, 30, 45].include?(m)
+              else
+                false
+              end
         return nil if due != true || $donotdisturb == true
-        [type == 1 || type == 3, (type == 1 || type == 2) ? sprintf("%02d:%02d", now.hour, now.min) : nil]
+        [
+          type == :voice_and_sound || type == :sound_only,
+          (type == :voice_and_sound || type == :voice_only) ? sprintf("%02d:%02d", now.hour, now.min) : nil
+        ]
       rescue Exception => e
         Log.error("Clock update: #{e.class}: #{e.message}")
         nil
-      end
-
-      private
-
-      def config_int(name, default)
-        return default if !Configuration.respond_to?(name)
-        value = Configuration.__send__(name)
-        value == nil ? default : value.to_i
-      rescue Exception
-        default
       end
     end
   end

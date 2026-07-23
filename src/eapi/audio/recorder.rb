@@ -339,7 +339,7 @@ class Recorder
     end
 
     def opus_recording(file, bitrate = 64, framesize = 60, application = 2048, usevbr = 1, timelimit = 0, tags: nil, denoise: nil)
-      denoise = (Configuration.usedenoising == 2) if denoise == nil
+      denoise = (Configuration.usedenoising == :conferences_and_recording) if denoise == nil
       new(file, OpusAudioEncoder.new(bitrate, framesize, application, usevbr, :tags => tags, :denoise => denoise))
     end
 

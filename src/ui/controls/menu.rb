@@ -75,7 +75,7 @@ class Menu
     if @on_open.size==0
     if @type==(:menubar) || @type==(:menu)
     play_sound("menu_open")
-    if Configuration.bgsounds==1 && Configuration.soundthemeactivation==1
+    if Configuration.bgsounds==true && Configuration.soundthemeactivation==true
       self.class.menubg_play
       end
     end

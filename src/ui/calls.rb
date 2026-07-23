@@ -93,7 +93,7 @@ def update_window_tray_visibility
     $tray_restore_ignore_until = nil
   end
   minimize_requested = EltenWindow.consume_minimize_request
-  return if (Configuration.hidewindow || 0).to_i != 1
+  return if Configuration.hidewindow != true
   return if $trayreturn == true || $window_hidden_to_tray == true
   return if minimize_requested != true && !EltenWindow.minimized?
   Log.info("Elten window minimized")

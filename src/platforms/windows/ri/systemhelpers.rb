@@ -376,7 +376,7 @@ module EltenSystemHelpers
         current_known = false
       end
 
-      requested = enabled.to_i == 1
+      requested = enabled == true
       if current != requested
         if requested
           Log.debug("AUT") if defined?(Log)

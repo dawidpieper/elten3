@@ -24,12 +24,7 @@ $scene=Scene_Main.new
     @keys.push([k, v])
     end
   def show
-    hk=Configuration.iimodifiers
-         keys=[]
-         keys.push("ALT") if (hk&0x1)>0
-         keys.push("CTRL") if (hk&0x2)>0
-         keys.push("SHIFT") if (hk&0x4)>0
-         keys.push("WINDOWS") if (hk&0x8)>0
+    keys=ConfigurationValues.invisible_interface_modifier_names(Configuration.iimodifiers)
          hkname=keys.join(" + ")
          selt = @keys.map{|k|
          [hkname+" + "+k[0], k[1]]

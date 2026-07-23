@@ -124,7 +124,7 @@ def waiting_end
             play_sound("dialog_open")
             dialog_close if @@dialogvoice!=nil
             generation = (@@dialogvoice_generation += 1)
-        if Configuration.bgsounds==1 && Configuration.soundthemeactivation==1
+        if Configuration.bgsounds==true && Configuration.soundthemeactivation==true
           snd=getsound("dialog_background")
           if snd!=nil
                           Thread.new do

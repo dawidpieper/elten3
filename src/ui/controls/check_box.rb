@@ -49,9 +49,9 @@ super
                     def focus(index=nil,count=nil, spk=true, snd=true)
                       pos=50
     pos=index.to_f/(count-1).to_f*100.0 if index!=nil and count!=nil && count!=0
-          play_sound("checkbox_marker", volume: 100, pitch: 100, pan: pos) if spk and snd && Configuration.controlspresentation!=2
+          play_sound("checkbox_marker", volume: 100, pitch: 100, pan: pos) if spk and snd && Configuration.controlspresentation!=:voice_only
           text = @label + " ... "
-          if Configuration.controlspresentation!=1
+          if Configuration.controlspresentation!=:sound_only
           text += p_("EAPI_Form", "Checkbox")+" "
           end
           if @checked == false

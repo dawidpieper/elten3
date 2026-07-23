@@ -17,6 +17,8 @@ src/platforms/osx/ri/systemhelpers.rb :osx
 src/ri/runtimepaths.rb
 src/eapi/core/base.rb
 src/eapi/core/local_config.rb
+src/eapi/core/configuration_values.rb
+src/eapi/core/configuration_migrations.rb
 src/eapi/core/runtime.rb
 src/eapi/core/configuration.rb
 src/eapi/core/cache.rb

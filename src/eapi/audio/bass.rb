@@ -561,7 +561,7 @@ prewarm_url_loader
   def self.create_stream_channel(filename, pos = 0, stream = nil, tries = 10)
     pos = pos.to_i
     flags = 256
-    flags |= BASS_STREAM_DECODE if Configuration.usefx == 1
+    flags |= BASS_STREAM_DECODE if Configuration.usefx == true
     source = 0
     if filename == nil && stream != nil
       source = create_file_stream_from_memory(stream, flags)
@@ -574,7 +574,7 @@ prewarm_url_loader
       Log.error("BASS stream open failed: #{error_name}, file=#{filename.inspect}, memory=#{stream&.bytesize || 0}, flags=#{flags}, runtime=#{EltenRuntimePaths.runtime_directory_name}")
       return [0, 0]
     end
-    if Configuration.usefx == 1
+    if Configuration.usefx == true
       @@BASS_FX_TempoCreate ||= Bass.optional_fiddle(BASSFX, "BASS_FX_TempoCreate", [F_UINT, F_UINT], F_UINT)
       channel = @@BASS_FX_TempoCreate.call(source, 0)
       return [source, source] if channel == 0

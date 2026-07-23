@@ -14,7 +14,7 @@ module EltenLink
     REQUEST_ID_HEADER = "X-Elten-Request-ID".freeze
     REQUEST_ID_LENGTH = 48
     MUTATING_METHODS = %w[POST PUT PATCH DELETE].freeze
-    REQUEST_RESPONSE_CACHE_MODES = %w[disabled mutating all].freeze
+    REQUEST_RESPONSE_CACHE_MODES = [:disabled, :mutating, :all].freeze
 
     attr_reader :context, :last_error
 
@@ -309,16 +309,16 @@ module EltenLink
 
     def self.request_response_cache_mode
       mode = if defined?(::EltenAPI::Configuration) && ::EltenAPI::Configuration.respond_to?(:requestresponsecachemode)
-               ::EltenAPI::Configuration.requestresponsecachemode.to_s
+               ::EltenAPI::Configuration.requestresponsecachemode
              else
-               "mutating"
+               :mutating
              end
-      REQUEST_RESPONSE_CACHE_MODES.include?(mode) ? mode : "mutating"
+      REQUEST_RESPONSE_CACHE_MODES.include?(mode) ? mode : :mutating
     end
 
     def self.cache_response_for_method?(method)
       mode = request_response_cache_mode
-      mode == "all" || (mode == "mutating" && MUTATING_METHODS.include?(method.to_s.upcase))
+      mode == :all || (mode == :mutating && MUTATING_METHODS.include?(method.to_s.upcase))
     end
 
     private

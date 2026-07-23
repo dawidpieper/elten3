@@ -77,7 +77,7 @@ class Flags
 def initialize(options, header: "", index: 0, flags: 0, quiet: true)
     $lastkeychar=nil
     @border = true
-            @border=false if Configuration.listtype == 1 or (flags&Flags::Circular)>0
+            @border=false if Configuration.listtype == :circular or (flags&Flags::Circular)>0
                                     @lr=((flags & Flags::LeftRight)>0)
             @multi=((flags & Flags::MultiSelection)>0)
 @silent=((flags & Flags::Silent)>0)
@@ -441,7 +441,7 @@ def option_speech_text(id=self.index, base=nil)
   o=raw.is_a?(SpeechSequence) ? raw : text_utf8(raw).delete("&")
   states=item_states_for(id)
   prefixes=[]
-  if Configuration.soundthemeactivation!=1
+  if Configuration.soundthemeactivation!=true
     ordered_item_state_keys(id).each do |state|
       prefix=states[state]==nil ? "" : states[state].speech_prefix.to_s.strip
       prefixes.push(prefix) if prefix!=""
@@ -731,7 +731,7 @@ def focus(index=nil, count=nil, header=@header, spk=true)
   mark_item_audio_active(self.index) if item_audio?(self.index)
   pos=50
     pos=index.to_f/(count-1).to_f*100.0 if index!=nil and count!=nil && count!=0
-  if spk && Configuration.controlspresentation!=2
+  if spk && Configuration.controlspresentation!=:voice_only
     if @multi==false
   play_sound("listbox_marker", volume: 100, pitch: 100, pan: pos)  if @silent == false
 else
@@ -752,7 +752,7 @@ end
             remember_late_focus_states(pos) if spk
             if @header!=nil and @header!=""
             sp = text_utf8(header || @header)
-            sp+=" (#{text_utf8(p_("EAPI_Form", "Multiselection list"))})" if @multi==true and Configuration.controlspresentation!=1
+            sp+=" (#{text_utf8(p_("EAPI_Form", "Multiselection list"))})" if @multi==true and Configuration.controlspresentation!=:sound_only
                             sp+=": " if !" .:?!,".include?(sp[-1..-1] || "")
               sp+=" " if sp[-1..-1]!=" "
               end

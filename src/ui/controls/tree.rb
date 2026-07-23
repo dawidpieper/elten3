@@ -164,7 +164,7 @@ lsel=ListBox.new(options, header: header, index: start_index, flags: list_flags)
           end
 lsel=""
         play_sound("menu_open")
-        Menu.menubg_play if Configuration.bgsounds==1 && Configuration.soundthemeactivation==1
+        Menu.menubg_play if Configuration.bgsounds==true && Configuration.soundthemeactivation==true
 lsel = ListBox.new(options, header: "", index: 0, flags: ListBox::Flags::AnyDir)
                     for d in dis
         lsel.disable_item(d)

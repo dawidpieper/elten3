@@ -201,10 +201,11 @@ module EltenAPI
         when :conference_stream_file
           conference.set_stream(job[1]) if conference != nil && job[1] != nil
         when :hotkey_modifiers_selected
-          Configuration.iimodifiers = job[1].to_i
-          writeconfig("InvisibleInterface", "IIModifiers", job[1].to_i.to_s) rescue nil
-          @configuration_signature = [job[1].to_i, @cards || config_cards]
-          @ui_events << [:modifiers_selected, job[1].to_i]
+          profile = ConfigurationValues.invisible_interface_modifier_profile(job[1])
+          Configuration.iimodifiers = profile
+          writeconfig("InvisibleInterface", "IIModifiers", profile) rescue nil
+          @configuration_signature = [profile, @cards || config_cards]
+          @ui_events << [:modifiers_selected, profile]
         when :hotkey_errors
           @ui_events << [:hotkey_errors, job[1].to_i]
         when :hotkey_error
@@ -214,12 +215,12 @@ module EltenAPI
 
       def refresh_configuration(force=false)
         cards = config_cards
-        modifiers = config_int(:iimodifiers, 0)
-        signature = [modifiers, cards]
+        profile = Configuration.iimodifiers
+        signature = [profile, cards]
         return if force != true && @configuration_signature == signature && Hotkeys.running?
         @configuration_signature = signature
         @cards = cards
-        Hotkeys.configure(modifiers, @jobs)
+        Hotkeys.configure(ConfigurationValues.invisible_interface_modifier_mask(profile), @jobs)
       end
 
       def drain_ui_events
@@ -770,18 +771,11 @@ module EltenAPI
         $conference
       end
 
-      def config_cards        value = Configuration.iicards
+      def config_cards
+        value = Configuration.iicards
 
         return value.map { |entry| entry.to_s } if value.is_a?(Array)
         value.to_s.split(",")
-      end
-
-      def config_int(name, default=0)
-        return default if !Configuration.respond_to?(name)
-        value = Configuration.__send__(name)
-        value == nil ? default : value.to_i
-      rescue Exception
-        default
       end
     end
   end

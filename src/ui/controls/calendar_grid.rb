@@ -34,7 +34,7 @@ module EltenAPI
 
       def focus(index=nil, count=nil, spk=true, include_header: true)
         pan = lpos
-        play_sound("listbox_marker", volume: 100, pitch: 100, pan: pan) if spk && !@silent && Configuration.controlspresentation != 2
+        play_sound("listbox_marker", volume: 100, pitch: 100, pan: pan) if spk && !@silent && Configuration.controlspresentation != :voice_only
         trigger(:announce, @date) if spk
         text = announcement
         text = "#{@header}: #{text}" if include_header && @header != nil && @header != ""

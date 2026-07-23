@@ -181,7 +181,7 @@ module EltenAPI
       end
 
       def enabled?
-        Configuration.registeractivity.to_i == 1
+        Configuration.registeractivity == true
       rescue Exception
         false
       end

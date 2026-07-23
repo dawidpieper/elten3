@@ -239,15 +239,15 @@ rescue Exception
 def self.sync_core_settings
   $name=Session.name
   $token=Session.token
-  $conferencestcponly=Configuration.tcpconferences.to_i
+  $conferencestcponly=ConfigurationValues.boolean_code(Configuration.tcpconferences)
   $udpmaxpacketsize=Configuration.udppacketsize.to_i
   $conferencesaudiobuffer=Configuration.conferencesaudiobuffer.to_i
   $conferencesaudiobuffercutoff=Configuration.conferencesaudiobuffercutoff.to_i
-  $usedenoising=Configuration.usedenoising.to_i
-  $useechocancellation=Configuration.useechocancellation.to_i
-  $usebilinearhrtf=Configuration.usebilinearhrtf.to_i
+  $usedenoising=ConfigurationValues.denoising_mode_code(Configuration.usedenoising)
+  $useechocancellation=ConfigurationValues.boolean_code(Configuration.useechocancellation)
+  $usebilinearhrtf=ConfigurationValues.boolean_code(Configuration.usebilinearhrtf)
   $volume=Configuration.volume.to_i
-  $disableconferencemiconrecord=Configuration.disableconferencemiconrecord.to_i
+  $disableconferencemiconrecord=ConfigurationValues.boolean_code(Configuration.disableconferencemiconrecord)
   $recording=false if $recording==nil
   $udpmaxpacketsize=1480 if $udpmaxpacketsize==nil || $udpmaxpacketsize<=0
 rescue Exception
@@ -257,7 +257,7 @@ def self.configuration_signature
   {
     :soundcard => Configuration.soundcard.to_s,
     :microphone => Configuration.microphone.to_s,
-    :usedenoising => Configuration.usedenoising.to_i
+    :usedenoising => Configuration.usedenoising
   }
 end
 

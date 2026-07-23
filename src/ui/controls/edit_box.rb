@@ -79,7 +79,7 @@ end
         return
       elsif @audioplayer!=nil and @audioplayed==false
       if speech_output_nvda? or !speech_actived
-        if Configuration.autoplay==0 || (Configuration.autoplay==1 && (@flags&Flags::Transcripted)==0)
+        if Configuration.autoplay==:always || (Configuration.autoplay==:without_transcription && (@flags&Flags::Transcripted)==0)
         Programs.emit_event(:player_play)
       dialog_mute
       @audioplayer.play
@@ -102,9 +102,9 @@ navupdate
 def editupdate
   return readupdate if (@flags&Flags::ReadOnly)!=0
       if (c=getkeychar)!="" and (c.to_i.to_s==c or (@flags&Flags::Numbers)==0) and (@flags&Flags::ReadOnly)==0
-                speech_stop if Configuration.typingecho>0 and !(speech_output_nvda? and defined?(NVDA) && NVDA.check)
+                speech_stop if Configuration.typingecho!=:characters and !(speech_output_nvda? and defined?(NVDA) && NVDA.check)
         einsert(c)
-                               if ((wordendings=" ,./;'\\\[\]-=<>?:\"|\{\}_+`!@\#$%^&*()_+").include?(c)) and ((Configuration.typingecho == 1 or Configuration.typingecho == 2))
+                               if ((wordendings=" ,./;'\\\[\]-=<>?:\"|\{\}_+`!@\#$%^&*()_+").include?(c)) and ((Configuration.typingecho == :words or Configuration.typingecho == :characters_and_words))
                  s=text_range_exclusive((@index>50?@index-50:0), @index)
                                   w=(s[(0 ... s.length).find_all { |i| wordendings.include?(s[i..i]) or s[i..i]=="\n"}.sort[-2]||0..(s.length-1)])
 if (w=~/([a-zA-Z0-9ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]+)/)!=nil
@@ -113,7 +113,7 @@ if (w=~/([a-zA-Z0-9ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]+)/)!=nil
 else
   espeech(c) if @interface_typingecho!=1
   end
-elsif Configuration.typingecho==0 or Configuration.typingecho==2
+elsif Configuration.typingecho==:characters or Configuration.typingecho==:characters_and_words
          espeech(c)
       end
     elsif c!=""
@@ -244,14 +244,14 @@ url=nil
           elsif key_pressed?(:key_right) && !navigation_modifier_held?
                                   @vindex=char_borders(@vindex)[1]
           if @vindex>=text_len
-            if Configuration.soundthemeactivation == 1
+            if Configuration.soundthemeactivation == true
             play_sound("border")
           else
 espeech(p_("EAPI_Form", "End of line"))
             end
                                       elsif @vindex==text_len-1
                     @vindex=text_len
-                    if Configuration.soundthemeactivation == 1
+                    if Configuration.soundthemeactivation == true
                     play_sound("editbox_endofline")
                   else
                     espeech(p_("EAPI_Form", "End of line"))
@@ -265,7 +265,7 @@ espeech(p_("EAPI_Form", "End of line"))
                               end
                                               elsif key_pressed?(:key_left) && !navigation_modifier_held?
         if @vindex<=0
-          if Configuration.soundthemeactivation == 1
+          if Configuration.soundthemeactivation == true
           play_sound("border")
         else
           if text_len>0
@@ -913,7 +913,7 @@ def line_ending(index=@vindex, absolute=false)
   def move_character_macos(direction)
     if direction==:right
       if @vindex>=text_len
-        if Configuration.soundthemeactivation==1
+        if Configuration.soundthemeactivation==true
           play_sound("border")
         else
           espeech(p_("EAPI_Form", "End of line"))
@@ -925,7 +925,7 @@ def line_ending(index=@vindex, absolute=false)
       @vindex=to+1
     else
       if @vindex<=0
-        if Configuration.soundthemeactivation==1
+        if Configuration.soundthemeactivation==true
           play_sound("border")
         elsif text_len>0
           from,to=char_borders(0)
@@ -973,7 +973,7 @@ def line_ending(index=@vindex, absolute=false)
     return [ind, ind]
     end
 def get_vlines(l,r, absolute=false)
-    return [l,r+1] if r-l<120 or (@flags&Flags::MultiLine)==0 or (@flags&Flags::DisableLineWrapping)>0 or Configuration.linewrapping==0 or absolute==true
+    return [l,r+1] if r-l<120 or (@flags&Flags::MultiLine)==0 or (@flags&Flags::DisableLineWrapping)>0 or Configuration.linewrapping==false or absolute==true
   ls=[l]
     for c in l...r
            if text_char(c)==" " and c-ls[-1]>120 and c!=r-1
@@ -1389,9 +1389,9 @@ def value
     pos=50
     pos=index.to_f/(count-1).to_f*100.0 if index!=nil and count!=nil && count!=0
     if !audio?
-    play_sound("editbox_marker", volume: 100, pitch: 100, pan: pos) if spk && Configuration.controlspresentation!=2
+    play_sound("editbox_marker", volume: 100, pitch: 100, pan: pos) if spk && Configuration.controlspresentation!=:voice_only
   else
-    play_sound("editbox_audiomarker", volume: 100, pitch: 100, pan: pos) if spk && Configuration.controlspresentation!=2
+    play_sound("editbox_audiomarker", volume: 100, pitch: 100, pan: pos) if spk && Configuration.controlspresentation!=:voice_only
     end
       if spk && @sounds!=nil
         for snd in @sounds
@@ -1402,7 +1402,7 @@ def value
       tp=p_("EAPI_Form", "Text") if (@flags&Flags::ReadOnly)>0
       tp=p_("EAPI_Form", "Media") if @audiotext!=nil
       tph=tp+": "
-      tph="" if Configuration.controlspresentation==1
+      tph="" if Configuration.controlspresentation==:sound_only
       head=@header.to_s + "... " + tph
                               nvda_braille_text(true) if defined?(NVDA) && NVDA.check
                               if @audiotext!=nil
@@ -1412,7 +1412,7 @@ def value
                                   @audioplayer = Player.new(nil, label: @header, autoplay: false, quiet: true,stream: @audiostream, lazy: true) if @audioplayer==nil
                                 @audioplayed=false
                               end
-                              if audio? && (Configuration.autoplay==0 || (Configuration.autoplay!=0 && (@flags&Flags::Transcripted)==0))
+                              if audio? && (Configuration.autoplay==:always || (Configuration.autoplay!=:always && (@flags&Flags::Transcripted)==0))
                                 speak(head)
                                 return
                                 end

@@ -21,7 +21,7 @@ module EltenAPI
     private
 # User interface related functions
     def play_sound(voice, volume: 100, pitch: 100, pan: 50, ignore_soundtheme: false)
-                              if Configuration.soundthemeactivation != 0 or FileTest.exists?(voice) or ignore_soundtheme==true
+                              if Configuration.soundthemeactivation == true or FileTest.exists?(voice) or ignore_soundtheme==true
                           b=nil
                         if volume >= 0
                           volume = (volume.to_f * Configuration.volume.to_f / 100.0)
@@ -54,7 +54,7 @@ if pitch != 100
   freq = frq * pitch / 100.0
   Bass::BASS_ChannelSetAttribute.call(stream, 1, freq.to_f)
   end
-if Configuration.usepan==1
+if Configuration.usepan==true
   Bass::BASS_ChannelSetAttribute.call(stream, 3, pan.to_f/50.0-1.0)
                                                   end
                                                                                                                                                                                                       Bass::BASS_ChannelPlay.call(stream, 0)
@@ -85,7 +85,7 @@ Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f/100.0)
                       def call_sound_start(ringtone)
                         call_sound_stop
                         voice = ringtone || "ringing"
-                        return if Configuration.soundthemeactivation == 0 && !FileTest.exists?(voice)
+                        return if Configuration.soundthemeactivation == false && !FileTest.exists?(voice)
                         sound = getsound(voice)
                         file = sound == nil ? voice : nil
                         return if sound == nil && !FileTest.exists?(file)

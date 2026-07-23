@@ -29,9 +29,9 @@ super
         def focus(index=nil,count=nil)
           pos=50
     pos=index.to_f/(count-1).to_f*100.0 if index!=nil and count!=nil && count!=0
-          play_sound("button_marker", volume: 100, pitch: 100, pan: pos) if Configuration.controlspresentation!=2
+          play_sound("button_marker", volume: 100, pitch: 100, pan: pos) if Configuration.controlspresentation!=:voice_only
           tph="... " + p_("EAPI_Form", "Button")
-          tph="" if Configuration.controlspresentation==1
+          tph="" if Configuration.controlspresentation==:sound_only
           speak(@label + tph)
           NVDA.braille(@label) if defined?(NVDA) && NVDA.check
         end

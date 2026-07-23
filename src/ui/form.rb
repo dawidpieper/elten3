@@ -240,7 +240,7 @@ class FormTimer
                 @index+=1
               end
               if @index >= @fields.size
-                if Configuration.roundupforms==0
+                if Configuration.roundupforms==false
                 @index=ind
                 trigger(:border, @index)
                 play_sound("border", volume: 100, pitch: 100, pan: @index.to_f/(@fields.size-1).to_f*100.0)
@@ -258,7 +258,7 @@ ind=@index
               @index-=1
               end
             if @index < 0
-                            if Configuration.roundupforms==0
+                            if Configuration.roundupforms==false
               @index = ind
               trigger(:border, @index)
                           play_sound("border", volume: 100, pitch: 100, pan: @index.to_f/(@fields.size-1).to_f*100.0)

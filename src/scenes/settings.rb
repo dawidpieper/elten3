@@ -46,7 +46,7 @@ def save_category
     next if field==nil
     val=field.value
     val=val.to_i if setting[1]==:number
-    val=val ? 1 : 0 if setting[1]==:bool
+    val=val ? "true" : "false" if setting[1]==:bool
     val=setting[4][val] if setting[4]!=nil
     if setting[1].is_a?(Array) && setting[5]==true
       mpg=setting[4]
@@ -76,7 +76,7 @@ for s in @settings[id][2..-1]
     when :number
     field=EditBox.new(label, type: EditBox::Flags::Numbers, text: currentconfig(section, config),quiet: true)
     when :bool
-      field=CheckBox.new(label, checked: currentconfig(section, config).to_i!=0)
+      field=CheckBox.new(label, checked: currentconfig(section, config)=="true")
       when :custom
         field=Button.new(label)
         proc=section
@@ -131,10 +131,10 @@ def make_window
         langs=langsmapping.map{|l|Lists.langs[l[0..1].downcase]['name']+" ("+Lists.langs[l[0..1].downcase]['nativeName']+")"}  
       make_setting(p_("Settings", "Language"), langs, "Interface", "Language", langsmapping)
                             make_setting(p_("Settings", "Automatically minimize Elten Window to system tray"), :bool, "Interface", "HideWindow") if tray_supported?
-                                        make_setting(p_("Settings", "Enable auto log in"), :bool, "Login", "EnableAutoLogin", [0, 1])
+                                        make_setting(p_("Settings", "Enable auto log in"), :bool, "Login", "EnableAutoLogin")
         make_setting(p_("Settings", "Automatically start Elten after I log on to Windows"), :bool, "System", "AutoStart") if tray_supported?
         make_setting(p_("Settings", "Check for updates at startup"), :bool, "Updates", "CheckAtStartup")
-        make_setting(p_("Settings", "Updates branch"), [p_("Settings", "Auto"),p_("Settings", "Stable"), p_("Settings", "RC"), p_("Settings", "Beta")], "Updates", "Branch", ["","stable","rc","beta"])
+        make_setting(p_("Settings", "Updates branch"), [p_("Settings", "Auto"),p_("Settings", "Stable"), p_("Settings", "RC"), p_("Settings", "Beta")], "Updates", "Branch", ["auto","stable","rc","beta"])
         make_setting(p_("Settings", "Send Elten usage reports"), :bool, "Privacy", "RegisterActivity")
       end
       def load_interface
@@ -145,12 +145,12 @@ def make_window
                  make_setting(p_("Settings", "Use Stereo positioning for user interface"), :bool,"Interface", "UsePan")
                                                   make_setting(p_("Settings", "Use background sounds in menu and dialog windows"), :bool, "Interface", "BGSounds")
                  make_setting(p_("Settings", "Display context menu in menu bar"), :bool, "Interface", "ContextMenuBar")
-                 make_setting(p_("Settings", "Control types announcement"), [p_("Settings", "Voice and sound"),p_("Settings", "Sound only"), p_("Settings", "Voice only")], "Interface", "ControlsPresentation")                    
+                 make_setting(p_("Settings", "Control types announcement"), [p_("Settings", "Voice and sound"),p_("Settings", "Sound only"), p_("Settings", "Voice only")], "Interface", "ControlsPresentation", ["voice_and_sound", "sound_only", "voice_only"])
                     make_setting(p_("Settings", "Wrap long lines in text fields"), :bool, "Interface", "LineWrapping")
-            make_setting(p_("Settings", "The display method of selection lists"), [p_("Settings", "Linear"),p_("Settings", "Circular")], "Interface", "ListType")                    
+            make_setting(p_("Settings", "The display method of selection lists"), [p_("Settings", "Linear"),p_("Settings", "Circular")], "Interface", "ListType", ["linear", "circular"])
             make_setting(p_("Settings", "Round up the forms"), :bool, "Interface", "RoundUpForms")                    
             make_setting(p_("Settings", "Disable feed notifications"), :bool, "Interface", "DisableFeedNotifications")
-            make_setting(p_("Settings", "Automatically play audio content"), [p_("Settings", "Always"),p_("Settings", "Only when transcription is not available"), p_("Settings", "Never")], "Interface", "AutoPlay")                    
+            make_setting(p_("Settings", "Automatically play audio content"), [p_("Settings", "Always"),p_("Settings", "Only when transcription is not available"), p_("Settings", "Never")], "Interface", "AutoPlay", ["always", "without_transcription", "never"])
             make_setting(p_("Settings", "Keyboard scheme"), [p_("Settings", "Default"), p_("Settings", "Windows"), p_("Settings", "macOS")], "Interface", "KeyboardScheme", ["default", "windows", "macos"])
             make_setting(p_("Settings", "Use MacOS-style character navigation in text fields"), [p_("Settings", "System Default"), p_("Settings", "Disable"), p_("Settings", "Enable")], "Interface", "MacOSCharacterNavigation", ["default", "disabled", "enabled"])
             on_load {
@@ -181,7 +181,7 @@ def make_window
         make_setting(p_("Settings", "Speech pitch"), (0..100).to_a.reverse.map{|x|x.to_s+"%"}, "Voice", "Pitch", (0..100).to_a.reverse)
         make_setting(p_("Settings", "Enable braille output (requires NVDA addon)"), :bool, "Interface", "EnableBraille") if SpeechOutput.list.any?{|output| output.braille_supported?}
         make_setting(p_("Settings", "Use a voice dictionary when processing characters (requires NVDA addon when using NVDA as a speech output)"), :bool, "Voice", "UseVoiceDictionary")
-                        make_setting(p_("Settings", "Typing echo"), [p_("Settings", "Characters"),p_("Settings", "Words"),p_("Settings", "Characters and words"),p_("Settings", "None")], "Interface", "TypingEcho")
+                        make_setting(p_("Settings", "Typing echo"), [p_("Settings", "Characters"),p_("Settings", "Words"),p_("Settings", "Characters and words"),p_("Settings", "None")], "Interface", "TypingEcho", ["characters", "words", "characters_and_words", "none"])
         on_load {
         voice_output=Proc.new {
           voice=voicesmapping[@form.fields[1].index].to_s
@@ -235,8 +235,8 @@ def make_window
       end
       def load_clock
         setting_category(p_("Settings", "Clock"))
-        make_setting(p_("Settings", "Clock information"), [p_("Settings", "None"),p_("Settings", "Voice and sound"),p_("Settings", "Voice only"),p_("Settings", "Sound only")], "Clock", "SayTimeType")
-        make_setting(p_("Settings", "announcement time"), [p_("Settings", "every hour"),p_("Settings", "every half hour"),p_("Settings", "every quarter of an hour")], "Clock", "SayTimePeriod", [1, 2, 3])
+        make_setting(p_("Settings", "Clock information"), [p_("Settings", "None"),p_("Settings", "Voice and sound"),p_("Settings", "Voice only"),p_("Settings", "Sound only")], "Clock", "SayTimeType", ["none", "voice_and_sound", "voice_only", "sound_only"])
+        make_setting(p_("Settings", "announcement time"), [p_("Settings", "every hour"),p_("Settings", "every half hour"),p_("Settings", "every quarter of an hour")], "Clock", "SayTimePeriod", ["hourly", "half_hourly", "quarter_hourly"])
         make_setting(p_("Settings", "Alarms"), :custom, Proc.new{insert_scene(Scene_Clock.new)})
         on_load {
         @form.fields[1].on(:move) {
@@ -286,18 +286,18 @@ def make_window
     make_setting(p_("Settings", "Output device"), @soundcards, "SoundCard", "SoundCard", @soundcardsmapping)
     make_setting(p_("Settings", "Input device"), @microphones, "SoundCard", "Microphone", @microphonesmapping)
     make_setting(p_("Settings", "Mute the microphone in conferences while recording other content"), :bool, "Advanced", "DisableConferenceMicOnRecord")
-    make_setting(p_("Settings", "Use noise reduction"), [p_("Settings", "Never"), p_("Settings", "In audio conferences only"), p_("Settings", "In audio conferences and when recording")], "Advanced", "UseDenoising")
+    make_setting(p_("Settings", "Use noise reduction"), [p_("Settings", "Never"), p_("Settings", "In audio conferences only"), p_("Settings", "In audio conferences and when recording")], "Advanced", "UseDenoising", ["never", "conferences", "conferences_and_recording"])
     make_setting(p_("Settings", "Enable echo cancellation"), :bool, "Advanced", "UseEchoCancellation")
       end
   def load_ii
     return if !defined?(EltenAPI::InvisibleInterface) || (EltenAPI::InvisibleInterface.respond_to?(:available?) && !EltenAPI::InvisibleInterface.available?)
     setting_category(p_("Settings", "Invisible interface"))
-                ii={
-            "ALT+CTRL+WINDOWS"=>0x1|0x2|0x8,
-            "ALT+WINDOWS+SHIFT"=>0x1|0x4|0x8,
-            "ALT+CTRL+SHIFT"=>0x1|0x2|0x4,
-            "ALT+CTRL"=>0x1|0x2,
-            "ALT+SHIFT"=>0x1|0x4,
+            ii={
+            "ALT+CTRL+WINDOWS"=>"alt_ctrl_windows",
+            "ALT+WINDOWS+SHIFT"=>"alt_shift_windows",
+            "ALT+CTRL+SHIFT"=>"alt_ctrl_shift",
+            "ALT+CTRL"=>"alt_ctrl",
+            "ALT+SHIFT"=>"alt_shift",
             }
             iimodifiers=[]
             iimodifiersmapping=[]

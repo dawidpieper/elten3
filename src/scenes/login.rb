@@ -180,7 +180,7 @@ end
       update_premiumpackages(logintemp.premium_packages) if logintemp.premium_packages.is_a?(Array)
   end
 if logintemp != nil
-if Configuration.autologin==1 && autologin.to_i!=3
+if Configuration.autologin==true && autologin.to_i!=3
   dialog_open  
   if autologin.to_i == 0
   @sel = ListBox.new([_("No"),_("Yes"),p_("Login", "Do not ask again")],header: p_("Login", "Do you want to enable auto log in for account %{user}?")%{:user=>name},index: 0,flags: ListBox::Flags::AnyDir, quiet: false)
@@ -228,7 +228,7 @@ loop_update
                         end
           end
        when 2
-         writeconfig("Login", "EnableAutoLogin", 0)
+         writeconfig("Login", "EnableAutoLogin", false)
          load_configuration
          delete_logindata
          alert(p_("Login", "To reenable auto log in feature, proceed to the general settings."))

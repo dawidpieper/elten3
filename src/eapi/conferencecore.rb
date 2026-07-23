@@ -2241,7 +2241,7 @@ end
 def calling_play
 calling_stop
 @callingplaying=true
-return if Configuration.soundthemeactivation == 0
+return if Configuration.soundthemeactivation == false
 sound=getsound("calling")
 return if sound==nil && !FileTest.exists?("calling")
 @callingplayer=Sound.new(sound==nil ? "calling" : nil, loop: true, stream: sound)

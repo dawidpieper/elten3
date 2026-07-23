@@ -43,7 +43,7 @@ module EltenAPI
         alert(_("Error"), false)
       end
       def gettime
-        if Configuration.synctime == 1
+        if Configuration.synctime == true
           time = EltenLink::System.server_time(EltenLink.client(self))
                     else
                                             time=Time.now

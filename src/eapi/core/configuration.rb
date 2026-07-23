@@ -6,17 +6,49 @@
 
 module EltenAPI
   private
+    def load_configuration_value(group, key, values, default)
+      raise ArgumentError, "Invalid default configuration value" if !values.value?(default)
+
+      stored_default = values.key(default)
+      value = readconfig(group, key, stored_default)
+      return values[value] if values.key?(value)
+
+      Log.warning("Invalid configuration value for #{group}/#{key}: #{value.inspect}; using #{stored_default.inspect}")
+      writeconfig(group, key, stored_default)
+      default
+    end
+
+    def load_configuration_boolean(group, key, default)
+      load_configuration_value(group, key, { "false" => false, "true" => true }, default)
+    end
+
+    def load_configuration_choice(group, key, values, default)
+      mapping = values.each_with_object({}) { |value, result| result[value.to_s] = value }
+      load_configuration_value(group, key, mapping, default)
+    end
+
+    def load_configuration_list(group, key, values, default)
+      raw = readconfig(group, key, default.join(","))
+      selected = raw.to_s.split(",").map { |value| value.to_sym }
+      return selected if (selected - values).empty?
+
+      Log.warning("Invalid configuration value for #{group}/#{key}: #{raw.inspect}; using #{default.join(",").inspect}")
+      writeconfig(group, key, default.join(","))
+      default
+    end
+
     def load_configuration
         Log.info("Loading configuration")
+        migrate_configuration
         lang=Configuration.language
-  Configuration.listtype = readconfig("Interface", "ListType", 0)
-  Configuration.keyboardscheme = readconfig("Interface", "KeyboardScheme", "default")
-  Configuration.macoscharacternavigation = readconfig("Interface", "MacOSCharacterNavigation", "default")
-  Configuration.disablefeednotifications = readconfig("Interface", "DisableFeedNotifications", 0)
-  Configuration.iimodifiers = readconfig("InvisibleInterface", "IIModifiers", 0)
-  Configuration.iicards = readconfig("InvisibleInterface", "Cards", "messages,feed,conference")
-  Configuration.roundupforms = readconfig("Interface", "RoundUpForms", 0)
-  Configuration.usepan = readconfig("Interface", "UsePan", 1)
+  Configuration.listtype = load_configuration_choice("Interface", "ListType", [:linear, :circular], :linear)
+  Configuration.keyboardscheme = load_configuration_choice("Interface", "KeyboardScheme", [:default, :windows, :macos], :default)
+  Configuration.macoscharacternavigation = load_configuration_choice("Interface", "MacOSCharacterNavigation", [:default, :disabled, :enabled], :default)
+  Configuration.disablefeednotifications = load_configuration_boolean("Interface", "DisableFeedNotifications", false)
+  Configuration.iimodifiers = load_configuration_choice("InvisibleInterface", "IIModifiers", [:automatic, :alt_ctrl_windows, :alt_shift_windows, :alt_ctrl_shift, :alt_ctrl, :alt_shift], :automatic)
+  Configuration.iicards = load_configuration_list("InvisibleInterface", "Cards", [:messages, :feed, :conference], [:messages, :feed, :conference])
+  Configuration.roundupforms = load_configuration_boolean("Interface", "RoundUpForms", false)
+  Configuration.usepan = load_configuration_boolean("Interface", "UsePan", true)
   Configuration.soundcard = readconfig("SoundCard", "SoundCard", "")
   if Configuration.soundcard==""
                 Sapi.set_device(-1) if defined?(Sapi)
@@ -48,24 +80,24 @@ Configuration.microphone = readconfig("SoundCard", "Microphone", "")
     defl=mc.index(mc.find{|m|m.default?})||-1
   Bass.setrecorddevice(defl)
   end
-    Configuration.controlspresentation = readconfig("Interface", "ControlsPresentation", 0)
-  Configuration.contextmenubar = readconfig("Interface", "ContextMenuBar", 1)
-Configuration.soundthemeactivation = readconfig("Interface", "SoundThemeActivation", 1)
-Configuration.typingecho = readconfig("Interface", "TypingEcho", 0)
-Configuration.bgsounds = readconfig("Interface", "BGSounds", 1)
-Configuration.linewrapping = readconfig("Interface", "LineWrapping", 1)
-Configuration.hidewindow = readconfig("Interface", "HideWindow", 0)
-Configuration.synctime = readconfig("Advanced", "SyncTime", 1)
-Configuration.saytimeperiod = readconfig("Clock", "SayTimePeriod", 1)
-Configuration.saytimetype = readconfig("Clock", "SayTimeType", 1)
-Configuration.registeractivity = readconfig("Privacy", "RegisterActivity", -1)
-Configuration.checkupdates = readconfig("Updates", "CheckAtStartup", 1)
-Configuration.autoplay = readconfig("Interface", "AutoPlay", 0)
-Configuration.branch = readconfig("Updates", "Branch", "")
+    Configuration.controlspresentation = load_configuration_choice("Interface", "ControlsPresentation", [:voice_and_sound, :sound_only, :voice_only], :voice_and_sound)
+  Configuration.contextmenubar = load_configuration_boolean("Interface", "ContextMenuBar", true)
+Configuration.soundthemeactivation = load_configuration_boolean("Interface", "SoundThemeActivation", true)
+Configuration.typingecho = load_configuration_choice("Interface", "TypingEcho", [:characters, :words, :characters_and_words, :none], :characters)
+Configuration.bgsounds = load_configuration_boolean("Interface", "BGSounds", true)
+Configuration.linewrapping = load_configuration_boolean("Interface", "LineWrapping", true)
+Configuration.hidewindow = load_configuration_boolean("Interface", "HideWindow", false)
+Configuration.synctime = load_configuration_boolean("Advanced", "SyncTime", true)
+Configuration.saytimeperiod = load_configuration_choice("Clock", "SayTimePeriod", [:hourly, :half_hourly, :quarter_hourly], :hourly)
+Configuration.saytimetype = load_configuration_choice("Clock", "SayTimeType", [:none, :voice_and_sound, :voice_only, :sound_only], :voice_and_sound)
+Configuration.registeractivity = load_configuration_value("Privacy", "RegisterActivity", { "unset" => nil, "false" => false, "true" => true }, nil)
+Configuration.checkupdates = load_configuration_boolean("Updates", "CheckAtStartup", true)
+Configuration.autoplay = load_configuration_choice("Interface", "AutoPlay", [:always, :without_transcription, :never], :always)
+Configuration.branch = load_configuration_choice("Updates", "Branch", [:auto, :stable, :rc, :beta], :auto)
 if tray_supported?
-c_autostart=readconfig("System", "AutoStart", 0)
+c_autostart=load_configuration_boolean("System", "AutoStart", false)
 path=EltenSystemHelpers.autostart_executable_path(current_executable_path)
-c_autostart=0 if !EltenSystemHelpers.autostart_executable?(path)
+c_autostart=false if !EltenSystemHelpers.autostart_executable?(path)
 autostart_cmd=EltenSystemHelpers.autostart_command(path)
 EltenSystemHelpers.sync_autostart(c_autostart, autostart_cmd)
 end
@@ -91,8 +123,8 @@ if $rvc==nil
         end
                   writeconfig("Voice", "Voice", Configuration.voice)
                 end
-                Configuration.enablebraille = readconfig("Interface", "EnableBraille", 0)
-                Configuration.usevoicedictionary = readconfig("Voice", "UseVoiceDictionary", 1)
+                Configuration.enablebraille = load_configuration_boolean("Interface", "EnableBraille", false)
+                Configuration.usevoicedictionary = load_configuration_boolean("Voice", "UseVoiceDictionary", true)
           Configuration.language = readconfig("Interface", "Language", "")
           if Configuration.language.include?("_")
             Configuration.language.gsub!("_","-")
@@ -135,36 +167,32 @@ stheme=nil
 stheme=EltenPath.join(Dirs.soundthemes, Configuration.soundtheme+".elsnd") if Configuration.soundtheme!=nil
 use_soundtheme(stheme)
                           Configuration.volume = readconfig("Interface", "MainVolume", 50)
-                          Configuration.usefx = readconfig("Advanced", "UseFX", -1)
-                          Configuration.usedenoising = readconfig("Advanced", "UseDenoising", 0)
-                          Configuration.useechocancellation = readconfig("Advanced", "UseEchoCancellation", 0)
-                          Configuration.usebilinearhrtf = readconfig("Advanced", "UseBilinearHRTF", 0)
-                          Configuration.disableconferencemiconrecord = readconfig("Advanced", "DisableConferenceMicOnRecord", 0)
-                          Configuration.enableaudiobuffering = readconfig("Advanced", "EnableAudioBuffering", 0)
+                          Configuration.usefx = load_configuration_value("Advanced", "UseFX", { "auto" => :auto, "false" => false, "true" => true }, :auto)
+                          Configuration.usedenoising = load_configuration_choice("Advanced", "UseDenoising", [:never, :conferences, :conferences_and_recording], :never)
+                          Configuration.useechocancellation = load_configuration_boolean("Advanced", "UseEchoCancellation", false)
+                          Configuration.usebilinearhrtf = load_configuration_boolean("Advanced", "UseBilinearHRTF", false)
+                          Configuration.disableconferencemiconrecord = load_configuration_boolean("Advanced", "DisableConferenceMicOnRecord", false)
+                          Configuration.enableaudiobuffering = load_configuration_boolean("Advanced", "EnableAudioBuffering", false)
                           Configuration.sessiontime = readconfig("Advanced", "AgentSessionTime", 2)
-                          Configuration.disablehttp2 = readconfig("Advanced", "DisableHTTP2", 0)
-                          Configuration.requestresponsecachemode = readconfig("Advanced", "RequestResponseCacheMode", "mutating")
-                          unless ["disabled", "mutating", "all"].include?(Configuration.requestresponsecachemode)
-                            Configuration.requestresponsecachemode = "mutating"
-                            writeconfig("Advanced", "RequestResponseCacheMode", Configuration.requestresponsecachemode)
-                          end
-                      Configuration.tcpconferences = readconfig("Advanced", "ConferencesTCPOnly", 0)
+                          Configuration.disablehttp2 = load_configuration_boolean("Advanced", "DisableHTTP2", false)
+                          Configuration.requestresponsecachemode = load_configuration_choice("Advanced", "RequestResponseCacheMode", [:disabled, :mutating, :all], :mutating)
+                      Configuration.tcpconferences = load_configuration_boolean("Advanced", "ConferencesTCPOnly", false)
                       Configuration.conferencesaudiobuffer = readconfig("Advanced", "ConferencesAudioBuffer", 0)
                       Configuration.conferencesaudiobuffercutoff = readconfig("Advanced", "ConferencesAudioBufferCutOff", 250)
                       Configuration.udppacketsize = readconfig("Advanced", "UDPMaxPacketSize", 1480)
-                          Configuration.autologin = readconfig("Login", "EnableAutoLogin", 1)
+                          Configuration.autologin = load_configuration_boolean("Login", "EnableAutoLogin", true)
                           if lang!=Configuration.language
                             setlocale(Configuration.language)
                             SpeechOutput.apply_current_settings if defined?(SpeechOutput)
                           end
-                                if Configuration.registeractivity==-1
-  Configuration.registeractivity = (confirm(p_("EAPI_EltenAPI", "Do you want to send reports on how Elten is used? This data does not contain any confidential information and is very helpful in program development. This selection can be changed at any time from the Settings.")) ? 1 : 0)
+                                if Configuration.registeractivity==nil
+  Configuration.registeractivity = confirm(p_("EAPI_EltenAPI", "Do you want to send reports on how Elten is used? This data does not contain any confidential information and is very helpful in program development. This selection can be changed at any time from the Settings."))
   writeconfig("Privacy", "RegisterActivity", Configuration.registeractivity)
   end
-  if Elten.branch.to_s.downcase!="stable" && Configuration.registeractivity==0
+  if Elten.branch.to_s.downcase!="stable" && Configuration.registeractivity==false
     delay(1)
     alert(p_("EAPI_EltenAPI", "You are currently using a beta version of Elten. In these versions, uploading usage statistics is always enabled. They contain information about the most frequently used functions, configurations and problems with program operation. They do not contain any confidential or private information. If you do not want to send statistics, please use the stable version of Elten."))
-  Configuration.registeractivity = 1
+  Configuration.registeractivity = true
   writeconfig("Privacy", "RegisterActivity", Configuration.registeractivity)
   end
                         end

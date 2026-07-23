@@ -380,7 +380,7 @@ module Programs
       volume = normalize_volume(volume, ignore_elten_volume: ignore_elten_volume)
       Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f / 100.0 * 0.5)
       apply_pitch(stream, pitch)
-      if Configuration.usepan.to_i == 1
+      if Configuration.usepan == true
         Bass::BASS_ChannelSetAttribute.call(stream, 3, pan.to_f / 50.0 - 1.0)
       end
     end

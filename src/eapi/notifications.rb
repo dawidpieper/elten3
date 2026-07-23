@@ -493,7 +493,7 @@ module EltenAPI
           end
           if played == false && previous == nil && @lastfeeds != nil && current.message != ""
             played = true
-            enqueue_event("func" => "notif", "sound" => "feed_update") if $donotdisturb != true && configuration_int(:disablefeednotifications, 0) != 1
+            enqueue_event("func" => "notif", "sound" => "feed_update") if $donotdisturb != true && Configuration.disablefeednotifications != true
           end
           changed << current
           current_feeds[id] = current
@@ -624,10 +624,6 @@ module EltenAPI
         return default if !Configuration.respond_to?(name)
         value = Configuration.__send__(name)
         value == nil ? default : value.to_s
-      end
-
-      def configuration_int(name, default=0)
-        configuration_string(name, default.to_s).to_i
       end
 
       def window_active?

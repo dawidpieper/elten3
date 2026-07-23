@@ -72,7 +72,7 @@ module EltenAPI
 
            def focus(index=nil, count=nil, spk=true, include_header: true)
              pos = lpos
-             play_sound("listbox_marker", volume: 100, pitch: 100, pan: pos) if spk && !@silent && Configuration.controlspresentation != 2
+             play_sound("listbox_marker", volume: 100, pitch: 100, pan: pos) if spk && !@silent && Configuration.controlspresentation != :voice_only
              return if !@speech
              text = ""
              if include_header && @header != nil && @header != ""

@@ -678,12 +678,7 @@ Public License instead of this License.  But first, please read
 end
 
 def iiinfotext
-  hk=Configuration.iimodifiers
-         keys=[]
-         keys.push("ALT") if (hk&0x1)>0
-         keys.push("CTRL") if (hk&0x2)>0
-         keys.push("SHIFT") if (hk&0x4)>0
-         keys.push("WINDOWS") if (hk&0x8)>0
+  keys=ConfigurationValues.invisible_interface_modifier_names(Configuration.iimodifiers)
          hkname=keys.join("+")
          d=_doc("invisibleinterface")
          d+="\n\n"+p_("Documentation", "Current Elten modifier")+": "+hkname

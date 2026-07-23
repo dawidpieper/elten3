@@ -94,7 +94,7 @@ module EltenAPI
 
     class << self
       def current
-        configured = defined?(Configuration) ? Configuration.keyboardscheme.to_s.downcase.to_sym : :default
+        configured = defined?(Configuration) ? Configuration.keyboardscheme : :default
         return configured if PROFILES.key?(configured)
 
         default_profile
@@ -129,9 +129,9 @@ module EltenAPI
       end
 
       def macos_character_navigation?
-        configured = defined?(Configuration) ? Configuration.macoscharacternavigation.to_s.downcase : "default"
-        return true if configured == "enabled"
-        return false if configured == "disabled"
+        configured = defined?(Configuration) ? Configuration.macoscharacternavigation : :default
+        return true if configured == :enabled
+        return false if configured == :disabled
 
         current == :macos
       rescue Exception
