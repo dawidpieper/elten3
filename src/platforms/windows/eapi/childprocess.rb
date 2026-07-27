@@ -8,7 +8,7 @@ module EltenAPI
   WINAPI_ABI = defined?(Fiddle::Function::STDCALL) ? Fiddle::Function::STDCALL : Fiddle::Function::DEFAULT unless const_defined?(:WINAPI_ABI)
   F_INT = Fiddle::TYPE_INT unless const_defined?(:F_INT)
   F_PTR = Fiddle::TYPE_VOIDP unless const_defined?(:F_PTR)
-  F_HANDLE = EltenWin32::POINTER_SIZE == 8 ? Fiddle::TYPE_LONG_LONG : Fiddle::TYPE_INT unless const_defined?(:F_HANDLE)
+  F_HANDLE = Fiddle::TYPE_VOIDP unless const_defined?(:F_HANDLE)
   PROCESS_KERNEL32 = Fiddle.dlopen("kernel32.dll") unless const_defined?(:PROCESS_KERNEL32)
   CREATE_PROCESS_W = Fiddle::Function.new(PROCESS_KERNEL32["CreateProcessW"], [F_PTR, F_PTR, F_PTR, F_PTR, F_INT, F_INT, F_PTR, F_PTR, F_PTR, F_PTR], F_INT, WINAPI_ABI) unless const_defined?(:CREATE_PROCESS_W)
   GET_EXIT_CODE_PROCESS = Fiddle::Function.new(PROCESS_KERNEL32["GetExitCodeProcess"], [F_HANDLE, F_PTR], F_INT, WINAPI_ABI) unless const_defined?(:GET_EXIT_CODE_PROCESS)
