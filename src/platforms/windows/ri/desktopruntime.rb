@@ -710,7 +710,12 @@ module EltenWindow
     end
 
     def begin_input_frame
-      clear_character_queue
+      window_state_monitor.synchronize do
+        @character_queue ||= []
+        @character_queue.shift(@character_frame_prefix_size.to_i) if @character_frame_consumed != true
+        @character_frame_prefix_size = 0
+        @character_frame_consumed = false
+      end
       true
     end
 
@@ -733,6 +738,7 @@ module EltenWindow
     def take_character(multi = false)
       window_state_monitor.synchronize do
         @character_queue ||= []
+        @character_frame_consumed = true
         next "" if @character_queue.empty?
         if multi
           text = @character_queue.join
@@ -949,6 +955,8 @@ module EltenWindow
       window_state_monitor.synchronize do
         @character_queue ||= []
         @character_queue.clear
+        @character_frame_prefix_size = 0
+        @character_frame_consumed = false
         @high_surrogate = nil
       end
       true
@@ -990,9 +998,18 @@ module EltenWindow
       run_window_actions
       capture_keyboard_state
       run_window_actions
+      snapshot_character_frame if token > 0
       @pump_mutex.synchronize do
         @completed_updates[token] = true if token > 0
         @pump_cond.broadcast
+      end
+      true
+    end
+
+    def snapshot_character_frame
+      window_state_monitor.synchronize do
+        @character_queue ||= []
+        @character_frame_prefix_size = @character_queue.size
       end
       true
     end
