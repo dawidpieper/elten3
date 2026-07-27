@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Elten
+Comment=Elten Network desktop client
+Comment[pl]=Klient sieci Elten
+TryExec=/opt/elten/elten
+Exec=/opt/elten/elten
+Terminal=false
+Categories=Network;Chat;

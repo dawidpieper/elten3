@@ -16,10 +16,17 @@ set(ELTEN_7ZIP_URL "https://www.7-zip.org/a/7zr.exe" CACHE STRING "Standalone 7-
 set(ELTEN_7ZIP_EXTRA_URL "https://www.7-zip.org/a/7z2601-extra.7z" CACHE STRING "7-Zip extra tools archive URL used by Windows launcher builds")
 set(ELTEN_RUBY_OSX_PLATFORM_INCLUDE "arm64-darwin25" CACHE STRING "macOS Ruby platform include directory")
 set(ELTEN_OSX_RUBY_CONFIGURE_OPTIONS "--enable-yjit" CACHE STRING "Configure options passed to ruby-install for macOS Ruby builds")
+set(ELTEN_RUBY_SOURCE_BASE_URL "https://cache.ruby-lang.org/pub/ruby" CACHE STRING "Ruby source archive base URL used by Linux launcher builds")
+# --enable-yjit rather than relying on Ruby autodetecting rustc: the launcher
+# asks for --yjit at startup and refuses to run if Ruby did not enable it, so a
+# build host without rustc must fail here, loudly, instead of producing a
+# runtime that only breaks on the user's machine.
+set(ELTEN_LINUX_RUBY_CONFIGURE_OPTIONS "--enable-yjit" CACHE STRING "Extra configure options for Linux Ruby builds (--enable-shared is always used)")
 set(ELTEN_WINDOWS_X64_RUBY_VERSION "${ELTEN_RUBY_VERSION}" CACHE STRING "Ruby version used by Windows x64 launcher builds")
 set(ELTEN_WINDOWS_X86_RUBY_VERSION "3.4.10" CACHE STRING "Ruby version used by Windows x86 launcher builds")
 set(ELTEN_WINDOWS_ARM64_RUBY_VERSION "${ELTEN_RUBY_VERSION}" CACHE STRING "Ruby version used by Windows arm64 launcher builds")
 set(ELTEN_OSX_ARM64_RUBY_VERSION "${ELTEN_RUBY_VERSION}" CACHE STRING "Ruby version used by macOS arm64 launcher builds")
+set(ELTEN_LINUX_X64_RUBY_VERSION "${ELTEN_RUBY_VERSION}" CACHE STRING "Ruby version used by Linux x64 launcher builds")
 set(ELTEN_MSYS2_BASE_URL "https://github.com/msys2/msys2-installer/releases/download/nightly-x86_64/msys2-base-x86_64-latest.tar.xz" CACHE STRING "MSYS2 base archive URL used by Windows launcher builds")
 set(ELTEN_WINDOWS_X64_MSYS2_PACKAGES "base-devel mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-make mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-sqlite3" CACHE STRING "MSYS2 packages installed for Windows x64 native gem builds")
 set(ELTEN_WINDOWS_X86_MSYS2_PACKAGES "base-devel mingw-w64-i686-gcc mingw-w64-i686-make mingw-w64-i686-pkgconf mingw-w64-i686-sqlite3" CACHE STRING "MSYS2 packages installed for Windows x86 native gem builds")
@@ -74,6 +81,8 @@ function(elten_configure_ruby_runtime)
     set(runtime_version "${${version_var}}")
   elseif(ARG_PLATFORM STREQUAL "osx" AND ARG_ARCH STREQUAL "arm64")
     set(runtime_version "${ELTEN_OSX_ARM64_RUBY_VERSION}")
+  elseif(ARG_PLATFORM STREQUAL "linux" AND ARG_ARCH STREQUAL "x64")
+    set(runtime_version "${ELTEN_LINUX_X64_RUBY_VERSION}")
   endif()
   elten_ruby_version_parts("${runtime_version}" runtime_major runtime_minor runtime_api runtime_dll_abi)
 
@@ -140,6 +149,20 @@ function(elten_configure_ruby_runtime)
     set(ruby_exe "${runtime_root}/bin/ruby")
     set(ruby_library "${runtime_root}/lib/libruby.${runtime_major}.${runtime_minor}-static.a")
     set(ruby_dll "")
+  elseif(ARG_PLATFORM STREQUAL "linux")
+    set(default_linux_ruby_url "${ELTEN_RUBY_SOURCE_BASE_URL}/${runtime_major}.${runtime_minor}/ruby-${runtime_version}.tar.gz")
+    set(ELTEN_LINUX_RUBY_URL "${default_linux_ruby_url}" CACHE STRING "Ruby source archive URL for Linux ${ARG_ARCH}")
+    list(APPEND script_args
+      "-DLINUX_RUBY_URL=${ELTEN_LINUX_RUBY_URL}"
+      "-DLINUX_RUBY_CONFIGURE_OPTIONS=${ELTEN_LINUX_RUBY_CONFIGURE_OPTIONS}"
+    )
+    # The Linux launcher does not link libruby; it dlopens the shared library
+    # from the runtime directory at startup (like the Windows DLL model). The
+    # asset generator lands lib/libruby.so in the runtime directory under this
+    # flat name, dereferencing the symlink.
+    set(ruby_exe "${runtime_root}/bin/ruby")
+    set(ruby_library "")
+    set(ruby_dll "libruby.so")
   else()
     message(FATAL_ERROR "Unsupported Ruby runtime platform: ${ARG_PLATFORM}")
   endif()
@@ -171,5 +194,7 @@ function(elten_configure_ruby_runtime)
   set(ELTEN_RUBY_DLL "${ruby_dll}" PARENT_SCOPE)
   set(ELTEN_RUNTIME_RUBY_API_VERSION "${runtime_api}" PARENT_SCOPE)
   set(ELTEN_RUBY_INCLUDE_DIR "${runtime_root}/include/ruby-${runtime_api}" PARENT_SCOPE)
-  set(ELTEN_RUBY_PLATFORM_INCLUDE_DIR "${runtime_root}/include/ruby-${runtime_api}/${ELTEN_RUBY_OSX_PLATFORM_INCLUDE}" PARENT_SCOPE)
+  if(ARG_PLATFORM STREQUAL "osx")
+    set(ELTEN_RUBY_PLATFORM_INCLUDE_DIR "${runtime_root}/include/ruby-${runtime_api}/${ELTEN_RUBY_OSX_PLATFORM_INCLUDE}" PARENT_SCOPE)
+  endif()
 endfunction()
