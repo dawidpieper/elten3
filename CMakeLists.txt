@@ -387,17 +387,9 @@ elseif(UNIX AND NOT APPLE)
   set(ELTEN_LAUNCHER_OUTPUT_NAME "elten")
   set(ELTEN_RUNTIME_ARCH_DIR "linux-${ELTEN_LAUNCHER_ARCH}")
   elten_configure_ruby_runtime(PLATFORM linux ARCH "${ELTEN_LAUNCHER_ARCH}")
-  # Architecture in the path, unlike windows/osx which share one package root per
-  # platform. Linux is the one where building a second architecture on the same
-  # machine is routine (a 32-bit build in an i386 container against a 64-bit host),
-  # and the assembly step starts with rm -rf on this directory - so a shared root
-  # means the second build silently destroys the first one's package.
-  set(ELTEN_PACKAGE_ROOT "${ELTEN_RELEASE_BASE}/linux-${ELTEN_LAUNCHER_ARCH}")
+  set(ELTEN_PACKAGE_ROOT "${ELTEN_RELEASE_BASE}/linux")
   set(ELTEN_RUNTIME_DIR "${ELTEN_PACKAGE_ROOT}/bin/${ELTEN_RUNTIME_ARCH_DIR}")
   set(ELTEN_DIST_LINUX_DIR "${CMAKE_SOURCE_DIR}/dist/linux")
-  # Same reason: the staging tree is wiped at the start of every EltenPkg run, so
-  # two architectures packaged in parallel would tread on each other.
-  set(ELTEN_DIST_LINUX_STAGE "${ELTEN_DIST_LINUX_DIR}/stage-${ELTEN_LAUNCHER_ARCH}")
 
   # Like macOS (and like Windows, which lets the generator find its own copy in
   # the package root), take libzstd from the bundled runtime directory rather
@@ -565,11 +557,11 @@ elseif(UNIX AND NOT APPLE)
   # Filesystem-root layout: `tar -C / -xf` installs /opt/elten and the global
   # menu entry in one step; the in-app updater extracts the same archive.
   add_custom_target(EltenPkg
-    COMMAND "${CMAKE_COMMAND}" -E rm -rf "${ELTEN_DIST_LINUX_STAGE}"
-    COMMAND "${CMAKE_COMMAND}" -E make_directory "${ELTEN_DIST_LINUX_STAGE}/opt" "${ELTEN_DIST_LINUX_STAGE}/usr/share/applications"
-    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${ELTEN_PACKAGE_ROOT}" "${ELTEN_DIST_LINUX_STAGE}/opt/elten"
-    COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_SOURCE_DIR}/tools/elten.desktop" "${ELTEN_DIST_LINUX_STAGE}/usr/share/applications/elten.desktop"
-    COMMAND "${CMAKE_COMMAND}" -E chdir "${ELTEN_DIST_LINUX_STAGE}" "${CMAKE_COMMAND}" -E tar cf "${ELTEN_DIST_LINUX_DIR}/elten-linux-${ELTEN_LAUNCHER_ARCH}.tar.zst" --zstd opt usr
+    COMMAND "${CMAKE_COMMAND}" -E rm -rf "${ELTEN_DIST_LINUX_DIR}/stage"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${ELTEN_DIST_LINUX_DIR}/stage/opt" "${ELTEN_DIST_LINUX_DIR}/stage/usr/share/applications"
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${ELTEN_PACKAGE_ROOT}" "${ELTEN_DIST_LINUX_DIR}/stage/opt/elten"
+    COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_SOURCE_DIR}/tools/elten.desktop" "${ELTEN_DIST_LINUX_DIR}/stage/usr/share/applications/elten.desktop"
+    COMMAND "${CMAKE_COMMAND}" -E chdir "${ELTEN_DIST_LINUX_DIR}/stage" "${CMAKE_COMMAND}" -E tar cf "${ELTEN_DIST_LINUX_DIR}/elten-linux-${ELTEN_LAUNCHER_ARCH}.tar.zst" --zstd opt usr
     DEPENDS EltenApp
     COMMENT "Creating dist/linux/elten-linux-${ELTEN_LAUNCHER_ARCH}.tar.zst"
     VERBATIM
