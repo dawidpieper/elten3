@@ -152,9 +152,20 @@ function(elten_configure_ruby_runtime)
   elseif(ARG_PLATFORM STREQUAL "linux")
     set(default_linux_ruby_url "${ELTEN_RUBY_SOURCE_BASE_URL}/${runtime_major}.${runtime_minor}/ruby-${runtime_version}.tar.gz")
     set(ELTEN_LINUX_RUBY_URL "${default_linux_ruby_url}" CACHE STRING "Ruby source archive URL for Linux ${ARG_ARCH}")
+    # YJIT is 64-bit only, and an explicit --enable-yjit bypasses Ruby's own
+    # target check (it sets YJIT_SUPPORT=yes outright), so on x86 the flag would
+    # not be politely ignored - it would push configure into building the Rust
+    # part for a target YJIT does not support. Drop it there rather than making
+    # the caller remember to.
+    set(linux_configure_options "${ELTEN_LINUX_RUBY_CONFIGURE_OPTIONS}")
+    if(NOT ARG_ARCH STREQUAL "x64" AND NOT ARG_ARCH STREQUAL "arm64")
+      string(REPLACE "--enable-yjit" "" linux_configure_options "${linux_configure_options}")
+      string(STRIP "${linux_configure_options}" linux_configure_options)
+      message(STATUS "YJIT disabled for linux-${ARG_ARCH}: not a 64-bit JIT target")
+    endif()
     list(APPEND script_args
       "-DLINUX_RUBY_URL=${ELTEN_LINUX_RUBY_URL}"
-      "-DLINUX_RUBY_CONFIGURE_OPTIONS=${ELTEN_LINUX_RUBY_CONFIGURE_OPTIONS}"
+      "-DLINUX_RUBY_CONFIGURE_OPTIONS=${linux_configure_options}"
     )
     # The Linux launcher does not link libruby; it dlopens the shared library
     # from the runtime directory at startup (like the Windows DLL model). The

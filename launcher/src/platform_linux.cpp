@@ -239,10 +239,15 @@ bool PlatformRequiresEarlyEncodingDatabase() {
 }
 
 bool PlatformSupportsYJIT() {
-  // Like macOS: the runtime is built with --enable-yjit, so the launcher passes
-  // --yjit and VerifyYJITEnabled holds the build to it. Windows stays false
-  // because RubyInstaller does not ship YJIT.
-  return true;
+  // 64-bit only. Ruby's configure lists arm64/aarch64/x86_64 as the JIT-capable
+  // Linux targets, so a 32-bit runtime never has YJIT - and since the launcher
+  // passes --yjit and VerifyYJITEnabled treats a missing JIT as fatal, claiming
+  // support here would make an x86 build refuse to start.
+  //
+  // On 64-bit this holds the build to its promise: the runtime is configured
+  // with --enable-yjit, so if it somehow came out without one, we want to know.
+  // Windows stays false throughout because RubyInstaller ships no YJIT at all.
+  return sizeof(void *) == 8;
 }
 
 RubyApi PlatformLoadRuby(const fs::path &runtimeDir, const fs::path &fallbackRubyRoot) {
