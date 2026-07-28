@@ -1980,6 +1980,7 @@ break
       tmp[1]=thread.author#.lore
       tmp[2]=thread.posts.to_s
       tmp[3]=(thread.posts - thread.readposts).to_s
+      tmp[4]="(#{thread.forum.fullname}, #{thread.forum.group.name})" if id==-11
             tmp
     }
     index=@sthreads.index(setindex)||0 if index==nil
@@ -1990,6 +1991,7 @@ break
     header = p_("Forum", "Select thread")
     header = "" if id == -2 or id == -4 or id == -6 or id == -7
     thrselh = [nil, p_("Forum", "Author"), p_("Forum", "posts"), p_("Forum", "Unread")]
+    thrselh[4]=nil if id==-11
     @thrsel = TableBox.new(thrselh, thrselt, index: index, header: header, quiet: true, flags: ListBox::Flags::Tagged)
     @sthreads.each_with_index do |thread, i|
       apply_thread_row_states(i, thread, id)
