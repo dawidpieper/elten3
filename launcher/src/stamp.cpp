@@ -17,6 +17,10 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
 #include <mach/mach.h>
+#elif defined(__linux__)
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #endif
 
 #include <array>
@@ -252,6 +256,128 @@ std::string PlatformProperty(const char *name) {
 }
 #endif
 
+#if defined(__linux__)
+// Linux has no single privileged source like SMBIOS or IOPlatformExpertDevice,
+// and the obvious ones are out of reach: /sys/class/dmi/id/product_uuid,
+// product_serial and board_serial are all mode 0400, so dmidecode-style
+// identifiers need root, which Elten does not have. What IS world-readable is
+// the serial the drive itself reports, and that is the closest equivalent to
+// what the other two platforms use: it lives in the device firmware, survives a
+// reinstall and a reformat, and faking it means covering up /sys rather than
+// editing a text file.
+//
+// Deliberately NOT used here:
+//   - /etc/machine-id alone: a plain file, trivially replaced or shadowed with a
+//     bind mount or an LD_PRELOAD on open. sd_id128_get_machine() is no better -
+//     it reads exactly that file and nothing else (verified with strace).
+//     Kept below only as a fallback, because something beats "unknown".
+//   - MAC addresses: cards get swapped, Wi-Fi randomises them, and virtual
+//     interfaces come and go.
+//   - Filesystem UUIDs: gone after a reformat.
+//   - Readable DMI fields (product_name, bios_version...): identical for every
+//     unit of the same model, so no uniqueness, and bios_version changes on a
+//     firmware update, which would move the id for no good reason.
+
+std::string ReadSysfsString(const std::filesystem::path &path) {
+  std::error_code ec;
+  if (!std::filesystem::is_regular_file(path, ec)) return "";
+  std::ifstream file(path, std::ios::binary);
+  if (!file) return "";
+  std::string value((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  // sysfs pads these with spaces and a trailing newline (the NVMe serial comes
+  // back as "S7HDNJ0Y235287H     \n"), and an absent identifier reads as empty
+  // or as nothing but padding - which must count as "no material", not as a
+  // constant shared by every machine that lacks it.
+  while (!value.empty() && (value.back() == '\n' || value.back() == '\r' ||
+                            value.back() == ' ' || value.back() == '\t' || value.back() == '\0')) {
+    value.pop_back();
+  }
+  std::size_t start = value.find_first_not_of(" \t");
+  return start == std::string::npos ? "" : value.substr(start);
+}
+
+// SCSI/SATA devices expose the serial through VPD page 0x80, which is binary:
+// byte 1 is the page code, bytes 2-3 the big-endian length, then the serial.
+std::string ReadVpdSerial(const std::filesystem::path &path) {
+  std::error_code ec;
+  if (!std::filesystem::is_regular_file(path, ec)) return "";
+  std::ifstream file(path, std::ios::binary);
+  if (!file) return "";
+  std::string raw((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  if (raw.size() < 4 || static_cast<unsigned char>(raw[1]) != 0x80) return "";
+  std::size_t length = (static_cast<unsigned char>(raw[2]) << 8) | static_cast<unsigned char>(raw[3]);
+  if (length == 0 || 4 + length > raw.size()) return "";
+  std::string serial = raw.substr(4, length);
+  while (!serial.empty() && (serial.back() == ' ' || serial.back() == '\0')) serial.pop_back();
+  return serial;
+}
+
+// Walks from the filesystem root down to the physical disk behind it. The mount
+// source is taken as major:minor from /proc/self/mountinfo rather than by
+// parsing device paths, because that works the same for a plain partition, for
+// LVM and for an encrypted root.
+std::filesystem::path RootBlockDevice() {
+  std::ifstream mounts("/proc/self/mountinfo");
+  if (!mounts) return {};
+  std::string line;
+  while (std::getline(mounts, line)) {
+    std::istringstream fields(line);
+    std::string mountId, parentId, majorMinor, rootPath, mountPoint;
+    if (!(fields >> mountId >> parentId >> majorMinor >> rootPath >> mountPoint)) continue;
+    if (mountPoint != "/") continue;
+    std::error_code ec;
+    std::filesystem::path device =
+        std::filesystem::canonical("/sys/dev/block/" + majorMinor, ec);
+    return ec ? std::filesystem::path() : device;
+  }
+  return {};
+}
+
+// From that device, find the node that actually carries the identifiers: a
+// partition hands over to its parent disk, and a device-mapper node (LUKS, LVM)
+// hands over to what it is built on. The depth is capped so a pathological
+// stack cannot spin here.
+std::string RootDiskSerial() {
+  std::filesystem::path node = RootBlockDevice();
+  if (node.empty()) return "";
+  for (int depth = 0; depth < 8 && !node.empty(); ++depth) {
+    std::error_code ec;
+    std::string serial = ReadSysfsString(node / "device" / "serial");
+    if (serial.empty()) serial = ReadSysfsString(node / "device" / "wwid");
+    if (serial.empty()) serial = ReadVpdSerial(node / "device" / "vpd_pg80");
+    if (!serial.empty()) return serial;
+
+    if (std::filesystem::exists(node / "partition", ec)) {
+      node = node.parent_path();
+      continue;
+    }
+    // Device mapper: descend into whatever this node is stacked on.
+    std::filesystem::path slaves = node / "slaves";
+    if (std::filesystem::is_directory(slaves, ec)) {
+      std::filesystem::path next;
+      for (const auto &entry : std::filesystem::directory_iterator(slaves, ec)) {
+        next = std::filesystem::canonical(entry.path(), ec);
+        if (!ec) break;
+      }
+      if (!next.empty()) {
+        node = next;
+        continue;
+      }
+    }
+    break;
+  }
+  return "";
+}
+
+std::string MachineId() {
+  std::string value = ReadSysfsString("/etc/machine-id");
+  // Usually a symlink to the file above, so only consulted when that one is
+  // missing - reading both would just count the same bytes twice.
+  if (value.empty()) value = ReadSysfsString("/var/lib/dbus/machine-id");
+  return value;
+}
+#endif
+
 std::string HardwareId() {
 #if defined(_WIN32)
   std::string material = "windows-hwid-v2\n";
@@ -268,7 +394,30 @@ std::string HardwareId() {
   hasMaterial |= AppendNamedBytes(material, "platform-serial", PlatformProperty("IOPlatformSerialNumber"));
   if (!hasMaterial) throw StampError("cannot build macOS hardware id");
   return Sha256Hex(material);
+#elif defined(__linux__)
+  std::string material = "linux-hwid-v1\n";
+  bool hasMaterial = false;
+  // Disk serial alone when it is available, machine-id ONLY as a fallback -
+  // deliberately not both mixed together.
+  //
+  // Mixing them would tie the id to the installed system as much as to the
+  // hardware: reinstalling the OS regenerates /etc/machine-id, which would move
+  // the digest and let a banned machine come back as a new one. Keying on the
+  // drive's own serial means a reinstall, or a reformat, changes nothing.
+  //
+  // The fallback exists for machines that report no serial at all - virtual
+  // disks usually do not - where a weak id still beats none.
+  std::string diskSerial = RootDiskSerial();
+  if (!diskSerial.empty()) {
+    hasMaterial |= AppendNamedBytes(material, "disk-serial", diskSerial);
+  } else {
+    hasMaterial |= AppendNamedBytes(material, "machine-id", MachineId());
+  }
+  if (!hasMaterial) throw StampError("cannot build Linux hardware id");
+  return Sha256Hex(material);
 #else
+  // Any other Unix: the sysfs and procfs paths above do not exist there, so keep
+  // the previous behaviour rather than pretending to identify the machine.
   return Sha256Hex("unknown");
 #endif
 }

@@ -53,6 +53,7 @@ module EltenBoot
       return @platform_tags if @platform_tags != nil
       platform = ENV["ELTEN_LAUNCHER_PLATFORM"].to_s.downcase
       platform = "windows" if platform == "" && RUBY_PLATFORM =~ /mswin|mingw|cygwin/i
+      platform = "linux" if platform == "" && RUBY_PLATFORM =~ /linux/i
       platform = "osx" if platform == "" && RUBY_PLATFORM =~ /darwin/i
       tags = platform == "" ? [] : [platform.to_sym]
       arch = platform_architecture(platform)
@@ -82,6 +83,29 @@ module EltenBoot
       return if defined?(::EltenEmbedded)
 
       ENV["ELTEN_OSX_DYLD_BOOTSTRAPPED"] = "1"
+      ENV["ELTEN_ROOT"] = app_root
+      require "rbconfig"
+      exec(RbConfig.ruby, File.join(app_root, "elten.rb"), *ARGV)
+    end
+
+    def configure_linux_ld!
+      return unless platform?(:linux)
+      runtime_dir = File.join(app_root, "bin", "linux-x64")
+      return unless File.directory?(runtime_dir)
+
+      changed = false
+      ["LD_LIBRARY_PATH"].each do |key|
+        entries = ENV[key].to_s.split(":").reject { |entry| entry.to_s == "" }
+        next if entries.include?(runtime_dir)
+        ENV[key] = ([runtime_dir] + entries).uniq.join(":")
+        changed = true
+      end
+
+      return if ENV["ELTEN_LINUX_LD_BOOTSTRAPPED"] == "1"
+      return unless changed
+      return if defined?(::EltenEmbedded)
+
+      ENV["ELTEN_LINUX_LD_BOOTSTRAPPED"] = "1"
       ENV["ELTEN_ROOT"] = app_root
       require "rbconfig"
       exec(RbConfig.ruby, File.join(app_root, "elten.rb"), *ARGV)
@@ -338,6 +362,7 @@ module EltenBoot
 
     def appdata
       return File.join(Dir.home, "Library", "Application Support", "Elten") if EltenBoot.platform?(:osx)
+      return File.join(ENV.fetch("XDG_DATA_HOME", File.join(Dir.home, ".local", "share")), "elten") if EltenBoot.platform?(:linux)
       ENV["APPDATA"].to_s != "" ? ENV["APPDATA"] : File.join(Dir.home, "AppData", "Roaming")
     rescue Exception
       "."
@@ -362,6 +387,8 @@ module EltenBoot
         "launcher-windows-#{platform_architecture("windows")}"
       elsif platform?(:osx)
         "launcher-osx-#{platform_architecture("osx")}"
+      elsif platform?(:linux)
+        "launcher-linux-#{platform_architecture("linux")}"
       end
     end
 
@@ -370,6 +397,8 @@ module EltenBoot
         "windows-#{platform_architecture("windows")}"
       elsif platform?(:osx)
         "osx-#{platform_architecture("osx")}"
+      elsif platform?(:linux)
+        "linux-#{platform_architecture("linux")}"
       end
     end
 
@@ -522,6 +551,7 @@ $VERBOSE = nil
 begin
   boot_trace.call("elten.rb before configure")
   EltenBoot.configure_osx_dyld!
+  EltenBoot.configure_linux_ld!
   EltenBoot.configure_local_gems!
   Signal.trap("INT") { exit!(130) } if EltenBoot.platform?(:osx)
   boot_trace.call("elten.rb before require fiddle")

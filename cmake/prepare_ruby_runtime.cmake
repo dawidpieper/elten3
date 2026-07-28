@@ -18,6 +18,9 @@ if(PLATFORM STREQUAL "windows")
   set(desired_marker "${desired_marker}nokogiri_msys_patch=${NOKOGIRI_MSYS_PATCH}\n")
 elseif(PLATFORM STREQUAL "osx")
   set(desired_marker "${desired_marker}osx_configure_options=${OSX_RUBY_CONFIGURE_OPTIONS}\n")
+elseif(PLATFORM STREQUAL "linux")
+  set(desired_marker "${desired_marker}url=${LINUX_RUBY_URL}\n")
+  set(desired_marker "${desired_marker}linux_configure_options=${LINUX_RUBY_CONFIGURE_OPTIONS}\n")
 endif()
 
 set(rubyinstaller_arch "${ARCH}")
@@ -33,6 +36,18 @@ function(run_checked)
   if(NOT result EQUAL 0)
     string(REPLACE ";" " " rendered "${ARGV}")
     message(FATAL_ERROR "Command failed (${result}): ${rendered}")
+  endif()
+endfunction()
+
+function(run_checked_in working_directory)
+  execute_process(
+    COMMAND ${ARGN}
+    WORKING_DIRECTORY "${working_directory}"
+    RESULT_VARIABLE result
+  )
+  if(NOT result EQUAL 0)
+    string(REPLACE ";" " " rendered "${ARGN}")
+    message(FATAL_ERROR "Command failed (${result}) in ${working_directory}: ${rendered}")
   endif()
 endfunction()
 
@@ -459,6 +474,69 @@ elseif(PLATFORM STREQUAL "osx")
     endif()
     run_checked(${ruby_install_command})
   endif()
+elseif(PLATFORM STREQUAL "linux")
+  set(linux_ruby_configure_args)
+  if(LINUX_RUBY_CONFIGURE_OPTIONS)
+    separate_arguments(linux_ruby_configure_args NATIVE_COMMAND "${LINUX_RUBY_CONFIGURE_OPTIONS}")
+  endif()
+  if(NOT EXISTS "${ruby_exe}")
+    if(NOT LINUX_RUBY_URL)
+      message(FATAL_ERROR "LINUX_RUBY_URL is required for Linux Ruby runtime")
+    endif()
+    set(download_dir "${RUNTIME_ROOT}/../downloads")
+    file(MAKE_DIRECTORY "${download_dir}")
+    get_filename_component(ruby_archive_name "${LINUX_RUBY_URL}" NAME)
+    if(NOT ruby_archive_name)
+      set(ruby_archive_name "ruby-${RUBY_VERSION}.tar.gz")
+    endif()
+    set(ruby_archive_path "${download_dir}/${ruby_archive_name}")
+    download_if_needed("${LINUX_RUBY_URL}" "${ruby_archive_path}" "Ruby source")
+
+    set(ruby_src_root "${RUNTIME_ROOT}/../ruby-src-${ARCH}")
+    file(REMOVE_RECURSE "${ruby_src_root}")
+    file(MAKE_DIRECTORY "${ruby_src_root}")
+    message(STATUS "Extracting Ruby source to ${ruby_src_root}")
+    file(ARCHIVE_EXTRACT INPUT "${ruby_archive_path}" DESTINATION "${ruby_src_root}")
+    file(GLOB ruby_src_candidates LIST_DIRECTORIES true "${ruby_src_root}/ruby-*")
+    list(LENGTH ruby_src_candidates ruby_src_count)
+    if(ruby_src_count EQUAL 0)
+      message(FATAL_ERROR "Ruby source archive did not contain a ruby-* directory: ${ruby_archive_path}")
+    endif()
+    list(GET ruby_src_candidates 0 ruby_src_dir)
+
+    file(REMOVE_RECURSE "${RUNTIME_ROOT}")
+    file(MAKE_DIRECTORY "${RUNTIME_ROOT}")
+    include(ProcessorCount)
+    ProcessorCount(build_jobs)
+    if(build_jobs EQUAL 0)
+      set(build_jobs 4)
+    endif()
+    message(STATUS "Building Ruby ${RUBY_VERSION} for Linux (${build_jobs} jobs); this can take several minutes")
+    if(linux_ruby_configure_args)
+      message(STATUS "Linux Ruby configure options: ${LINUX_RUBY_CONFIGURE_OPTIONS}")
+    endif()
+    # Keeps bin/ruby usable during gem installation without LD_LIBRARY_PATH.
+    #
+    # Note this is an absolute build-tree path and is useless in the shipped
+    # package. Making the objects look next to themselves instead cannot be done
+    # from here: passing -Wl,-rpath,$ORIGIN through LDFLAGS gets mangled on the
+    # way, differently per sub-build (make reads $O as a variable and leaves
+    # "RIGIN"; mkmf drops it entirely). bundle_linux_libs.cmake rewrites RUNPATH
+    # with patchelf afterwards instead, where no shell can touch the value.
+    set(old_ldflags "$ENV{LDFLAGS}")
+    set(ENV{LDFLAGS} "-Wl,-rpath,${RUNTIME_ROOT}/lib $ENV{LDFLAGS}")
+    run_checked_in("${ruby_src_dir}"
+      "${ruby_src_dir}/configure"
+      "--prefix=${RUNTIME_ROOT}"
+      --enable-shared
+      --disable-install-doc
+      ${linux_ruby_configure_args}
+    )
+    set(ENV{LDFLAGS} "${old_ldflags}")
+    run_checked_in("${ruby_src_dir}" make "-j${build_jobs}")
+    run_checked_in("${ruby_src_dir}" make install)
+    file(REMOVE_RECURSE "${ruby_src_root}")
+  endif()
 else()
   message(FATAL_ERROR "Unsupported Ruby runtime platform: ${PLATFORM}")
 endif()
@@ -541,6 +619,9 @@ if(PLATFORM STREQUAL "windows")
   set(desired_gem_marker "${desired_gem_marker}nokogiri_msys_patch_sha=${nokogiri_msys_patch_sha}\n")
 elseif(PLATFORM STREQUAL "osx")
   set(desired_gem_marker "${desired_gem_marker}osx_configure_options=${OSX_RUBY_CONFIGURE_OPTIONS}\n")
+elseif(PLATFORM STREQUAL "linux")
+  set(desired_gem_marker "${desired_gem_marker}url=${LINUX_RUBY_URL}\n")
+  set(desired_gem_marker "${desired_gem_marker}linux_configure_options=${LINUX_RUBY_CONFIGURE_OPTIONS}\n")
 endif()
 
 if(INSTALL_GEMS)

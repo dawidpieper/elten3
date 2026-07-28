@@ -31,6 +31,15 @@
         "CMAKE_OSX_ARCHITECTURES": "arm64",
         "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "linux-x64",
+      "displayName": "Linux x64",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/launcher-linux-x64",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
     }
   ],
   "buildPresets": [
@@ -52,6 +61,10 @@
     {
       "name": "osx-arm64-release",
       "configurePreset": "osx-arm64"
+    },
+    {
+      "name": "linux-x64-release",
+      "configurePreset": "linux-x64"
     }
   ]
 }
