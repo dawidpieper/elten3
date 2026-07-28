@@ -3237,13 +3237,16 @@ msgstr "Wiadomość"
 
 #: src/scenes/blog.rb:484 src/scenes/blog.rb:813
 msgctxt "Blog"
-msgid "User to mention"
-msgstr "Użytkownik do zawzmiankowania"
+msgid "Users to mention"
+msgstr "Użytkownicy do zawzmiankowania"
 
 #: src/scenes/blog.rb:499 src/scenes/blog.rb:828
 msgctxt "Blog"
 msgid "The mention has been sent."
-msgstr "Wzmianka została wysłana."
+msgid_plural "The mentions have been sent."
+msgstr[0] "Wzmianka została wysłana."
+msgstr[1] "Wzmianki zostały wysłane."
+msgstr[2] "Wzmianki zostały wysłane."
 
 #: src/scenes/blog.rb:508 src/scenes/blog.rb:744
 msgctxt "Blog"

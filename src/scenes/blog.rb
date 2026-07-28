@@ -481,7 +481,15 @@ else
           alert(p_("Blog", "Nobody added you to their contact list."))
           next
         end
-        form = Form.new([ListBox.new(users, header: p_("Blog", "User to mention")), EditBox.new(p_("Blog", "Message"), type: 0, text: "", quiet: true), Button.new(p_("Blog", "Mention post")), Button.new(_("Cancel"))])
+        form = Form.new([lst_users = ListBox.new(users, header: p_("Blog", "Users to mention"), index: 0, flags: ListBox::Flags::MultiSelection), EditBox.new(p_("Blog", "Message"), type: 0, text: "", quiet: true), btn_mentionOK = Button.new(p_("Blog", "Mention post")), Button.new(_("Cancel"))])
+        form.hide(btn_mentionOK)
+        lst_users.on(:multiselection_changed) {
+          if lst_users.multiselections.size <= 0
+            form.hide(btn_mentionOK)
+          else
+            form.show(btn_mentionOK)
+          end
+        }
         loop do
           loop_update
           form.update
@@ -491,12 +499,15 @@ else
             break
           end
           if (key_pressed?(:key_enter) or key_pressed?(:key_space)) and form.index == 2
+            selections = lst_users.multiselections()
             begin
-              EltenLink::Blog.send_mention(elten_link, user: users[form.fields[0].index], message: form.fields[1].text, blog: @post[@sel.index].owner, post_id: @post[@sel.index].id)
+              for i in 0..selections.size - 1
+                EltenLink::Blog.send_mention(elten_link, user: users[selections[i]], message: form.fields[1].text, blog: @post[@sel.index].owner, post_id: @post[@sel.index].id)
+              end
             rescue EltenLink::Error
               alert(_("Error"))
             else
-              alert(p_("Blog", "The mention has been sent."))
+              alert(np_("Blog", "The mention has been sent.", "The mentions have been sent.", selections.size))
               @sel.focus
               break
             end
@@ -808,7 +819,15 @@ def context(menu)
       alert(p_("Blog", "Nobody added you to their contact list."))
       return
     end
-    form = Form.new([ListBox.new(users, header: p_("Blog", "User to mention")), EditBox.new(p_("Blog", "Message"), type: 0, text: "", quiet: true), Button.new(p_("Blog", "Mention post")), Button.new(_("Cancel"))])
+    form = Form.new([lst_users = ListBox.new(users, header: p_("Blog", "Users to mention"), index: 0, flags: ListBox::Flags::MultiSelection), EditBox.new(p_("Blog", "Message"), type: 0, text: "", quiet: true), btn_mentionOK = Button.new(p_("Blog", "Mention post")), Button.new(_("Cancel"))])
+    form.hide(btn_mentionOK)
+    lst_users.on(:multiselection_changed) {
+      if lst_users.multiselections.size <= 0
+        form.hide(btn_mentionOK)
+      else
+        form.show(btn_mentionOK)
+      end
+    }
     loop do
       loop_update
       form.update
@@ -818,12 +837,15 @@ def context(menu)
         break
       end
       if (key_pressed?(:key_enter) or key_pressed?(:key_space)) and form.index == 2
+        selections = lst_users.multiselections()
         begin
-          EltenLink::Blog.send_mention(elten_link, user: users[form.fields[0].index], message: form.fields[1].text, blog: @post.owner, post_id: @post.id)
+          for i in 0..selections.size - 1
+            EltenLink::Blog.send_mention(elten_link, user: users[selections[i]], message: form.fields[1].text, blog: @post.owner, post_id: @post.id)
+          end
         rescue EltenLink::Error
           alert(_("Error"))
         else
-          alert(p_("Blog", "The mention has been sent."))
+          alert(np_("Blog", "The mention has been sent.", "The mentions have been sent.", selections.size))
           @form.focus
           break
         end

@@ -3141,13 +3141,15 @@ msgstr ""
 
 #: src/scenes/blog.rb:484 src/scenes/blog.rb:813
 msgctxt "Blog"
-msgid "User to mention"
+msgid "Users to mention"
 msgstr ""
 
 #: src/scenes/blog.rb:499 src/scenes/blog.rb:828
 msgctxt "Blog"
 msgid "The mention has been sent."
-msgstr ""
+msgid_plural "The mentions have been sent."
+msgstr[0] ""
+msgstr[1] ""
 
 #: src/scenes/blog.rb:508 src/scenes/blog.rb:744
 msgctxt "Blog"
