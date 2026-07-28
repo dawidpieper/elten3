@@ -666,7 +666,7 @@ dialog_close
 def feed_new(users=[], response=0)
   text=users.map{|u|"@"+u}.join(" ")
   text<<" " if text!=""
-    inp = input_text(p_("Main", "Message"), flags: 0, text: text, escapable: true, permitted_characters: [], denied_characters: [], max_length: 300, move_to_end: true)
+    inp = input_text(p_("Main", "Message"), flags: 0, text: text, escapable: true, permitted_characters: [], denied_characters: [], max_length: 300, move_to_end: true, character_counter: true)
   feed(inp, response) if inp!=nil
 end
 def feed_id=(f)

@@ -371,7 +371,7 @@ def delete_timer(timer)
                 # @param type [String] the window type
                 #  @see Edit
                 # @param text [String] an initial text
-  def input_text(header="", flags: 0, text: "", escapable: false, permitted_characters: [], denied_characters: [], max_length: 0, move_to_end: false, select_all: false)
+  def input_text(header="", flags: 0, text: "", escapable: false, permitted_characters: [], denied_characters: [], max_length: 0, move_to_end: false, select_all: false, character_counter: false)
     if flags.is_a?(String)
       Log.warning("String flags are no longer supported: "+Kernel.caller.join(" "))
       flags=0
@@ -393,6 +393,9 @@ def delete_timer(timer)
   loop do
 loop_update
     inp.update
+    if character_counter && key_pressed?(0x09)
+      speak(p_("EAPI_Form", "%{count} of %{maximum} characters") % {:count=>inp.text.chrsize, :maximum=>max_length})
+    end
     submit = keyboard_action_pressed?(:submit)
     break if key_pressed?(:key_enter) and (ml == false or submit != nil)
     if (ro == true or (flags.is_a?(Numeric) and (flags&EditBox::Flags::ReadOnly)>0)) and (key_pressed?(:key_escape) or key_pressed?(:key_alt) or key_pressed?(:key_enter))

@@ -78,7 +78,7 @@ module EltenAPI
                 if $feedwriting!=true
                   begin
                 $feedwriting=true
-                  inp = input_text(p_("EAPI_Common", "Message"), flags: 0, text: "", escapable: true, permitted_characters: [], denied_characters: [], max_length: 300)
+                  inp = input_text(p_("EAPI_Common", "Message"), flags: 0, text: "", escapable: true, permitted_characters: [], denied_characters: [], max_length: 300, character_counter: true)
                 loop_update
   feed(inp) if inp!=nil
   $feedwriting=false

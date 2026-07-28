@@ -694,7 +694,8 @@ module EltenAPI
           :send_label => p_("Messages", "Send"),
           :cancel_label => _("Cancel"),
           :text => text,
-          :max_length => 300
+          :max_length => 300,
+          :character_counter => true
         ) do |result, values|
           @jobs << [:feed_submit, values[:text], response] if result == :submit
         end
