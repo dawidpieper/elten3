@@ -259,7 +259,7 @@ end
     end
     def default_actions
       [
-      [Scene_Notifications, p_("EAPI_QuickActions", "Notifications"), [], 10],
+      [Scene_Notifications, p_("EAPI_QuickActions", "Notification history"), [], 10],
             [Scene_Contacts, p_("EAPI_QuickActions", "My contacts"), [], 9],
       [Scene_Online, p_("EAPI_QuickActions", "Who is online?"), [], -9],
       [Scene_Messages, p_("EAPI_QuickActions", "Messages"), [], -11],
