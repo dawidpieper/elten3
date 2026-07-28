@@ -1989,19 +1989,17 @@ btn_cancel = Button.new(_("Cancel"))
 lst_tags.bind_context{|menu|
       menu.option(p_("Blog", "Add existing tag to this post"), nil, "e") {
           dialog_open
-        tag = selecttag
+        tags = selecttag
           dialog_close
-          for t in @tags
-            if tag != nil and t.name.downcase == tag.name.downcase
-              tagid = t.id
-              break
-            end
-          end
-          if tag != nil and tagid > 0
-            @tagids.push(tagid)
+          added = 0
+          for tag in tags
+            next if tag == nil || tag.id.to_i <= 0
+            next if @tagids.include?(tag.id)
+            @tagids.push(tag.id)
             lst_tags.options.push(tag.name)
-            lst_tags.focus
+            added += 1
           end
+            lst_tags.focus if added > 0
       }
 menu.option(p_("Blog", "Add tag to this post"), nil, "n") {
 tagname=input_text(p_("Blog", "Tag to add"), flags: 0, text: "", escapable: true)
@@ -2210,20 +2208,21 @@ if suc
     def selecttag
       if @tags.size < 1
       alert(p_("Blog", "There are currently no tags created, please add a new one."))
-      return nil
+      return []
     end
-    sel = ListBox.new(@tags.map { |t| t.name}, header: p_("Blog", "Select tag"), index: 0, flags: 0, quiet: false)
+    sel = ListBox.new(@tags.map { |t| t.name}, header: p_("Blog", "Select tag"), index: 0, flags: ListBox::Flags::MultiSelection, quiet: false)
       loop do
       loop_update
-      sel.update if @tags.size > 0
+      sel.update
         if key_pressed?(:key_escape)
         loop_update
-        return(nil)
+        return []
       end
-      if key_pressed?(:key_enter) and @tags.size > 0
+      if key_pressed?(:key_enter)
         loop_update
-        play_sound("listbox_select")
-        return(@tags[sel.index])
+        #play_sound was not necessary in this scenario; performed twice.
+        selections = sel.multiselections
+        return selections.empty? ? [@tags[sel.index]] : selections.map{ |i| @tags[i] }
       end
     end
   end
