@@ -371,9 +371,17 @@ if(APPLE)
   )
 elseif(UNIX AND NOT APPLE)
   set(ELTEN_LAUNCHER_PLATFORM "linux")
+  # Match each family explicitly instead of treating everything unrecognised as
+  # 64-bit: on i686 the old else() branch claimed x64, so the build silently
+  # looked for bin/linux-x64 and produced a package that could not run.
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
     set(ELTEN_LAUNCHER_ARCH "arm64")
+  elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i[3-6]86|x86|IA32)$")
+    set(ELTEN_LAUNCHER_ARCH "x86")
+  elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
+    set(ELTEN_LAUNCHER_ARCH "x64")
   else()
+    message(WARNING "Unrecognised CMAKE_SYSTEM_PROCESSOR '${CMAKE_SYSTEM_PROCESSOR}'; assuming x64")
     set(ELTEN_LAUNCHER_ARCH "x64")
   endif()
   set(ELTEN_LAUNCHER_OUTPUT_NAME "elten")

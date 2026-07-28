@@ -90,7 +90,7 @@ module EltenBoot
 
     def configure_linux_ld!
       return unless platform?(:linux)
-      runtime_dir = File.join(app_root, "bin", "linux-x64")
+      runtime_dir = File.join(app_root, "bin", "linux-#{platform_architecture("linux")}")
       return unless File.directory?(runtime_dir)
 
       changed = false

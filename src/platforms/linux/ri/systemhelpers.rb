@@ -157,7 +157,12 @@ module EltenSystemHelpers
 
     def platform_target
       cpu = RbConfig::CONFIG["host_cpu"].to_s.downcase
-      arch = cpu =~ /arm|aarch64/ ? "arm64" : "x64"
+      arch = case cpu
+             when /aarch64|arm64/ then "arm64"
+             when /i[3-6]86/ then "x86"
+             when /arm/ then "armhf"
+             else "x64"
+             end
       "linux-#{arch}"
     rescue Exception
       "linux-x64"
@@ -192,7 +197,7 @@ module EltenSystemHelpers
         if variant.to_s.downcase.start_with?("bin/")
           suffix = variant[4..-1]
           lower = suffix.downcase
-          if lower.start_with?("linux-x64/", "linux-arm64/", "osx/", "windows-x64/", "windows-x86/", "windows-arm64/")
+          if lower.start_with?("linux-x64/", "linux-x86/", "linux-arm64/", "linux-armhf/", "osx/", "windows-x64/", "windows-x86/", "windows-arm64/")
             candidates << File.expand_path(variant, root)
           else
             candidates << File.join(arch_bin, suffix)
