@@ -16,7 +16,7 @@ class Scene_Main
 
   def main
     if @@feed_id==-1
-      @@feed_id = LocalConfig['MainFeedId']
+      @@feed_id = LocalConfig['MainFeedId', type: :numeric]
     end
     if Session.name==nil||Session.name==""
       $scene=Scene_Loading.new
@@ -302,7 +302,7 @@ end
 
 def notifications_context(menu)
   return if current_notification_group==nil
-  menu.option(p_("Notifications", "Open"), nil, :enter) { notifications_open }
+  menu.option(p_("Notifications", "Open")) { notifications_open }
   menu.option(p_("Notifications", "Mark as read"), nil, "w") { notifications_revoke_current }
   if revocable_notification_groups?(@notification_groups)
     menu.option(p_("Notifications", "Mark all as read"), nil, "W") { notifications_revoke_all }
@@ -440,9 +440,9 @@ def accontext(menu)
     k.push(i)
     s.push("SHIFT+F"+i.to_s)
     k.push(-i)
-    s.push("CTRL+F"+i.to_s)
+    s.push(EltenAPI::KeyboardScheme.modifier_name+"+F"+i.to_s)
     k.push(i+12)
-    s.push("CTRL+SHIFT+F"+i.to_s)
+    s.push(EltenAPI::KeyboardScheme.modifier_name+"+SHIFT+F"+i.to_s)
     k.push(-(i+12))
   end
   ind=k.find_index(@actions[qacindex].key)||0
@@ -666,7 +666,7 @@ dialog_close
 def feed_new(users=[], response=0)
   text=users.map{|u|"@"+u}.join(" ")
   text<<" " if text!=""
-    inp = input_text(p_("Main", "Message"), flags: 0, text: text, escapable: true, permitted_characters: [], denied_characters: [], max_length: 300, move_to_end: true)
+    inp = input_text(p_("Main", "Message"), flags: 0, text: text, escapable: true, permitted_characters: [], denied_characters: [], max_length: 300, move_to_end: true, character_counter: true)
   feed(inp, response) if inp!=nil
 end
 def feed_id=(f)

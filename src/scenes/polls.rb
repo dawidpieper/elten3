@@ -65,7 +65,7 @@ def polls_filter
   @polls=[]
 knownlanguages = Session.languages.split(",").map{|lg|lg.upcase}
 for pl in @allpolls
-  @polls.push(pl) if LocalConfig["PollsShowUnknownLanguages"]==1 || knownlanguages.size==0 || knownlanguages.include?(pl.language[0..1].upcase)
+  @polls.push(pl) if LocalConfig["PollsShowUnknownLanguages", type: :bool] || knownlanguages.size==0 || knownlanguages.include?(pl.language[0..1].upcase)
   end
 selt=[]
 index=0
@@ -114,11 +114,9 @@ def context(menu)
        end
        if Session.languages.size>0
          s=p_("Polls", "Show polls in unknown languages")
-      s=p_("Polls", "Hide polls in unknown languages") if LocalConfig['PollsShowUnknownLanguages']==1
+      s=p_("Polls", "Hide polls in unknown languages") if LocalConfig['PollsShowUnknownLanguages', type: :bool]
       menu.option(s) {
-      l=1
-      l=0 if LocalConfig['PollsShowUnknownLanguages']==1
-      LocalConfig['PollsShowUnknownLanguages']=l
+      LocalConfig['PollsShowUnknownLanguages'] = !LocalConfig['PollsShowUnknownLanguages', type: :bool]
 polls_filter
 @sel.focus
       }

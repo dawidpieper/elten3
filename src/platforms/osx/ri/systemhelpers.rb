@@ -27,6 +27,18 @@ module OSXSystemNative
       ""
     end
 
+    def first_day_of_week
+      return nil unless available?
+      calendar = @msg_id.call(cls("NSCalendar"), sel("currentCalendar"))
+      return nil if calendar.to_i == 0
+      weekday = @msg_long.call(calendar, sel("firstWeekday")).to_i
+      return nil unless (1..7).include?(weekday)
+
+      weekday - 1
+    rescue Exception
+      nil
+    end
+
     def open_url(value)
       return false if value.to_s == "" || !available?
       url = ns_url(value.to_s)
@@ -98,6 +110,7 @@ module OSXSystemNative
       @msg_id = Fiddle::Function.new(msg, [id, sel_type], id)
       @msg_id_id = Fiddle::Function.new(msg, [id, sel_type, id], id)
       @msg_bool_id = Fiddle::Function.new(msg, [id, sel_type, id], bool)
+      @msg_long = Fiddle::Function.new(msg, [id, sel_type], Fiddle::TYPE_LONG)
       @msg_long_id = Fiddle::Function.new(msg, [id, sel_type, id], Fiddle::TYPE_LONG)
       @msg_void_id_ptr = Fiddle::Function.new(msg, [id, sel_type, id, Fiddle::TYPE_VOIDP], Fiddle::TYPE_VOID)
       @msg_id_bytes = Fiddle::Function.new(msg, [id, sel_type, Fiddle::TYPE_VOIDP, native_unsigned, native_unsigned], id)
@@ -272,6 +285,13 @@ module EltenSystemHelpers
       locale.to_s
     rescue Exception
       ""
+    end
+
+    def first_day_of_week
+      weekday = OSXSystemNative.first_day_of_week
+      (0..6).include?(weekday) ? weekday : 1
+    rescue Exception
+      1
     end
 
     def logical_drives

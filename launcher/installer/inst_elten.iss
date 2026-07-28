@@ -13,8 +13,8 @@
 [Setup]
 AppId={{9FE2B24B-49F4-4D0B-A36B-31F267F9B114}
 AppName=ELTEN
-AppVersion=ELTEN 3.0 BETA 15
-AppVerName=ELTEN 3.0 BETA 15
+AppVersion=ELTEN 3.0
+AppVerName=ELTEN 3.0
 AppPublisher=Dawid Pieper
 AppPublisherURL=https://elten.link
 AppSupportURL=https://elten.link/

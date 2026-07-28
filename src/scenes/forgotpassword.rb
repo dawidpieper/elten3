@@ -17,19 +17,16 @@ class Scene_ForgotPassword
     loop do    
     @mail=input_text(p_("ForgotPassword", "Enter the E-mail address used during the registration process"),flags: 0,text: "",escapable: true)
     return $scene=Scene_Loading.new if @mail==nil
-              break
+      begin
+        mail_ok=EltenLink::Accounts.user_mail_matches?(elten_link, user: @user, mail: @mail)
+      rescue EltenLink::Error => e
+        Log.warning("Password reset user/mail check failed: #{e.message}")
+        alert(_("Error"))
+        return $scene=Scene_Loading.new
       end
-  begin
-    mail_ok=EltenLink::Accounts.user_mail_matches?(elten_link, user: @user, mail: @mail)
-  rescue EltenLink::Error => e
-    Log.warning("Password reset user/mail check failed: #{e.message}")
-    alert(_("Error"))
-    return $scene=Scene_Loading.new
-  end
-    if !mail_ok
-    alert(p_("ForgotPassword", "The typed E-mail address is not associated with the entered username."))
-    return main
-  end
+      break if mail_ok
+      alert(p_("ForgotPassword", "The typed E-mail address is not associated with the entered username."))
+    end
 @sel=ListBox.new([p_("ForgotPassword", "Generate password reset code"),p_("ForgotPassword", "Enter password reset code"),_("Exit")],header: p_("ForgotPassword", "Password reset"), index: 0, flags: 0, quiet: false)
 loop do
   loop_update

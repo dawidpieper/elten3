@@ -2,15 +2,58 @@ root = File.expand_path(__dir__)
 Dir.chdir(root)
 $LOAD_PATH.unshift(File.join(root, "src")) unless defined?(::EltenEmbedded)
 
+module Elten
+  VERSION_STRING = "ELTEN 3.0 BETA 25"
+  BRANCH = "beta"
+
+  class << self
+    def version
+      VERSION_STRING
+    end
+
+    def window_title
+      VERSION_STRING
+    end
+
+    def build_id
+      return nil if !const_defined?(:BuildID, false)
+
+      const_get(:BuildID)
+    end
+
+    def build_date
+      return nil if !const_defined?(:BuildDate, false) || const_get(:BuildDate) == nil
+
+      t = Time.at(const_get(:BuildDate))
+      sprintf("%04d-%02d-%02d %02d:%02d", t.year, t.month, t.day, t.hour, t.min)
+    rescue Exception
+      nil
+    end
+
+    def branch
+      BRANCH
+    end
+  end
+end
+
 module EltenBoot
   HIDDEN_FLAGS = ["/hidden", "-hidden", "--hidden"]
   DEVELOPER_FLAGS = ["/developer", "-developer", "--developer", "/dev", "-dev", "--dev"]
+  WINDOWS_MAIN_CLASS = "ELTENMAINWND"
+  WINDOWS_MAIN_STYLE = 0x00CA0000
+  WINDOWS_ERROR_CLASS_ALREADY_EXISTS = 1410
+  WINDOWS_CS_HREDRAW = 0x0002
+  WINDOWS_CS_VREDRAW = 0x0001
+  WINDOWS_IDC_ARROW = 32512
+  WINDOWS_IDI_APPLICATION = 32512
+  WINDOWS_COLOR_WINDOW = 5
 
   class << self
     def platform_tags
       return @platform_tags if @platform_tags != nil
       platform = ENV["ELTEN_LAUNCHER_PLATFORM"].to_s.downcase
       platform = "windows" if platform == "" && RUBY_PLATFORM =~ /mswin|mingw|cygwin/i
+      platform = "linux" if platform == "" && RUBY_PLATFORM =~ /linux/i
       platform = "osx" if platform == "" && RUBY_PLATFORM =~ /darwin/i
       tags = platform == "" ? [] : [platform.to_sym]
       arch = platform_architecture(platform)
@@ -40,6 +83,29 @@ module EltenBoot
       return if defined?(::EltenEmbedded)
 
       ENV["ELTEN_OSX_DYLD_BOOTSTRAPPED"] = "1"
+      ENV["ELTEN_ROOT"] = app_root
+      require "rbconfig"
+      exec(RbConfig.ruby, File.join(app_root, "elten.rb"), *ARGV)
+    end
+
+    def configure_linux_ld!
+      return unless platform?(:linux)
+      runtime_dir = File.join(app_root, "bin", "linux-#{platform_architecture("linux")}")
+      return unless File.directory?(runtime_dir)
+
+      changed = false
+      ["LD_LIBRARY_PATH"].each do |key|
+        entries = ENV[key].to_s.split(":").reject { |entry| entry.to_s == "" }
+        next if entries.include?(runtime_dir)
+        ENV[key] = ([runtime_dir] + entries).uniq.join(":")
+        changed = true
+      end
+
+      return if ENV["ELTEN_LINUX_LD_BOOTSTRAPPED"] == "1"
+      return unless changed
+      return if defined?(::EltenEmbedded)
+
+      ENV["ELTEN_LINUX_LD_BOOTSTRAPPED"] = "1"
       ENV["ELTEN_ROOT"] = app_root
       require "rbconfig"
       exec(RbConfig.ruby, File.join(app_root, "elten.rb"), *ARGV)
@@ -116,7 +182,11 @@ module EltenBoot
       set_foreground_window = Fiddle::Function.new(user32["SetForegroundWindow"], [type_ptr], type_int)
       set_active_window = Fiddle::Function.new(user32["SetActiveWindow"], [type_ptr], type_ptr)
       set_focus = Fiddle::Function.new(user32["SetFocus"], [type_ptr], type_ptr)
-      hwnd = find_window.call(wide_string("STATIC"), wide_string("Elten"))
+      hwnd = nil
+      [Elten.window_title, "Elten"].uniq.each do |title|
+        hwnd = find_window.call(wide_string(WINDOWS_MAIN_CLASS), wide_string(title))
+        break if hwnd != nil && hwnd.to_i != 0
+      end
       return false if hwnd == nil || hwnd.to_i == 0
       show_window.call(hwnd, 5)
       show_window.call(hwnd, 9)
@@ -144,41 +214,119 @@ module EltenBoot
     def create_window
       $elten_start_hidden = startup_hidden?
       return unless platform?(:windows)
-      return if defined?($wnd) && $wnd != nil && $wnd != 0
-      user32 = Fiddle.dlopen("user32")
-      kernel32 = Fiddle.dlopen("kernel32")
-      type_int = Fiddle::TYPE_INT
-      type_ptr = Fiddle::TYPE_VOIDP
-      get_module_handle = Fiddle::Function.new(kernel32["GetModuleHandleW"], [type_ptr], type_ptr)
-      create_window_ex = Fiddle::Function.new(
-        user32["CreateWindowExW"],
-        [type_int, type_ptr, type_ptr, type_int, type_int, type_int, type_int, type_int, type_ptr, type_ptr, type_ptr, type_ptr],
-        type_ptr
-      )
-      set_menu = Fiddle::Function.new(user32["SetMenu"], [type_ptr, type_ptr], type_int)
-      show_window = Fiddle::Function.new(user32["ShowWindow"], [type_ptr, type_int], type_int)
-      hwnd = create_window_ex.call(
+      return $wnd.to_i if defined?($wnd) && $wnd != nil && $wnd != 0
+      register_windows_main_class
+      api = windows_main_api
+      hwnd = api[:create_window_ex].call(
         0,
-        wide_string("STATIC"),
-        wide_string("Elten"),
-        0x00CA0000,
+        windows_main_class_name,
+        wide_string(Elten.window_title),
+        WINDOWS_MAIN_STYLE,
         -2147483648,
         -2147483648,
         640,
         360,
         0,
         0,
-        get_module_handle.call(nil),
+        api[:get_module_handle].call(nil),
         nil
       )
-      return if hwnd == nil || hwnd == 0
+      if hwnd == nil || hwnd.to_i == 0
+        raise RuntimeError, "CreateWindowExW failed: #{api[:get_last_error].call}"
+      end
       $wnd = hwnd.to_i
-      set_menu.call($wnd, 0)
-      show_window.call($wnd, 5) if $elten_start_hidden != true
+      api[:show_window].call($wnd, 5) if $elten_start_hidden != true
+      $wnd
+    end
+
+    def dispatch_windows_main_message(hwnd, message, wparam, lparam)
+      if defined?(EltenWindow) && EltenWindow.respond_to?(:window_proc)
+        return EltenWindow.window_proc(hwnd.to_i, message.to_i, wparam.to_i, lparam.to_i)
+      end
+      windows_main_api[:def_window_proc].call(hwnd, message, wparam, lparam)
     rescue Exception
+      windows_main_api[:def_window_proc].call(hwnd, message, wparam, lparam) rescue 0
     end
 
     private
+
+    def register_windows_main_class
+      return true if @windows_main_class_registered == true
+      api = windows_main_api
+      wndclass_size = Fiddle::SIZEOF_VOIDP == 8 ? 80 : 48
+      wndclass = 0.chr * wndclass_size
+      windows_set_dword(wndclass, 0, wndclass_size)
+      windows_set_dword(wndclass, 4, WINDOWS_CS_HREDRAW | WINDOWS_CS_VREDRAW)
+      windows_set_pointer(wndclass, 8, windows_main_window_proc)
+      if Fiddle::SIZEOF_VOIDP == 8
+        windows_set_pointer(wndclass, 24, api[:get_module_handle].call(nil))
+        windows_set_pointer(wndclass, 32, api[:load_icon].call(0, WINDOWS_IDI_APPLICATION))
+        windows_set_pointer(wndclass, 40, api[:load_cursor].call(0, WINDOWS_IDC_ARROW))
+        windows_set_pointer(wndclass, 48, WINDOWS_COLOR_WINDOW + 1)
+        windows_set_pointer(wndclass, 64, windows_main_class_name)
+        windows_set_pointer(wndclass, 72, api[:load_icon].call(0, WINDOWS_IDI_APPLICATION))
+      else
+        windows_set_pointer(wndclass, 20, api[:get_module_handle].call(nil))
+        windows_set_pointer(wndclass, 24, api[:load_icon].call(0, WINDOWS_IDI_APPLICATION))
+        windows_set_pointer(wndclass, 28, api[:load_cursor].call(0, WINDOWS_IDC_ARROW))
+        windows_set_pointer(wndclass, 32, WINDOWS_COLOR_WINDOW + 1)
+        windows_set_pointer(wndclass, 40, windows_main_class_name)
+        windows_set_pointer(wndclass, 44, api[:load_icon].call(0, WINDOWS_IDI_APPLICATION))
+      end
+      atom = api[:register_class_ex].call(wndclass)
+      error = atom.to_i == 0 ? api[:get_last_error].call.to_i : 0
+      if atom.to_i == 0 && error != WINDOWS_ERROR_CLASS_ALREADY_EXISTS
+        raise RuntimeError, "RegisterClassExW failed: #{error}"
+      end
+      @windows_main_class_registered = true
+    end
+
+    def windows_main_api
+      return @windows_main_api if @windows_main_api != nil
+      user32 = Fiddle.dlopen("user32")
+      kernel32 = Fiddle.dlopen("kernel32")
+      type_int = Fiddle::TYPE_INT
+      type_ptr = Fiddle::TYPE_VOIDP
+      intptr = Fiddle::SIZEOF_VOIDP == 8 ? Fiddle::TYPE_LONG_LONG : Fiddle::TYPE_INT
+      abi = defined?(Fiddle::Function::STDCALL) ? Fiddle::Function::STDCALL : Fiddle::Function::DEFAULT
+      @windows_main_api = {
+        :get_module_handle => Fiddle::Function.new(kernel32["GetModuleHandleW"], [type_ptr], type_ptr, abi),
+        :get_last_error => Fiddle::Function.new(kernel32["GetLastError"], [], type_int, abi),
+        :register_class_ex => Fiddle::Function.new(user32["RegisterClassExW"], [type_ptr], Fiddle::TYPE_SHORT, abi),
+        :create_window_ex => Fiddle::Function.new(user32["CreateWindowExW"], [type_int, type_ptr, type_ptr, type_int, type_int, type_int, type_int, type_int, type_ptr, type_ptr, type_ptr, type_ptr], type_ptr, abi),
+        :def_window_proc => Fiddle::Function.new(user32["DefWindowProcW"], [type_ptr, type_int, intptr, intptr], intptr, abi),
+        :load_cursor => Fiddle::Function.new(user32["LoadCursorW"], [type_ptr, type_ptr], type_ptr, abi),
+        :load_icon => Fiddle::Function.new(user32["LoadIconW"], [type_ptr, type_ptr], type_ptr, abi),
+        :show_window => Fiddle::Function.new(user32["ShowWindow"], [type_ptr, type_int], type_int, abi)
+      }
+    end
+
+    def windows_main_window_proc
+      return @windows_main_window_proc if @windows_main_window_proc != nil
+      intptr = Fiddle::SIZEOF_VOIDP == 8 ? Fiddle::TYPE_LONG_LONG : Fiddle::TYPE_INT
+      abi = defined?(Fiddle::Function::STDCALL) ? Fiddle::Function::STDCALL : Fiddle::Function::DEFAULT
+      @windows_main_window_proc = Fiddle::Closure::BlockCaller.new(
+        intptr,
+        [Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT, intptr, intptr],
+        abi
+      ) do |hwnd, message, wparam, lparam|
+        dispatch_windows_main_message(hwnd, message, wparam, lparam)
+      end
+    end
+
+    def windows_main_class_name
+      @windows_main_class_name ||= wide_string(WINDOWS_MAIN_CLASS)
+    end
+
+    def windows_set_dword(buffer, offset, value)
+      buffer[offset, 4] = [value.to_i].pack("L")
+    end
+
+    def windows_set_pointer(buffer, offset, value)
+      pack = Fiddle::SIZEOF_VOIDP == 8 ? "Q" : "L"
+      pointer = value.is_a?(String) ? [value].pack("p") : [value.to_i].pack(pack)
+      buffer[offset, Fiddle::SIZEOF_VOIDP] = pointer
+    end
 
     def datadir_argument
       args = command_line_args
@@ -214,9 +362,23 @@ module EltenBoot
 
     def appdata
       return File.join(Dir.home, "Library", "Application Support", "Elten") if EltenBoot.platform?(:osx)
+      return File.join(xdg_data_home, "elten") if EltenBoot.platform?(:linux)
       ENV["APPDATA"].to_s != "" ? ENV["APPDATA"] : File.join(Dir.home, "AppData", "Roaming")
     rescue Exception
       "."
+    end
+
+    # The XDG spec treats an unset variable and an empty one the same way, and
+    # requires ignoring a relative path outright - so ENV.fetch is not enough
+    # here: with XDG_DATA_HOME set but empty it hands back "" and the data
+    # directory becomes /elten, at the root of the filesystem. A relative value
+    # would be just as bad, putting it wherever the process happens to be.
+    def xdg_data_home
+      value = ENV["XDG_DATA_HOME"].to_s
+      return value if value.start_with?("/")
+      File.join(Dir.home, ".local", "share")
+    rescue Exception
+      File.join(Dir.home, ".local", "share")
     end
 
     def app_root
@@ -238,6 +400,8 @@ module EltenBoot
         "launcher-windows-#{platform_architecture("windows")}"
       elsif platform?(:osx)
         "launcher-osx-#{platform_architecture("osx")}"
+      elsif platform?(:linux)
+        "launcher-linux-#{platform_architecture("linux")}"
       end
     end
 
@@ -246,6 +410,8 @@ module EltenBoot
         "windows-#{platform_architecture("windows")}"
       elsif platform?(:osx)
         "osx-#{platform_architecture("osx")}"
+      elsif platform?(:linux)
+        "linux-#{platform_architecture("linux")}"
       end
     end
 
@@ -398,6 +564,7 @@ $VERBOSE = nil
 begin
   boot_trace.call("elten.rb before configure")
   EltenBoot.configure_osx_dyld!
+  EltenBoot.configure_linux_ld!
   EltenBoot.configure_local_gems!
   Signal.trap("INT") { exit!(130) } if EltenBoot.platform?(:osx)
   boot_trace.call("elten.rb before require fiddle")
@@ -431,7 +598,7 @@ filelist_lines.each do |line|
     write_boot_profile.call("before_main")
     exit
   end
-  if EltenBoot.platform?(:osx) && normalized_file.casecmp("src/main.rb") == 0
+  if (EltenBoot.platform?(:osx) || EltenBoot.platform?(:windows)) && normalized_file.casecmp("src/main.rb") == 0
     deferred_main = File.join(root, file.tr("/", File::SEPARATOR))
     next
   end
@@ -448,7 +615,27 @@ end
 write_boot_profile.call("after_filelist")
 
 if deferred_main != nil
-  if EltenBoot.platform?(:osx) && defined?(EltenWindow) && EltenWindow.respond_to?(:run_appkit_main_loop)
+  if EltenBoot.platform?(:windows) && defined?(EltenWindow) && EltenWindow.respond_to?(:run_windows_message_loop)
+    EltenWindow.ensure_window
+    app_error = nil
+    app_thread = Thread.new do
+      begin
+        load deferred_main
+      rescue SystemExit => e
+        app_error = e
+      rescue Exception => e
+        app_error = e
+      ensure
+        EltenWindow.request_windows_exit if defined?(EltenWindow) && EltenWindow.respond_to?(:request_windows_exit)
+      end
+    end
+    begin
+      EltenWindow.run_windows_message_loop
+    ensure
+      app_thread.join
+    end
+    raise app_error if app_error != nil
+  elsif EltenBoot.platform?(:osx) && defined?(EltenWindow) && EltenWindow.respond_to?(:run_appkit_main_loop)
     EltenWindow.ensure_window
     app_error = nil
     app_thread = Thread.new do
@@ -464,8 +651,7 @@ if deferred_main != nil
     end
     EltenWindow.run_appkit_main_loop(app_thread)
     app_thread.join
-    raise app_error if app_error != nil && !app_error.is_a?(SystemExit)
-    raise app_error if app_error.is_a?(SystemExit)
+    raise app_error if app_error != nil
   else
     load deferred_main
   end

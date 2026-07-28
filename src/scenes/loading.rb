@@ -153,9 +153,9 @@ else
   load_configuration
     Log.info("Initializing Bass")
 Bass.init($wnd)
-                          if Configuration.usefx==-1
+                          if Configuration.usefx==:auto
                                 Log.debug("Testing for Bass FX")
-                            Configuration.usefx=Bass.test.to_i
+                            Configuration.usefx=Bass.test
                             writeconfig("Advanced", "UseFX", Configuration.usefx)
                             end
 if defined?(NVDA)
@@ -274,7 +274,7 @@ else
 $srvverify=nil
 alert(startmessage) if $silentstart != true
             $speech_wait = true if $silentstart != true
-            if Configuration.checkupdates==1 && launched_by_launcher?
+            if Configuration.checkupdates==true && launched_by_launcher?
             build_info=EltenLink::System.build_info(elten_link, branch: get_updatesbranch, os: platform_os, current_build_id: Elten.build_id)
             bid=build_info.build_id
             $update_version_string=build_info.version_string if build_info.version_string.to_s!=""

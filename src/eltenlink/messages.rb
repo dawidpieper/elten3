@@ -31,7 +31,7 @@ module EltenLink
 
   class Message
     attr_accessor :id, :receiver, :sender, :subject, :mread, :marked, :date, :attachments,
-      :text, :audio_url, :attachments_names, :protected, :polls, :polls_names
+      :text, :transcription, :audio_url, :attachments_names, :protected, :polls, :polls_names
 
     def initialize(id = 0)
       @id = id.to_i
@@ -47,6 +47,7 @@ module EltenLink
       @polls = []
       @polls_names = []
       @text = ""
+      @transcription = ""
       @audio_url = ""
     end
   end
@@ -312,6 +313,7 @@ module EltenLink
           message.polls = row["polls"].is_a?(Array) ? row["polls"].map(&:to_i) : row["polls"].to_s.split(",").map { |id| id.to_i }
           message.polls_names = poll_names(client, message.polls)
           message.text = content_text(row, "message")
+          message.transcription = utf8(row["transcription"])
           message.audio_url = content_audio_url(row)
           message
         end

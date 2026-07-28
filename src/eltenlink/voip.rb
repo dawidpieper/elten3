@@ -64,10 +64,25 @@ def initialize
 @received={}
 @pings={}
 @tcp_mutex = Mutex.new
+@update_mutex = Mutex.new
 @receive_hooks=[]
 @params_hooks=[]
 @status_hooks=[]
 @ping_hooks=[]
+@params_queue=Queue.new
+@params_thread=Thread.new do
+Thread.current.report_on_exception=false
+loop do
+params=@params_queue.pop
+@params_hooks.dup.each do |hook|
+begin
+hook.call(params)
+rescue Exception => e
+log(2, "VoIP params hook: #{e.class}: #{e.message} #{Array(e.backtrace).join("\n")}")
+end
+end
+end
+end
 @mutes=[]
 @chat_mutes=[]
 @streams_mutes=[]
@@ -170,6 +185,7 @@ return {} if cmd==false
 return cmd['channels']
 end
 def update
+@update_mutex.synchronize {
 send(200, "")
 resp=command("update")
 if resp.is_a?(Hash) && resp['updated']
@@ -183,7 +199,7 @@ log(-1, "Conference: updating parameters")
 @channel_secrets[@stamp]=Base64.strict_decode64(resp['channel_secret']) if resp['channel_secret']!=nil
 @received={}
 if resp['params']!=nil
-@params_hooks.each{|h|Thread.new {h.call(resp['params'])}}
+@params_queue << resp['params']
 end
 end
 if resp.is_a?(Hash) && resp['packets'].is_a?(Array)
@@ -191,6 +207,7 @@ for data in resp['packets'].map{|pc|Base64.decode64(pc)}
 receive(data)
 end
 end
+}
 end
 def close_transport
 if @udpthread!=nil
@@ -226,6 +243,11 @@ executecommand("close") if @tcp!=nil
 close_transport
 end
 def free
+if @params_thread!=nil
+@params_thread.exit
+@params_thread.join
+@params_thread=nil
+end
 disconnect
 @reconnect_thread.exit if @reconnect_thread!=nil
 end

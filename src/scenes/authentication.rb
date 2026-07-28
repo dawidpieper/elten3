@@ -38,16 +38,27 @@ return main if !confirm(p_("Authentication", "Two-factor authentication was intr
 return main if input_text(p_("Authentication", "Is this phone number correct? Press enter to continue or escape to cancel."),flags: EditBox::Flags::ReadOnly,text: phone, escapable: true)==nil
 if suc==true
 alert(p_("Authentication", "Please wait, connecting to the server ..."))
+enable_error=nil
 begin
   EltenLink::Authentication.enable(elten_link, password: password, phone: phone, language: Configuration.language)
   enable_ok=true
 rescue EltenLink::Error => e
   Log.warning("Authentication enable failed: #{e.message}")
   enable_ok=false
+  enable_error=e
 end
 speech_wait
 if !enable_ok
-  alert(_("Error"))
+  case enable_error&.code.to_s
+  when "authentication.sms_cooldown"
+    alert(p_("Authentication", "A text message with a verification code can be requested only once per minute. Please try again later."))
+  when "authentication.sms_daily_limit"
+    alert(p_("Authentication", "The daily limit for text messages with verification codes has been reached. Please try again later."))
+  when "authentication.sms_limiter_unavailable"
+    alert(p_("Authentication", "Text message verification is temporarily unavailable. Please try again later."))
+  else
+    alert(_("Error"))
+  end
 else
   code=""
   tries=0

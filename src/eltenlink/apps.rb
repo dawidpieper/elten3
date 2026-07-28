@@ -157,7 +157,7 @@ module EltenLink
         return {} if stamp == nil
 
         {
-          "stamp_timespan" => stamp["timespan"] || stamp["timestamp"],
+          "stamp_timestamp" => stamp["timestamp"],
           "stamp_key_sha256" => stamp["key_sha256"],
           "stamp_hwid" => stamp["hwid"],
           "stamp_hmac" => stamp["hmac"]

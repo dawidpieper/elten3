@@ -57,10 +57,12 @@ class Sapi < SpeechOutput
       1
     end
 
-    def speak_ssml(text)
+    def speak_ssml(text, interrupt: true)
       return 1 if voice == nil
       @paused = false
-      voice.Speak(text.to_s, SPF_ASYNC | SPF_PURGEBEFORESPEAK | SPF_IS_XML)
+      flags = SPF_ASYNC | SPF_IS_XML
+      flags |= SPF_PURGEBEFORESPEAK if interrupt
+      voice.Speak(text.to_s, flags)
       0
     rescue Exception
       1
@@ -319,7 +321,7 @@ class Sapi < SpeechOutput
       false
     end
     def speak_text(text, method: 1, spelling: false, interrupt: true, pitch: 50)
-      speak_ssml(ssml_for(text, spelling, pitch))
+      speak_ssml(ssml_for(text, spelling, pitch), interrupt: interrupt)
     end
 
     def speak_sequence(seq)

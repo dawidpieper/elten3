@@ -2,9 +2,7 @@ class Scene_Install
   def main
     confirm(p_("Install", "Elten installer will be downloaded from the server and started after Elten closes. Continue?")) do
       begin
-        installer = platform_installer_path
-        url = EltenLink::System.installer_url(branch: get_updatesbranch, os: platform_os)
-        if !download_file(url, installer, use_waiting: true, can_cancel: false, override: true)
+        if !download_verified_installer(use_waiting: true, can_cancel: false)
           alert(p_("Install", "Installer download failed."))
           $scene = Scene_Main.new
           return

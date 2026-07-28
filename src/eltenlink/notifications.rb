@@ -2,7 +2,7 @@
 # Copyright (C) 2014-2026 Dawid Pieper
 
 module EltenLink
-  Notification = Struct.new(:id, :date, :update_time, :alert, :notification, :sound, :cat, :internal_id, :internal_id2, :internal_id3, :expiration, :revoked, :payload, keyword_init: true)
+  Notification = Struct.new(:id, :date, :update_time, :alert, :notification, :sound, :cat, :expiration, :revoked, :payload, keyword_init: true)
 
   module Notifications
     class << self
@@ -40,9 +40,6 @@ module EltenLink
           notification: row["notification"].to_s,
           sound: row["sound"].to_s,
           cat: row["cat"].to_s,
-          internal_id: row["internal_id"].to_s,
-          internal_id2: row["internal_id2"].to_s,
-          internal_id3: row["internal_id3"].to_s,
           expiration: row["expiration"].to_i,
           revoked: truthy?(row["revoked"]),
           payload: row["payload"].is_a?(Hash) ? row["payload"] : {}

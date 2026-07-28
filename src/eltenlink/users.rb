@@ -95,7 +95,7 @@ module EltenLink
         params = {}
         params["period"] = period if period != nil
         users = client.api_data("GET", "/api/v1/users/online", params)["users"].to_a.map(&:to_s)
-        users.polsort!
+        users.polsort! if period == nil
         users
       end
 

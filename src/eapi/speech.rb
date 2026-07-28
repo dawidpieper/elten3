@@ -121,7 +121,7 @@ module EltenAPI
   text = EltenLink.legacy_line_to_text(text, eol: "\n")
   text = limit_speech_text(text, limit)
   if text == " "
-    if Configuration.soundthemeactivation != 0
+    if Configuration.soundthemeactivation == true
     play_sound("editbox_space")
   else
     speak(p_("EAPI_Speech", "Space"))
@@ -129,7 +129,7 @@ module EltenAPI
     return
   end
   if text == "\n"
-    if Configuration.soundthemeactivation != 0
+    if Configuration.soundthemeactivation == true
     play_sound("editbox_endofline")
   else
     speak(p_("EAPI_Speech", "End of line"))
@@ -146,7 +146,7 @@ module EltenAPI
 text_d.gsub!("\r\n\r\n","\n\n")
 text_d.gsub!("\r\n"," ")
 text_d.gsub!("\n\n","\r\n\r\n")
-if spelling and use_dictionary && Configuration.usevoicedictionary==0
+if spelling and use_dictionary && Configuration.usevoicedictionary==false
     text_d = get_character_name(text_d)
     spelling=false
     end
@@ -156,7 +156,7 @@ if nvda != nil && output == nvda && !nvda.check && spelling && use_dictionary
     text_d = get_character_name(text_d)
     spelling=false
 end
-output.speak_text(text_d, method: method, spelling: spelling, interrupt: !swait, pitch: Configuration.voicepitch)
+output.speak_text(text_d, method: method, spelling: spelling, interrupt: stop && !swait, pitch: Configuration.voicepitch)
 $speech_lasttext = text_d
 end
 text_d = text if text_d == nil
@@ -392,7 +392,7 @@ class SpeechCommand
     private
 
     def sound_only?
-      Configuration.soundthemeactivation.to_i==1
+      Configuration.soundthemeactivation==true
     end
   end
   class CustomCommand < SpeechCommand

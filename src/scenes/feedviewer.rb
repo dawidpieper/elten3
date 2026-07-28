@@ -45,7 +45,7 @@ loop do
   @sel.update
   break if key_pressed?(:key_escape) or (@first!=true && @sel.collapsed?)
   break if $scene!=self
-  if @sel.expanded? && @feeds.size>0 && @feeds[@sel.index].responses>0
+  if @sel.expanded? && @feeds.size>0 && @feeds[@sel.index].responses>0 && !responses_shown?(@feeds[@sel.index])
     feed=@feeds[@sel.index]
 $scene = Scene_FeedViewer.new(feed, $scene, false)
 end
@@ -63,14 +63,20 @@ else
 end
 end
 end
+def responses_shown?(feed)
+  return false if !@n.is_a?(FeedMessage)
+  feed.id==@n.id || (@n.response>0 && feed.id==@n.response)
+end
 def context(menu)
   if @feeds.size>0
     feed=@feeds[@sel.index]
     menu.useroption(feed.user)
     if feed.responses>0
+      if !responses_shown?(feed)
       menu.option(p_("FeedViewer", "Show responses"), nil, "d") {
       $scene = Scene_FeedViewer.new(feed, $scene, false)
       }
+      end
     elsif feed.response>0
       menu.option(p_("FeedViewer", "Show conversation"), nil, "d") {
       $scene = Scene_FeedViewer.new(feed, $scene, false)
@@ -142,7 +148,7 @@ end
 def feed_new(users=[], response=0)
   text=users.map{|u|"@"+u}.join(" ")
   text<<" " if text!=""
-    inp = input_text(p_("FeedViewer", "Message"), flags: 0, text: text, escapable: true, permitted_characters: [], denied_characters: [], max_length: 300, move_to_end: true)
+    inp = input_text(p_("FeedViewer", "Message"), flags: 0, text: text, escapable: true, permitted_characters: [], denied_characters: [], max_length: 300, move_to_end: true, character_counter: true)
   feed(inp, response) if inp!=nil
   end
   end

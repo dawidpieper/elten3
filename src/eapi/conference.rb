@@ -9,7 +9,7 @@
 module EltenAPI
   class Conference
 class Channel
-      attr_accessor :id, :name, :bitrate, :framesize, :vbr_type, :codec_application, :prediction_disabled, :fec, :public, :users, :passworded, :spatialization, :channels, :lang, :creator, :width, :height, :objects, :administrators, :key_len, :groupid, :waiting_type, :banned, :permanent, :password, :uuid, :motd, :allow_guests, :room_id, :followed, :join_url, :conference_mode, :whitelist, :followers_count, :stream_bitrate, :stream_framesize
+      attr_accessor :id, :name, :bitrate, :framesize, :vbr_type, :codec_application, :prediction_disabled, :fec, :public, :users, :passworded, :spatialization, :channels, :lang, :creator, :width, :height, :objects, :administrators, :key_len, :groupid, :waiting_type, :banned, :permanent, :password, :uuid, :motd, :allow_guests, :room_id, :followed, :join_url, :conference_mode, :blacklist_policy, :whitelist, :followers_count, :stream_bitrate, :stream_framesize
       def initialize
         @name=""
         @framesize=60
@@ -34,6 +34,7 @@ class Channel
         @banned=[]
         @permanent=false
         @conference_mode=0
+        @blacklist_policy=1
         @whitelist=[]
 @followers_count=0
         end
@@ -141,7 +142,7 @@ class Channel
 
 def self.load_steamaudio(file=nil)
   setup_core_runtime(false)
-  require_relative "steamaudio" unless defined?(::SteamAudio)
+  require_relative "audio/steamaudio" unless defined?(::SteamAudio)
   SteamAudio.load(file)
 rescue Exception
   Log.error("Conference SteamAudio load: #{$!.class}: #{$!.message}")
@@ -177,9 +178,9 @@ def self.setup_core_runtime(load_core=true)
   setup_legacy_symbols
   setup_kernel_helpers
   setup_ogg_symbols
-  require_relative "opus" unless defined?(::Opus)
-  require_relative "speexdsp" unless defined?(::SpeexDSP)
-  require_relative "steamaudio" unless defined?(::SteamAudio)
+  require_relative "audio/opus" unless defined?(::Opus)
+  require_relative "audio/speexdsp" unless defined?(::SpeexDSP)
+  require_relative "audio/steamaudio" unless defined?(::SteamAudio)
   require_relative "../eltenlink/voip" unless defined?(::EltenLink::VoIP)
   require_relative "conferencecore" if load_core && !const_defined?(:Core, false)
   start_keyboard_state
@@ -239,15 +240,15 @@ rescue Exception
 def self.sync_core_settings
   $name=Session.name
   $token=Session.token
-  $conferencestcponly=Configuration.tcpconferences.to_i
+  $conferencestcponly=ConfigurationValues.boolean_code(Configuration.tcpconferences)
   $udpmaxpacketsize=Configuration.udppacketsize.to_i
   $conferencesaudiobuffer=Configuration.conferencesaudiobuffer.to_i
   $conferencesaudiobuffercutoff=Configuration.conferencesaudiobuffercutoff.to_i
-  $usedenoising=Configuration.usedenoising.to_i
-  $useechocancellation=Configuration.useechocancellation.to_i
-  $usebilinearhrtf=Configuration.usebilinearhrtf.to_i
+  $usedenoising=ConfigurationValues.denoising_mode_code(Configuration.usedenoising)
+  $useechocancellation=ConfigurationValues.boolean_code(Configuration.useechocancellation)
+  $usebilinearhrtf=ConfigurationValues.boolean_code(Configuration.usebilinearhrtf)
   $volume=Configuration.volume.to_i
-  $disableconferencemiconrecord=Configuration.disableconferencemiconrecord.to_i
+  $disableconferencemiconrecord=ConfigurationValues.boolean_code(Configuration.disableconferencemiconrecord)
   $recording=false if $recording==nil
   $udpmaxpacketsize=1480 if $udpmaxpacketsize==nil || $udpmaxpacketsize<=0
 rescue Exception
@@ -257,7 +258,7 @@ def self.configuration_signature
   {
     :soundcard => Configuration.soundcard.to_s,
     :microphone => Configuration.microphone.to_s,
-    :usedenoising => Configuration.usedenoising.to_i
+    :usedenoising => Configuration.usedenoising
   }
 end
 
@@ -392,7 +393,7 @@ end
 
 def self.wait_for_speech_interrupt
   while speech_actived
-    speech_stop if key_held?(0x11)
+    speech_stop if physical_control_held?
     sleep 0.01
   end
 rescue Exception
@@ -433,18 +434,17 @@ def self.add_card_to_core(card, listen=false)
 end
 def self.open(ignorePTT=false, nick=nil)
   @@opened=false
-  load_hrtf(false)
-  volume=LocalConfig["ConferenceVolume", -1]
-  input_volume=LocalConfig["ConferenceInputVolume", -1]
-  stream_volume=LocalConfig["ConferenceStreamVolume", -1]
-  pushtotalk=LocalConfig["ConferencePushToTalk", -1]
-  pushtotalk_keys=LocalConfig["ConferencePushToTalkKeys", []]
+  volume=LocalConfig["ConferenceVolume", -1, type: :numeric]
+  input_volume=LocalConfig["ConferenceInputVolume", -1, type: :numeric]
+  stream_volume=LocalConfig["ConferenceStreamVolume", -1, type: :numeric]
+  pushtotalk=LocalConfig["ConferencePushToTalk", type: :bool_or_nil]
+  pushtotalk_keys=LocalConfig["ConferencePushToTalkKeys", [], type: :array_of_numerics]
   safe { 
     open_core(nick)
     @@core.volume=volume if volume!=-1
     @@core.stream_volume=stream_volume if stream_volume!=-1
     @@core.input_volume=input_volume if input_volume!=-1
-    @@core.pushtotalk=(pushtotalk==1) if ignorePTT!=true && pushtotalk!=-1
+    @@core.pushtotalk=pushtotalk if ignorePTT!=true && pushtotalk!=nil
     @@core.pushtotalk_keys=pushtotalk_keys.map{|k|k.to_i} if ignorePTT!=true && pushtotalk_keys!=[]
     refresh_open_state
   }
@@ -463,9 +463,9 @@ def self.join(id, password=nil)
   self.open
   delay(1)
 else
-  return if @@channel.id==id
+  return true if @@channel.id==id
   end
-  safe {@@core.join_channel(id, password) if @@core!=nil}
+  safe(false) {@@core.join_channel(id, password) if @@core!=nil}
 end
 def self.leave
   if @@opened==false
@@ -736,22 +736,23 @@ end
 def self.whisper(userid)
   safe {@@core.whisper=userid if @@core!=nil}
   end
-def self.create(name="", public=true, bitrate=64, framesize=60, vbr_type=1, codec_application=0, prediction_disabled=false, fec=false, password=nil, spatialization=0, channels=2, lang='', width=15, height=15, key_len=256, waiting_type=0, permanent=false, motd="", allow_guests=false, conference_mode=0)
+def self.create(name="", public=true, bitrate=64, framesize=60, vbr_type=1, codec_application=0, prediction_disabled=false, fec=false, password=nil, spatialization=0, channels=2, lang='', width=15, height=15, key_len=256, waiting_type=0, permanent=false, motd="", allow_guests=false, conference_mode=0, blacklist_policy=1)
   if @@opened==false
   self.open
   delay(1)
   end
   @@created=nil
-  params={'name'=>name, 'public'=>public, 'bitrate'=>bitrate, 'framesize'=>framesize, 'vbr_type'=>vbr_type, 'codec_application'=>codec_application, 'prediction_disabled'=>prediction_disabled, 'fec'=>fec, 'password'=>password, 'spatialization'=>spatialization, 'channels'=>channels, 'lang'=>lang, 'width'=>width, 'height'=>height, 'key_len'=>key_len, 'waiting_type'=>waiting_type, 'permanent'=>permanent, 'motd'=>motd, 'allow_guests'=>allow_guests, 'conference_mode'=>conference_mode}
+  params={'name'=>name, 'public'=>public, 'bitrate'=>bitrate, 'framesize'=>framesize, 'vbr_type'=>vbr_type, 'codec_application'=>codec_application, 'prediction_disabled'=>prediction_disabled, 'fec'=>fec, 'password'=>password, 'spatialization'=>spatialization, 'channels'=>channels, 'lang'=>lang, 'width'=>width, 'height'=>height, 'key_len'=>key_len, 'waiting_type'=>waiting_type, 'permanent'=>permanent, 'motd'=>motd, 'allow_guests'=>allow_guests, 'conference_mode'=>conference_mode, 'blacklist_policy'=>blacklist_policy}
   @@created=safe(nil) {@@core.create_channel(params) if @@core!=nil}
   return @@created
 end
-def self.edit(id, name, public, bitrate, framesize, vbr_type, codec_application, prediction_disabled, fec, password, spatialization, channels, lang, width, height, key_len, waiting_type, permanent, motd, allow_guests, conference_mode)
+def self.edit(id, name, public, bitrate, framesize, vbr_type, codec_application, prediction_disabled, fec, password, spatialization, channels, lang, width, height, key_len, waiting_type, permanent, motd, allow_guests, conference_mode, blacklist_policy=nil)
   if @@opened==false
   self.open
   delay(1)
 end
-params={'channel'=>id, 'name'=>name, 'public'=>public, 'bitrate'=>bitrate, 'framesize'=>framesize, 'vbr_type'=>vbr_type, 'codec_application'=>codec_application, 'prediction_disabled'=>prediction_disabled, 'fec'=>fec, 'password'=>password, 'spatialization'=>spatialization, 'channels'=>channels, 'lang'=>lang, 'width'=>width, 'height'=>height, 'key_len'=>key_len, 'waiting_type'=>waiting_type, 'permanent'=>permanent, 'motd'=>motd, 'allow_guests'=>allow_guests, 'conference_mode'=>conference_mode}
+params={'channel'=>id, 'name'=>name, 'public'=>public, 'bitrate'=>bitrate, 'framesize'=>framesize, 'vbr_type'=>vbr_type, 'codec_application'=>codec_application, 'prediction_disabled'=>prediction_disabled, 'fec'=>fec, 'password'=>password, 'spatialization'=>spatialization, 'channels'=>channels, 'lang'=>lang, 'width'=>width, 'height'=>height, 'key_len'=>key_len, 'waiting_type'=>waiting_type, 'permanent'=>permanent, 'motd'=>motd, 'allow_guests'=>allow_guests, 'conference_mode'=>conference_mode, 'blacklist_policy'=>blacklist_policy}
+params.delete('blacklist_policy') if blacklist_policy==nil
 safe {@@core.edit_channel(id, params) if @@core!=nil && id.is_a?(Integer)}
 delay(1)
 end
@@ -897,6 +898,7 @@ def self.waiting_channel_id
       ch.followed=(cha['followed']==true)
       ch.join_url=cha['join_url']
       ch.conference_mode = cha['conference_mode']||0
+      ch.blacklist_policy = [0, 1, 2].include?(cha['blacklist_policy']) ? cha['blacklist_policy'] : 1
       ch.followers_count=cha['followers_count']||0
       ch.stream_bitrate=cha['stream_bitrate'].to_i
       ch.stream_framesize=cha['stream_framesize'].to_f
@@ -988,7 +990,6 @@ end
       ch.fec=params['fec']==true
             ch.public=params['public']!=false
             ch.spatialization = params['spatialization']||0
-            load_hrtf if ch.spatialization!=0
             ch.password=params['password']
             ch.channels = params['channels']||2
             ch.lang=params['lang']||""
@@ -1016,6 +1017,7 @@ end
       ch.allow_guests = params['allow_guests']      
       ch.join_url=params['join_url']
       ch.conference_mode = params['conference_mode']||0
+      ch.blacklist_policy = [0, 1, 2].include?(params['blacklist_policy']) ? params['blacklist_policy'] : 1
       ch.followers_count=params['followers_count']||0
       ch.stream_framesize=(params['stream_framesize']||100).to_f
             ch.stream_bitrate=(params['stream_bitrate']||0).to_i

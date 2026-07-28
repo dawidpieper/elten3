@@ -2239,17 +2239,30 @@ def chat
 @chat.dup
 end
 def calling_play
+calling_stop
 @callingplaying=true
-play_sound("calling")
+return if Configuration.soundthemeactivation == false
+sound=getsound("calling")
+return if sound==nil && !FileTest.exists?("calling")
+@callingplayer=Sound.new(sound==nil ? "calling" : nil, loop: true, stream: sound)
+if @callingplayer!=nil
+@callingplayer.volume=Configuration.volume.to_f/200.0
+@callingplayer.play
+end
+rescue Exception
+log(2, "Conference: calling sound: "+$!.to_s+" "+$@.to_s)
+play_sound("calling") rescue nil
 end
 def calling_stop
-if @callingplaying==true
+if @callingplayer!=nil
+@callingplayer.close rescue nil
+@callingplayer=nil
+end
 if $bgplayer!=nil
 $bgplayer.close
 $bgplayer=nil
 end
 @callingplaying=false
-end
 end
 def vsts(userid=0)
 if userid==0
@@ -2561,6 +2574,15 @@ end
 def onping(t)
 @ping_hooks.each{|h|h.call(t)}
 end
+def round_table_direction(index, listener_index, count)
+return [0.0, -1.0] if count<=1 || index==listener_index
+angle=2.0*Math::PI*((index-listener_index)%count)/count
+x=Math.sin(angle)
+y=Math.cos(angle)-1.0
+length=Math.sqrt(x*x+y*y)
+[x/length, y/length]
+end
+private :round_table_direction
 def onparams(params)
 @position.mutex.synchronize {
 @encoder_mutex.synchronize {
@@ -2623,8 +2645,8 @@ end
 @hrtf.free if @hrtf!=nil
 @hrtf=nil
 if params['channel']['spatialization']!=0
-SteamAudio.load if !SteamAudio.loaded?
-@hrtf=SteamAudio.new(48000, @framesize) if SteamAudio.loaded?
+SteamAudio.load
+@hrtf=SteamAudio.new(48000, @framesize)
 end
 if params['channel']['channels']!=@channels
 Bass::BASS_StreamFree.call(@output) if @output!=0
@@ -2645,13 +2667,10 @@ pch=false
 n=params['channel']['users'].size
 c = params['channel']['users'].find_index{|u|u['id']==@voip.uid}
 c=0 if c==nil
-da = 2.0*Math::PI/n
 for i in 0...params['channel']['users'].size
 u = params['channel']['users'][i]
 uid=u['id']
-a = ((n-c+i)%n) * da
-x = 0 + 1*Math::sin(a)
-y = -1*(0.5 - 0.5*Math::cos(a))
+x, y = round_table_direction(i, c, n)
 upusers.push(uid)
 if @transmitters.include?(uid)
 @transmitters[uid].set_hrtf(@hrtf)

@@ -16,7 +16,7 @@ class Scene_Messages
 if notif['cat']==1
   play_sound(notif['sound']) if notif['sound']!=nil
 else
-  speak(notif['alert']) if notif['alert']!=nil
+  speak(notif['alert'], stop: false, break_sequence: false) if notif['alert']!=nil
   play_sound(notif['sound']) if notif['sound']!=nil
   end
       }
@@ -101,9 +101,31 @@ def import(arr)
   def attachment_message_command
     EltenAPI::SpeechCommands::SoundCommand.new("listbox_itemattachment", " ("+p_("EAPI_Speech", "Attachment")+") ", "⣏⣹", immediate: true)
   end
+  def audio_message?(message)
+    message != nil && message.audio_url.to_s != ""
+  end
+  def audio_message_status
+    ListBox.item_status("file_audio", p_("Messages", "Audio message")+":", p_("Messages", "Audio message"))
+  end
+  def message_list_content(message)
+    return EltenLink.legacy_line_to_text(utf8(message.text)) unless audio_message?(message)
+    transcription = message.transcription.to_s.strip
+    return transcription if Configuration.autoplay == :without_transcription && transcription != ""
+    ""
+  end
+  def message_list_audio_url(message)
+    return "" unless audio_message?(message)
+    return message.audio_url.to_s if Configuration.autoplay == :always
+    return message.audio_url.to_s if Configuration.autoplay == :without_transcription && message.transcription.to_s.strip == ""
+    ""
+  end
+  def message_display_text(message, date)
+    [message.text, message.transcription, date].map(&:to_s).reject { |part| part.strip == "" }.join("\r\n")
+  end
   def message_item_statuses(message)
     states=[]
     states << unread_message_status if message.mread==0
+    states << audio_message_status if audio_message?(message)
     states
   end
   def name_conversation(conv)
@@ -143,7 +165,7 @@ def update_users
     @sel_users.update
   if key_pressed?(:key_enter) or key_pressed?(:key_right)
     if @sel_users.index<@users.size
-    if LocalConfig['MessagesDefaultToAllMessages']==0
+    if !LocalConfig['MessagesDefaultToAllMessages', type: :bool]
       load_conversations(@users[@sel_users.index].user)
     @cat=1
   else
@@ -165,7 +187,7 @@ def context_users(menu)
 menu.option(p_("Messages", "Reply"), nil, "o") {
   $scene = Scene_Messages_New.new(@users[@sel_users.index].user,"","",export)
 }
-if LocalConfig['MessagesDefaultToAllMessages']==0
+if !LocalConfig['MessagesDefaultToAllMessages', type: :bool]
 menu.option(p_("Messages", "Show all messages"), nil, :shift_enter) {
   load_messages(@users[@sel_users.index].user,nil)
   @cat=2
@@ -245,9 +267,9 @@ else
 end
 end
 s=p_("Messages", "Set all messages as a default view")
-s=p_("Messages", "Set subjects as a default view") if LocalConfig['MessagesDefaultToAllMessages']==1
+s=p_("Messages", "Set subjects as a default view") if LocalConfig['MessagesDefaultToAllMessages', type: :bool]
 menu.option(s) {
-LocalConfig['MessagesDefaultToAllMessages']=((LocalConfig['MessagesDefaultToAllMessages']==0)?(1):(0))
+LocalConfig['MessagesDefaultToAllMessages'] = !LocalConfig['MessagesDefaultToAllMessages', type: :bool]
 alert(_("Saved"))
 }
 menu.option(p_("Messages", "Create new conversation"), nil, "t") {
@@ -567,11 +589,13 @@ end
             sender << attachment_message_command if m.attachments.size>0
             selt.push(sender)
             states[selt.size-1]=message_item_statuses(m)
-            audio_urls[selt.size-1]=m.audio_url.to_s if m.respond_to?(:audio_url) && m.audio_url.to_s!=""
-            text=EltenLink.legacy_line_to_text(utf8(m.text))
-            text=p_("EAPI_Form", "Media") if text.delete(" \r\n")=="" && m.respond_to?(:audio_url) && m.audio_url.to_s!=""
-            subject=utf8(m.subject)
-            selt[-1]+=":\r\n"+((sp!=nil and sp!="new")?(subject+":\r\n"):"")+text.split("")[0...5000].join+((text.size>5000)?"... #{p_("Messages", "Open this message to read more")}":"")+"\r\n"+format_date(m.date)+"\r\n"
+            audio_url=message_list_audio_url(m)
+            audio_urls[selt.size-1]=audio_url
+            if audio_url==""
+              text=message_list_content(m)
+              subject=utf8(m.subject)
+              selt[-1]+=":\r\n"+((sp!=nil and sp!="new")?(subject+":\r\n"):"")+text.split("")[0...5000].join+((text.size>5000)?"... #{p_("Messages", "Open this message to read more")}":"")+"\r\n"+format_date(m.date)+"\r\n"
+            end
             end
     end
     selt.push(p_("Messages", "Show older")) if @messages_more and !complete
@@ -798,10 +822,12 @@ end
          message.mread = 1 if message.receiver==Session.name
          date=format_date(message.date)
          @sel_messages.close_item_audio(@sel_messages.index) if @sel_messages.respond_to?(:close_item_audio)
+         type=EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly
+         type|=EditBox::Flags::Transcripted if message.transcription.to_s.strip!=""
          if message.receiver!=Session.name
-                                        message_field=EditBox.new(message.subject + " #{p_("Messages", "From")}: " + message.sender,type: EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly,text: message.text+"\r\n"+date)
+                                        message_field=EditBox.new(message.subject + " #{p_("Messages", "From")}: " + message.sender,type: type,text: message_display_text(message, date))
                                       else
-                                        message_field=EditBox.new(message.subject + " #{p_("Messages", "To")}: " + message.receiver,type: EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly,text: message.text+"\r\n"+date)
+                                        message_field=EditBox.new(message.subject + " #{p_("Messages", "To")}: " + message.receiver,type: type,text: message_display_text(message, date))
                                         end
                                         message_field.audio_url=message.audio_url if message.respond_to?(:audio_url) && message.audio_url.to_s!=""
                                         @form_messages.fields[0]=message_field
@@ -951,6 +977,7 @@ def audiolimit
 @polls=[]
                                  loop do                     
              loop_update
+             @form.fields[3].start_recording if main_shortcut_pressed?("r", shift: true)
              notempt = (@form.fields[2].is_a?(EditBox) && @form.fields[2].text!="") || (@form.fields[3].is_a?(OpusRecordButton) && !@form.fields[3].empty?)
              notempt=true if @form.fields[2]==nil and @form.fields[3]==nil
                           if @form.fields[4]==nil && notempt

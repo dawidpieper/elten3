@@ -8,7 +8,7 @@ module EltenAPI
   WINAPI_ABI = defined?(Fiddle::Function::STDCALL) ? Fiddle::Function::STDCALL : Fiddle::Function::DEFAULT unless const_defined?(:WINAPI_ABI)
   F_INT = Fiddle::TYPE_INT unless const_defined?(:F_INT)
   F_PTR = Fiddle::TYPE_VOIDP unless const_defined?(:F_PTR)
-  F_HANDLE = EltenWin32::POINTER_SIZE == 8 ? Fiddle::TYPE_LONG_LONG : Fiddle::TYPE_INT unless const_defined?(:F_HANDLE)
+  F_HANDLE = Fiddle::TYPE_VOIDP unless const_defined?(:F_HANDLE)
   PROCESS_KERNEL32 = Fiddle.dlopen("kernel32.dll") unless const_defined?(:PROCESS_KERNEL32)
   CREATE_PROCESS_W = Fiddle::Function.new(PROCESS_KERNEL32["CreateProcessW"], [F_PTR, F_PTR, F_PTR, F_PTR, F_INT, F_INT, F_PTR, F_PTR, F_PTR, F_PTR], F_INT, WINAPI_ABI) unless const_defined?(:CREATE_PROCESS_W)
   GET_EXIT_CODE_PROCESS = Fiddle::Function.new(PROCESS_KERNEL32["GetExitCodeProcess"], [F_HANDLE, F_PTR], F_INT, WINAPI_ABI) unless const_defined?(:GET_EXIT_CODE_PROCESS)
@@ -20,6 +20,7 @@ module EltenAPI
   PEEK_NAMED_PIPE = Fiddle::Function.new(PROCESS_KERNEL32["PeekNamedPipe"], [F_HANDLE, F_PTR, F_INT, F_PTR, F_PTR, F_PTR], F_INT, WINAPI_ABI) unless const_defined?(:PEEK_NAMED_PIPE)
   READ_FILE = Fiddle::Function.new(PROCESS_KERNEL32["ReadFile"], [F_HANDLE, F_PTR, F_INT, F_PTR, F_PTR], F_INT, WINAPI_ABI) unless const_defined?(:READ_FILE)
   WRITE_FILE = Fiddle::Function.new(PROCESS_KERNEL32["WriteFile"], [F_HANDLE, F_PTR, F_INT, F_PTR, F_PTR], F_INT, WINAPI_ABI) unless const_defined?(:WRITE_FILE)
+  CREATE_NO_WINDOW = 0x08000000 unless const_defined?(:CREATE_NO_WINDOW)
 
   private
 
@@ -97,7 +98,8 @@ module EltenAPI
   class ChildProc
     attr_reader :pid, :process_id
 
-    def initialize(file, path=nil)
+    def initialize(file, l_path=nil, path: nil, show_window: false)
+      path ||= l_path
       path ||= Dir.pwd
       @stdin_rd = EltenWin32.pointer_buffer
       @stdin_wr = EltenWin32.pointer_buffer
@@ -113,9 +115,10 @@ module EltenAPI
       CREATE_PIPE.call(@stdin_rd, @stdin_wr, saAttr, 1048576*32)
       SET_HANDLE_INFORMATION.call(EltenWin32.pointer_value(@stdin_wr), 1, 0)
 
-      startinfo = EltenWin32.startup_info(nil, EltenWin32.pointer_value(@stdin_rd), EltenWin32.pointer_value(@stdout_wr), EltenWin32.pointer_value(@stderr_wr), true)
+      startinfo = EltenWin32.startup_info(show_window ? nil : 0, EltenWin32.pointer_value(@stdin_rd), EltenWin32.pointer_value(@stdout_wr), EltenWin32.pointer_value(@stderr_wr), true)
       @procinfo = EltenWin32.process_information_buffer
-      pr = CREATE_PROCESS_W.call(0, wide(file), nil, nil, 1, 0, 0, wide(path), startinfo, @procinfo)
+      creation_flags = show_window ? 0 : CREATE_NO_WINDOW
+      pr = CREATE_PROCESS_W.call(0, wide(file), nil, nil, 1, creation_flags, 0, wide(path), startinfo, @procinfo)
       if pr==0
         close_handle_buffer(@stdin_rd)
         close_handle_buffer(@stdin_wr)

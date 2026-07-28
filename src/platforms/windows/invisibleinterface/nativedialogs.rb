@@ -33,6 +33,7 @@ module EltenAPI
       WM_SETFOCUS = 0x0007
       WM_KEYDOWN = 0x0100
       WM_GETDLGCODE = 0x0087
+      EN_CHANGE = 0x0300
       VK_ESCAPE = 0x1B
       VK_RETURN = 0x0D
       VK_TAB = 0x09
@@ -63,9 +64,9 @@ module EltenAPI
           TextWindow.new(:message, title, fields, send_label, cancel_label, &block).show
         end
 
-        def open_writer(title:, text_label:, send_label:, cancel_label:, text: nil, max_length: 500, &block)
+        def open_writer(title:, text_label:, send_label:, cancel_label:, text: nil, max_length: 500, character_counter: false, &block)
           fields = [
-            {:id => :text, :label => text_label, :value => text, :required => true, :multiline => true, :max_length => max_length.to_i}
+            {:id => :text, :label => text_label, :value => text, :required => true, :multiline => true, :max_length => max_length.to_i, :character_counter => character_counter}
           ]
           TextWindow.new(:writer, title, fields, send_label, cancel_label, &block).show
         end
@@ -125,6 +126,7 @@ module EltenAPI
           @set_foreground_window = Fiddle::Function.new(user32["SetForegroundWindow"], [PTR], Fiddle::TYPE_INT)
           @set_active_window = Fiddle::Function.new(user32["SetActiveWindow"], [PTR], PTR)
           @set_focus = Fiddle::Function.new(user32["SetFocus"], [PTR], PTR)
+          @set_window_text = Fiddle::Function.new(user32["SetWindowTextW"], [PTR, Fiddle::TYPE_VOIDP], Fiddle::TYPE_INT)
           @post_message = Fiddle::Function.new(user32["PostMessageW"], [PTR, Fiddle::TYPE_INT, PTR, PTR], Fiddle::TYPE_INT)
           @post_thread_message = Fiddle::Function.new(user32["PostThreadMessageW"], [Fiddle::TYPE_INT, Fiddle::TYPE_INT, PTR, PTR], Fiddle::TYPE_INT)
           @get_foreground_window = Fiddle::Function.new(user32["GetForegroundWindow"], [], PTR)
@@ -161,7 +163,7 @@ module EltenAPI
         end
 
         attr_reader :get_module_handle, :create_window, :destroy_window, :show_window, :set_window_pos, :set_foreground_window,
-          :set_active_window, :set_focus, :post_message, :post_thread_message, :get_foreground_window, :get_window_thread_process_id, :attach_thread_input,
+          :set_active_window, :set_focus, :set_window_text, :post_message, :post_thread_message, :get_foreground_window, :get_window_thread_process_id, :attach_thread_input,
           :get_current_thread_id, :get_message, :translate_message, :dispatch_message, :is_dialog_message,
           :post_quit_message, :send_message, :get_window_text, :get_window_text_length, :get_key_state,
           :get_next_tab_item, :call_window_proc, :def_window_proc, :set_window_long_ptr, :window_proc, :edit_proc,
@@ -339,7 +341,11 @@ module EltenAPI
             0
           when WM_COMMAND
             source = lparam.to_i
-            if source == @cancel_button.to_i
+            notification = (wparam.to_i >> 16) & 0xffff
+            if notification == EN_CHANGE
+              update_character_counter(source)
+              NativeDialogs.default_window_proc(hwnd, message, wparam, lparam)
+            elsif source == @cancel_button.to_i
               close(false)
               0
             elsif source == @send_button.to_i
@@ -431,6 +437,7 @@ module EltenAPI
             @hwnds.push(label.to_i, edit.to_i)
             @field_hwnds[field[:id]] = edit
             api.send_message.call(edit, EM_SETLIMITTEXT, field[:max_length].to_i, 0) if field[:max_length].to_i > 0
+            update_character_counter(edit)
             if field[:value].to_s != ""
               len = field[:value].to_s.length
               api.send_message.call(edit, EM_SETSEL, len, len)
@@ -525,6 +532,13 @@ module EltenAPI
           buffer = "\0" * ((len + 2) * 2)
           api.get_window_text.call(hwnd, buffer, len + 2)
           NativeDialogs.read_wide_buffer(buffer)
+        end
+
+        def update_character_counter(hwnd)
+          field = @fields.find { |f| @field_hwnds[f[:id]] != nil && @field_hwnds[f[:id]].to_i == hwnd.to_i }
+          return if field == nil || field[:character_counter] != true
+          counter = p_("EAPI_Form", "%{count} of %{maximum} characters") % {:count=>window_text(hwnd).chrsize, :maximum=>field[:max_length]}
+          NativeDialogs.api.set_window_text.call(@hwnd, NativeDialogs.wide("#{@title} - #{counter}"))
         end
 
         def first_edit

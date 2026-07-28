@@ -14,6 +14,8 @@ unless defined?(Fiddle)
   end
 end
 
+require "monitor"
+
 module EltenKeyboard
   ABI = defined?(Fiddle::Function::STDCALL) ? Fiddle::Function::STDCALL : Fiddle::Function::DEFAULT
   USER32 = Fiddle.dlopen("user32.dll")
@@ -32,77 +34,83 @@ module EltenKeyboard
 
   class << self
     def fill_flags(buffer)
-      initialize_state
-      now = monotonic_time
-      refresh_repeat_settings(now)
       state = keyboard_state
       events = key_events
-      event_flags = apply_key_events_to_state(state, events, now)
-      flags = Array.new(256, 0)
-      for key in 0..255
-        down = key_down?(state, key)
-        @stale_suppressed[key] = false if !down && @stale_suppressed[key] == true
-        if down && stale_key_down?(key, now)
-          already_suppressed = @stale_suppressed[key] == true
-          down = false
-          state.setbyte(key, state.getbyte(key).to_i & 0x7f)
-          flags[key] |= 2 if @last_down[key]
-          @next_repeat[key] = 0.0
-          @last_down_event[key] = nil
-          suppress_stale_key(key)
-          Log.debug("Keyboard stale key released: #{key}") if !already_suppressed
-        end
-        if down
-          if @last_down[key]
-            flags[key] |= 4
-            if repeatable_key?(key) && now >= @next_repeat[key].to_f
-              flags[key] |= 1
-              @next_repeat[key] = next_repeat_time(now, @next_repeat[key].to_f)
-            end
-          else
-            flags[key] |= 1
-            @next_repeat[key] = now + @repeat_delay
-            @last_down_event[key] ||= now
+      keyboard_monitor.synchronize do
+        initialize_state
+        now = monotonic_time
+        refresh_repeat_settings(now)
+        event_flags = apply_key_events_to_state(state, events, now)
+        flags = Array.new(256, 0)
+        for key in 0..255
+          down = key_down?(state, key)
+          @stale_suppressed[key] = false if !down && @stale_suppressed[key] == true
+          if down && stale_key_down?(key, now)
+            already_suppressed = @stale_suppressed[key] == true
+            down = false
+            state.setbyte(key, state.getbyte(key).to_i & 0x7f)
+            flags[key] |= 2 if @last_down[key]
+            @next_repeat[key] = 0.0
+            @last_down_event[key] = nil
+            suppress_stale_key(key)
+            Log.debug("Keyboard stale key released: #{key}") if !already_suppressed
           end
-        elsif @last_down[key]
-          flags[key] |= 2
-          @next_repeat[key] = 0.0
-          @last_down_event[key] = nil
+          if down
+            if @last_down[key]
+              flags[key] |= 4
+              if repeatable_key?(key) && now >= @next_repeat[key].to_f
+                flags[key] |= 1
+                @next_repeat[key] = next_repeat_time(now, @next_repeat[key].to_f)
+              end
+            else
+              flags[key] |= 1
+              @next_repeat[key] = now + @repeat_delay
+              @last_down_event[key] ||= now
+            end
+          elsif @last_down[key]
+            flags[key] |= 2
+            @next_repeat[key] = 0.0
+            @last_down_event[key] = nil
+          end
+          @last_down[key] = down
         end
-        @last_down[key] = down
+        for key in 0..255
+          flags[key] |= event_flags[key]
+        end
+        @flags_state = state.byteslice(0, 256).to_s.dup
+        for key in 0..255
+          buffer.setbyte(key, flags[key]) if buffer.respond_to?(:setbyte)
+        end
+        0
       end
-      for key in 0..255
-        flags[key] |= event_flags[key]
-      end
-      @flags_state = state.byteslice(0, 256).to_s.dup
-      for key in 0..255
-        buffer.setbyte(key, flags[key]) if buffer.respond_to?(:setbyte)
-      end
-      0
     end
 
     def sync_physical_state
-      initialize_state
       state = keyboard_state
-      now = monotonic_time
-      for key in 0..255
-        down = key_down?(state, key)
-        @event_down[key] = down
-        @last_down[key] = down
-        @last_down_event[key] = down ? now : nil
-        @stale_suppressed[key] = false
-        @next_repeat[key] = 0.0
+      keyboard_monitor.synchronize do
+        initialize_state
+        now = monotonic_time
+        for key in 0..255
+          down = key_down?(state, key)
+          @event_down[key] = down
+          @last_down[key] = down
+          @last_down_event[key] = down ? now : nil
+          @stale_suppressed[key] = false
+          @next_repeat[key] = 0.0
+        end
       end
       true
     end
 
     def clear_state
-      initialize_state
-      @last_down = Array.new(256, false)
-      @event_down = Array.new(256, false)
-      @next_repeat = Array.new(256, 0.0)
-      @last_down_event = Array.new(256)
-      @stale_suppressed = Array.new(256, false)
+      keyboard_monitor.synchronize do
+        initialize_state
+        @last_down = Array.new(256, false)
+        @event_down = Array.new(256, false)
+        @next_repeat = Array.new(256, 0.0)
+        @last_down_event = Array.new(256)
+        @stale_suppressed = Array.new(256, false)
+      end
       true
     end
 
@@ -113,8 +121,10 @@ module EltenKeyboard
     end
 
     def flags_state
-      initialize_state
-      @flags_state.to_s.byteslice(0, 256).to_s.ljust(256, "\0")
+      keyboard_monitor.synchronize do
+        initialize_state
+        @flags_state.to_s.byteslice(0, 256).to_s.ljust(256, "\0")
+      end
     rescue Exception
       "\0" * 256
     end
@@ -142,8 +152,10 @@ module EltenKeyboard
     end
 
     def stale_suppressed?(key)
-      @stale_suppressed ||= Array.new(256, false)
-      @stale_suppressed[key.to_i & 0xff] == true
+      keyboard_monitor.synchronize do
+        @stale_suppressed ||= Array.new(256, false)
+        @stale_suppressed[key.to_i & 0xff] == true
+      end
     rescue Exception
       false
     end
@@ -155,6 +167,10 @@ module EltenKeyboard
     end
 
     private
+
+    def keyboard_monitor
+      @keyboard_monitor ||= Monitor.new
+    end
 
     def initialize_state
       @last_down ||= Array.new(256, false)
@@ -299,13 +315,17 @@ module EltenWindow
   INT = Fiddle::TYPE_INT
   USER32 = Fiddle.dlopen("user32.dll")
   KERNEL32 = Fiddle.dlopen("kernel32.dll")
-  GET_MODULE_HANDLE = Fiddle::Function.new(KERNEL32["GetModuleHandleW"], [PTR], HANDLE, ABI)
-  CREATE_WINDOW_EX = Fiddle::Function.new(USER32["CreateWindowExW"], [INT, PTR, PTR, INT, INT, INT, INT, INT, HANDLE, HANDLE, HANDLE, PTR], HANDLE, ABI)
-  SET_MENU = Fiddle::Function.new(USER32["SetMenu"], [HANDLE, HANDLE], INT, ABI)
+  GET_CURRENT_THREAD_ID = Fiddle::Function.new(KERNEL32["GetCurrentThreadId"], [], INT, ABI)
+  GET_LAST_ERROR = Fiddle::Function.new(KERNEL32["GetLastError"], [], INT, ABI)
   SHOW_WINDOW = Fiddle::Function.new(USER32["ShowWindow"], [HANDLE, INT], INT, ABI)
-  PEEK_MESSAGE = Fiddle::Function.new(USER32["PeekMessageW"], [PTR, HANDLE, INT, INT, INT], INT, ABI)
+  GET_MESSAGE = Fiddle::Function.new(USER32["GetMessageW"], [PTR, HANDLE, INT, INT], INT, ABI)
   TRANSLATE_MESSAGE = Fiddle::Function.new(USER32["TranslateMessage"], [PTR], INT, ABI)
   DISPATCH_MESSAGE = Fiddle::Function.new(USER32["DispatchMessageW"], [PTR], HANDLE, ABI)
+  POST_MESSAGE = Fiddle::Function.new(USER32["PostMessageW"], [HANDLE, INT, HANDLE, HANDLE], INT, ABI)
+  POST_THREAD_MESSAGE = Fiddle::Function.new(USER32["PostThreadMessageW"], [INT, INT, HANDLE, HANDLE], INT, ABI)
+  DESTROY_WINDOW = Fiddle::Function.new(USER32["DestroyWindow"], [HANDLE], INT, ABI)
+  DEF_WINDOW_PROC = Fiddle::Function.new(USER32["DefWindowProcW"], [HANDLE, INT, HANDLE, HANDLE], HANDLE, ABI)
+  POST_QUIT_MESSAGE = Fiddle::Function.new(USER32["PostQuitMessage"], [INT], Fiddle::TYPE_VOID, ABI)
   GET_FOREGROUND_WINDOW = Fiddle::Function.new(USER32["GetForegroundWindow"], [], HANDLE, ABI)
   GET_PARENT = Fiddle::Function.new(USER32["GetParent"], [HANDLE], HANDLE, ABI)
   IS_ICONIC = Fiddle::Function.new(USER32["IsIconic"], [HANDLE], INT, ABI)
@@ -317,14 +337,11 @@ module EltenWindow
   MESSAGE_BOX = Fiddle::Function.new(USER32["MessageBoxW"], [HANDLE, PTR, PTR, INT], INT, ABI)
   GET_KEYBOARD_STATE = Fiddle::Function.new(USER32["GetKeyboardState"], [PTR], INT, ABI)
   SET_KEYBOARD_STATE = Fiddle::Function.new(USER32["SetKeyboardState"], [PTR], INT, ABI)
-  WINDOW_CLASS = "STATIC"
   WINDOW_TITLE = "Elten"
   WS_CAPTION = 0x00C00000
   WS_SYSMENU = 0x00080000
   WS_MINIMIZEBOX = 0x00020000
   WINDOW_STYLE = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX
-  CW_USEDEFAULT = -2147483648
-  PM_REMOVE = 0x0001
   SW_HIDE = 0
   SW_SHOW = 5
   SW_RESTORE = 9
@@ -345,6 +362,9 @@ module EltenWindow
   WM_SYSKEYUP = 0x0105
   WM_SYSCHAR = 0x0106
   WM_UNICHAR = 0x0109
+  WM_APP = 0x8000
+  WM_DISPATCH_ACTIONS = WM_APP + 0x51
+  WM_REQUEST_EXIT = WM_APP + 0x52
   VK_F4 = 0x73
   UNICODE_NOCHAR = 0xFFFF
   SIZE_MINIMIZED = 1
@@ -356,46 +376,30 @@ module EltenWindow
   KEYBOARD_ACTIVATION_MAX_DELAY = 2.0
   MINIMIZE_RESTORE_SUPPRESS_TIME = 1.0
   MSG_SIZE = Fiddle::SIZEOF_VOIDP == 8 ? 48 : 28
-  MESSAGE_OFFSET = Fiddle::SIZEOF_VOIDP
-  WPARAM_OFFSET = Fiddle::SIZEOF_VOIDP == 8 ? 16 : 8
-  LPARAM_OFFSET = Fiddle::SIZEOF_VOIDP == 8 ? 24 : 12
 
   class << self
     attr_reader :hwnd
 
     def ensure_window
       @window_thread ||= Thread.current
+      window_state_monitor
+      pump_sync
       return @hwnd if @hwnd != nil && @hwnd != 0
       if $wnd != nil && $wnd != 0
         @hwnd = $wnd
         ensure_window_style
         return @hwnd
       end
-
-      title = wide_string(WINDOW_TITLE)
-      klass = wide_string(WINDOW_CLASS)
-      instance = GET_MODULE_HANDLE.call(nil)
-      @hwnd = CREATE_WINDOW_EX.call(
-        0,
-        klass,
-        title,
-        WINDOW_STYLE,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
-        640,
-        360,
-        0,
-        0,
-        instance,
-        nil
-      )
-      SET_MENU.call(@hwnd, 0) if @hwnd != nil && @hwnd != 0
-      ensure_window_style if @hwnd != nil && @hwnd != 0
-      show if @hwnd != nil && @hwnd != 0 && !($elten_start_hidden == true)
+      raise RuntimeError, "Main window must be created on its message thread" unless window_thread?
+      @hwnd = EltenBoot.create_window.to_i
+      raise RuntimeError, "Failed to create the Elten main window" if @hwnd == 0
+      $wnd = @hwnd
+      ensure_window_style
       @hwnd
     end
 
     def show(command = SW_SHOW)
+      return post_window_action(true) { show(command) } unless window_thread?
       ensure_window
       show_window(@hwnd, command)
       @hwnd
@@ -406,6 +410,7 @@ module EltenWindow
     end
 
     def show_window(hwnd = nil, command = SW_SHOW)
+      return post_window_action(true) { show_window(hwnd, command) } unless window_thread?
       hwnd = window_handle(hwnd)
       return 0 if hwnd == 0
       SHOW_WINDOW.call(hwnd, command.to_i)
@@ -418,6 +423,7 @@ module EltenWindow
     end
 
     def focus(hwnd = nil)
+      return post_window_action(true) { focus(hwnd) } unless window_thread?
       hwnd = window_handle(hwnd)
       return false if hwnd == 0
       set_foreground_window.call(hwnd)
@@ -429,6 +435,7 @@ module EltenWindow
     end
 
     def message_box(text, caption = WINDOW_TITLE, flags = 0, owner = nil)
+      return post_window_action(true) { message_box(text, caption, flags, owner) } unless window_thread?
       owner = window_handle(owner, false)
       MESSAGE_BOX.call(owner, wide_string(text), wide_string(caption), flags.to_i)
     rescue Exception
@@ -469,6 +476,7 @@ module EltenWindow
     end
 
     def hide_to_tray
+      return post_window_action(true) { hide_to_tray } unless window_thread?
       ensure_window
       return false if @hwnd == nil || @hwnd == 0
       EltenTray.show(@hwnd) if defined?(EltenTray)
@@ -481,6 +489,7 @@ module EltenWindow
     end
 
     def restore_from_tray
+      return post_window_action(true) { restore_from_tray } unless window_thread?
       ensure_window
       return false if @hwnd == nil || @hwnd == 0
       suppress_minimize_requests
@@ -502,69 +511,136 @@ module EltenWindow
 
     def keyboard_key_held?(key)
       return false if !keyboard_active?
-      return false if false
       EltenKeyboard.async_key_down?(key)
     rescue Exception
       false
     end
 
     def pump_messages
-      msg = "\0" * MSG_SIZE
-      while PEEK_MESSAGE.call(msg, 0, 0, 0, PM_REMOVE) != 0
-        focus_message?(msg)
-        next if activation_key_message?(msg)
-        next if defined?(EltenTray) && EltenTray.handle_message?(msg)
-        next if close_message?(msg)
-        minimize_message?(msg)
-        record_key_message(msg)
-        next if character_message?(msg)
-        next if menu_message?(msg)
-        TRANSLATE_MESSAGE.call(msg)
-        DISPATCH_MESSAGE.call(msg)
-      end
       true
     end
 
-    def activation_input_blocked?
-      return false if @activation_ignore_max_until == nil
-      now = monotonic_time
-      state = capture_keyboard_state_raw
-      if now <= @activation_ignore_min_until.to_f || (now <= @activation_ignore_max_until.to_f && keyboard_state_has_pressed_keys?(state))
-        sync_keyboard_state_without_delivery(state)
-        clear_character_queue
-        return true
+    def run_windows_message_loop
+      ensure_window
+      @window_thread = Thread.current
+      @window_thread_id = GET_CURRENT_THREAD_ID.call.to_i
+      @message_loop_stopped = false
+      message = "\0" * MSG_SIZE
+      loop do
+        result = GET_MESSAGE.call(message, 0, 0, 0).to_i
+        break if result == 0
+        raise RuntimeError, "GetMessageW failed: #{GET_LAST_ERROR.call}" if result == -1
+        TRANSLATE_MESSAGE.call(message)
+        DISPATCH_MESSAGE.call(message)
       end
-      finish_activation_ignore(state)
+      true
+    ensure
+      window_state_monitor.synchronize { @close_requested = true }
+      fail_pending_window_actions(RuntimeError.new("Windows message loop has stopped"))
+    end
+
+    def request_windows_exit
+      hwnd = window_handle(nil, false)
+      return true if hwnd != 0 && POST_MESSAGE.call(hwnd, WM_REQUEST_EXIT, 0, 0) != 0
+      thread_id = @window_thread_id.to_i
+      return true if thread_id == 0
+      POST_THREAD_MESSAGE.call(thread_id, WM_QUIT, 0, 0) != 0
+    rescue Exception
       false
+    end
+
+    def window_proc(hwnd, message, wparam, lparam)
+      message = message.to_i
+      wparam = wparam.to_i
+      lparam = lparam.to_i
+      case message
+      when WM_DISPATCH_ACTIONS
+        service_window_requests(wparam)
+        return 0
+      when WM_REQUEST_EXIT
+        if DESTROY_WINDOW.call(hwnd) == 0
+          Log.error("DestroyWindow failed: #{GET_LAST_ERROR.call}") if defined?(Log)
+          POST_QUIT_MESSAGE.call(1)
+        end
+        return 0
+      when WM_DESTROY
+        window_state_monitor.synchronize do
+          @close_requested = true
+          @hwnd = 0 if @hwnd.to_i == hwnd.to_i
+          $wnd = 0 if $wnd.to_i == hwnd.to_i
+        end
+        POST_QUIT_MESSAGE.call(0)
+        return 0
+      end
+
+      focus_message(message, wparam)
+      return 0 if activation_key_message?(message)
+      if defined?(EltenTray) && message == EltenTray::CALLBACK_MESSAGE
+        return 0 if EltenTray.handle_callback(wparam, lparam)
+      end
+      return 0 if close_message?(message, wparam)
+      minimize_message(message, wparam)
+      record_key_message(message, wparam, lparam)
+      if character_message?(message)
+        return 1 if message == WM_UNICHAR && wparam == UNICODE_NOCHAR
+        enqueue_character_message(message, wparam) unless activation_input_blocked?
+        return 0
+      end
+      return 0 if menu_message?(message, wparam)
+      DEF_WINDOW_PROC.call(hwnd, message, wparam, lparam)
+    rescue Exception => e
+      Log.error("Main window procedure failed: #{e.class}: #{e.message}") if defined?(Log)
+      DEF_WINDOW_PROC.call(hwnd, message, wparam, lparam) rescue 0
+    end
+
+    def activation_input_blocked?
+      unless window_thread?
+        return window_state_monitor.synchronize { @activation_ignore_max_until != nil }
+      end
+      window_state_monitor.synchronize do
+        next false if @activation_ignore_max_until == nil
+        now = monotonic_time
+        state = capture_keyboard_state_raw
+        if now <= @activation_ignore_min_until.to_f || (now <= @activation_ignore_max_until.to_f && keyboard_state_has_pressed_keys?(state))
+          sync_keyboard_state_without_delivery(state)
+          clear_character_queue
+          next true
+        end
+        finish_activation_ignore(state)
+        false
+      end
     rescue Exception
       clear_activation_guard
       false
     end
 
     def close_requested?
-      @close_requested == true
+      window_state_monitor.synchronize { @close_requested == true }
     end
 
     def consume_close_request
-      requested = @close_requested == true
-      @close_requested = false
-      requested
+      window_state_monitor.synchronize do
+        requested = @close_requested == true
+        @close_requested = false
+        requested
+      end
     end
 
     def consume_minimize_request
-      if minimize_request_suppressed?
+      window_state_monitor.synchronize do
+        if minimize_request_suppressed?
+          @minimize_requested = false
+          next false
+        end
+        requested = @minimize_requested == true
         @minimize_requested = false
-        return false
+        requested
       end
-      requested = @minimize_requested == true
-      @minimize_requested = false
-      requested
     end
 
     def update_messages
       if window_thread?
-        pump_messages
-        capture_keyboard_state
+        service_window_requests
       else
         request_window_update
       end
@@ -572,45 +648,29 @@ module EltenWindow
     end
 
     def service_window_update
-      return false if !window_thread?
-      pump_sync
-      token = nil
-      should_update = false
-      @pump_mutex.synchronize do
-        token = @pump_request.to_i
-        should_update = @pump_done.to_i < token || (@window_actions != nil && @window_actions.empty? == false)
-      end
-      return false if should_update == false
-      run_window_actions
-      pump_messages
-      capture_keyboard_state
-      run_window_actions
-      @pump_mutex.synchronize do
-        @pump_done = token
-        @pump_cond.broadcast
-      end
-      true
+      return service_window_requests if window_thread?
+      request_window_update
     end
 
     def keyboard_state
-      @keyboard_state ||= ("\0" * 256)
+      window_state_monitor.synchronize do
+        @keyboard_state ||= ("\0" * 256)
+        @keyboard_state.dup
+      end
     end
 
     def clear_input_state
       clear_activation_guard
       if !window_thread?
-        @keyboard_state = "\0" * 256
         post_window_action(true) { clear_input_state }
-        EltenKeyboard.clear_state
         return true
       end
       clear_native_keyboard_state
-      @keyboard_state = "\0" * 256
-      @character_queue ||= []
-      @character_queue.clear
-      @character_delivered = false
-      @high_surrogate = nil
-      clear_key_events
+      window_state_monitor.synchronize do
+        @keyboard_state = "\0" * 256
+        clear_character_queue
+        clear_key_events
+      end
       EltenKeyboard.clear_state
       true
     end
@@ -623,20 +683,25 @@ module EltenWindow
       @pump_mutex.synchronize do
         @window_actions ||= []
         @window_actions << action
-        @pump_request += 1
-        @pump_cond.broadcast
-        if wait
-          deadline = Time.now.to_f + 1.0
-          while action[:done] != true
-            remaining = deadline - Time.now.to_f
-            break if remaining <= 0
-            @pump_cond.wait(@pump_mutex, remaining)
-          end
-          raise action[:error] if action[:error] != nil
-          return action[:result]
-        end
       end
-      true
+      begin
+        wake_window_thread(0)
+      rescue Exception => e
+        @pump_mutex.synchronize do
+          @window_actions.delete(action)
+          action[:error] = e
+          action[:done] = true
+          @pump_cond.broadcast
+        end
+        raise
+      end
+      return true unless wait
+      @pump_mutex.synchronize do
+        @pump_cond.wait(@pump_mutex) while action[:done] != true && @message_loop_stopped != true
+        raise action[:error] if action[:error] != nil
+        raise RuntimeError, "Windows message loop stopped before executing an action" if action[:done] != true
+        action[:result]
+      end
     end
 
     def window_thread?
@@ -645,12 +710,12 @@ module EltenWindow
     end
 
     def begin_input_frame
-      @character_queue ||= []
-      @character_queue.clear
-      @character_delivered = false
-      @input_frame = (@input_frame || 0) + 1
-      update_focus_state
-      clear_character_queue if activation_input_blocked?
+      window_state_monitor.synchronize do
+        @character_queue ||= []
+        @character_queue.shift(@character_frame_prefix_size.to_i) if @character_frame_consumed != true
+        @character_frame_prefix_size = 0
+        @character_frame_consumed = false
+      end
       true
     end
 
@@ -671,43 +736,44 @@ module EltenWindow
     end
 
     def take_character(multi = false)
-      @character_queue ||= []
-      return "" if @character_queue.empty?
-      @character_delivered = true
-      if multi
-        text = @character_queue.join
-        @character_queue.clear
-        text
-      else
-        @character_queue.shift.to_s
+      window_state_monitor.synchronize do
+        @character_queue ||= []
+        @character_frame_consumed = true
+        next "" if @character_queue.empty?
+        if multi
+          text = @character_queue.join
+          @character_queue.clear
+          text
+        else
+          @character_queue.shift.to_s
+        end
       end
     end
 
     def consume_key_events
-      @key_event_queue ||= []
-      events = @key_event_queue
-      @key_event_queue = []
-      events
+      window_state_monitor.synchronize do
+        @key_event_queue ||= []
+        events = @key_event_queue
+        @key_event_queue = []
+        events
+      end
     end
 
     private
 
-    def request_window_update(timeout = 0.05)
+    def request_window_update
       pump_sync
       token = nil
       @pump_mutex.synchronize do
         @pump_request += 1
         token = @pump_request
-        @pump_cond.broadcast
-        deadline = Time.now.to_f + timeout.to_f
-        while @pump_done.to_i < token
-          remaining = deadline - Time.now.to_f
-          break if remaining <= 0
-          @pump_cond.wait(@pump_mutex, remaining)
-        end
       end
-      true
-    rescue Exception
+      wake_window_thread(token)
+      @pump_mutex.synchronize do
+        @pump_cond.wait(@pump_mutex) while @completed_updates[token] != true && @message_loop_stopped != true
+        raise RuntimeError, "Windows message loop stopped during an update" if @completed_updates[token] != true
+        @completed_updates.delete(token)
+      end
       true
     end
 
@@ -715,7 +781,19 @@ module EltenWindow
       @pump_mutex ||= Mutex.new
       @pump_cond ||= ConditionVariable.new
       @pump_request ||= 0
-      @pump_done ||= 0
+      @completed_updates ||= {}
+    end
+
+    def window_state_monitor
+      @window_state_monitor ||= Monitor.new
+    end
+
+    def wake_window_thread(token)
+      hwnd = window_handle(nil, false)
+      raise RuntimeError, "Elten main window is not available" if hwnd == 0
+      result = POST_MESSAGE.call(hwnd, WM_DISPATCH_ACTIONS, token.to_i, 0)
+      raise RuntimeError, "PostMessageW failed: #{GET_LAST_ERROR.call}" if result == 0
+      true
     end
 
     def monotonic_time
@@ -725,20 +803,24 @@ module EltenWindow
     end
 
     def suppress_minimize_requests(duration = MINIMIZE_RESTORE_SUPPRESS_TIME)
-      @minimize_requested = false
-      @minimize_suppressed_until = monotonic_time + duration.to_f
+      window_state_monitor.synchronize do
+        @minimize_requested = false
+        @minimize_suppressed_until = monotonic_time + duration.to_f
+      end
       true
     rescue Exception
       false
     end
 
     def minimize_request_suppressed?
-      return false if @minimize_suppressed_until == nil
-      if monotonic_time < @minimize_suppressed_until.to_f
-        true
-      else
-        @minimize_suppressed_until = nil
-        false
+      window_state_monitor.synchronize do
+        next false if @minimize_suppressed_until == nil
+        if monotonic_time < @minimize_suppressed_until.to_f
+          true
+        else
+          @minimize_suppressed_until = nil
+          false
+        end
       end
     rescue Exception
       false
@@ -794,18 +876,20 @@ module EltenWindow
       SET_FOCUS
     end
 
-    def update_focus_state(active = nil, state = nil)
+    def update_focus_state(active = nil)
       active = foreground_window_active? if active == nil
-      previous = @keyboard_foreground_active
-      @keyboard_foreground_active = active
-      if active == true && previous != true
-        ignore_activation_input
-      elsif active != true && previous == true
-        clear_activation_guard
-        clear_character_queue
-        clear_key_events
-        @keyboard_state = "\0" * 256
-        EltenKeyboard.clear_state
+      window_state_monitor.synchronize do
+        previous = @keyboard_foreground_active
+        @keyboard_foreground_active = active
+        if active == true && previous != true
+          ignore_activation_input
+        elsif active != true && previous == true
+          clear_activation_guard
+          clear_character_queue
+          clear_key_events
+          @keyboard_state = "\0" * 256
+          EltenKeyboard.clear_state
+        end
       end
       active
     rescue Exception
@@ -813,39 +897,47 @@ module EltenWindow
     end
 
     def ignore_activation_input
-      now = monotonic_time
-      @activation_ignore_min_until = now + KEYBOARD_ACTIVATION_MIN_DELAY
-      @activation_ignore_max_until = now + KEYBOARD_ACTIVATION_MAX_DELAY
-      clear_character_queue
-      clear_key_events
-      EltenKeyboard.clear_state
+      window_state_monitor.synchronize do
+        now = monotonic_time
+        @activation_ignore_min_until = now + KEYBOARD_ACTIVATION_MIN_DELAY
+        @activation_ignore_max_until = now + KEYBOARD_ACTIVATION_MAX_DELAY
+        clear_character_queue
+        clear_key_events
+        EltenKeyboard.clear_state
+      end
       true
     end
 
     def clear_activation_guard
-      @activation_ignore_min_until = nil
-      @activation_ignore_max_until = nil
+      window_state_monitor.synchronize do
+        @activation_ignore_min_until = nil
+        @activation_ignore_max_until = nil
+      end
       true
     end
 
     def finish_activation_ignore(state = nil)
-      state ||= capture_keyboard_state_raw
-      @keyboard_state = state
-      EltenKeyboard.sync_physical_state
-      clear_activation_guard
-      clear_character_queue
-      clear_key_events
+      window_state_monitor.synchronize do
+        state ||= capture_keyboard_state_raw
+        @keyboard_state = state
+        EltenKeyboard.sync_physical_state
+        clear_activation_guard
+        clear_character_queue
+        clear_key_events
+      end
       true
     end
 
     def sync_keyboard_state_without_delivery(state)
-      @keyboard_state = state
-      EltenKeyboard.sync_physical_state
-      @keyboard_state = "\0" * 256
-      clear_key_events
+      window_state_monitor.synchronize do
+        @keyboard_state = state
+        EltenKeyboard.sync_physical_state
+        @keyboard_state = "\0" * 256
+        clear_key_events
+      end
       true
     rescue Exception
-      @keyboard_state = "\0" * 256
+      window_state_monitor.synchronize { @keyboard_state = "\0" * 256 }
       false
     end
 
@@ -860,16 +952,21 @@ module EltenWindow
     end
 
     def clear_character_queue
-      @character_queue ||= []
-      @character_queue.clear
-      @character_delivered = false
-      @high_surrogate = nil
+      window_state_monitor.synchronize do
+        @character_queue ||= []
+        @character_queue.clear
+        @character_frame_prefix_size = 0
+        @character_frame_consumed = false
+        @high_surrogate = nil
+      end
       true
     end
 
     def clear_key_events
-      @key_event_queue ||= []
-      @key_event_queue.clear
+      window_state_monitor.synchronize do
+        @key_event_queue ||= []
+        @key_event_queue.clear
+      end
       true
     end
 
@@ -894,13 +991,55 @@ module EltenWindow
       true
     end
 
+    def service_window_requests(token = nil)
+      return false unless window_thread?
+      pump_sync
+      token = token.to_i
+      run_window_actions
+      capture_keyboard_state
+      run_window_actions
+      snapshot_character_frame if token > 0
+      @pump_mutex.synchronize do
+        @completed_updates[token] = true if token > 0
+        @pump_cond.broadcast
+      end
+      true
+    end
+
+    def snapshot_character_frame
+      window_state_monitor.synchronize do
+        @character_queue ||= []
+        @character_frame_prefix_size = @character_queue.size
+      end
+      true
+    end
+
+    def fail_pending_window_actions(error)
+      pump_sync
+      actions = []
+      @pump_mutex.synchronize do
+        @message_loop_stopped = true
+        actions = @window_actions || []
+        @window_actions = []
+        actions.each do |action|
+          action[:error] ||= error
+          action[:done] = true
+        end
+        @pump_cond.broadcast
+      end
+      true
+    end
+
     def capture_keyboard_state
       state = capture_keyboard_state_raw
-      @keyboard_state = state
-      update_focus_state(foreground_window_active?, state)
+      window_state_monitor.synchronize do
+        @keyboard_state = state
+        update_focus_state(foreground_window_active?)
+        activation_input_blocked?
+      end
       true
     rescue Exception
-      @keyboard_state ||= ("\0" * 256)
+      window_state_monitor.synchronize { @keyboard_state ||= ("\0" * 256) }
       false
     end
 
@@ -924,54 +1063,47 @@ module EltenWindow
       false
     end
 
-    def character_message?(msg)
-      message = EltenWin32.dword_value(msg, MESSAGE_OFFSET)
-      return false unless message == WM_CHAR || message == WM_DEADCHAR || message == WM_UNICHAR
-      return true if activation_input_blocked?
-      enqueue_character_message(message, EltenWin32.pointer_value(msg, WPARAM_OFFSET))
-      true
+    def character_message?(message)
+      message == WM_CHAR || message == WM_DEADCHAR || message == WM_UNICHAR
     end
 
-    def close_message?(msg)
-      message = EltenWin32.dword_value(msg, MESSAGE_OFFSET)
-      if message == WM_CLOSE || message == WM_DESTROY || message == WM_QUIT
-        @close_requested = true
+    def close_message?(message, wparam)
+      if message == WM_CLOSE
+        window_state_monitor.synchronize { @close_requested = true }
         return true
       end
-      if message == WM_SYSKEYDOWN && EltenWin32.pointer_value(msg, WPARAM_OFFSET).to_i == VK_F4
+      if message == WM_SYSKEYDOWN && wparam.to_i == VK_F4
         return true if activation_input_blocked?
-        @close_requested = true
+        window_state_monitor.synchronize { @close_requested = true }
         return true
       end
       return false unless message == WM_SYSCOMMAND
-      command = EltenWin32.pointer_value(msg, WPARAM_OFFSET) & 0xfff0
+      command = wparam.to_i & 0xfff0
       if command == SC_CLOSE
-        @close_requested = true
+        window_state_monitor.synchronize { @close_requested = true }
         return true
       end
       false
     end
 
-    def minimize_message?(msg)
-      if minimize_request_suppressed?
-        @minimize_requested = false
-        return false
-      end
-      message = EltenWin32.dword_value(msg, MESSAGE_OFFSET)
-      if message == WM_SIZE
-        @minimize_requested = true if EltenWin32.pointer_value(msg, WPARAM_OFFSET).to_i == SIZE_MINIMIZED
-      elsif message == WM_SYSCOMMAND
-        command = EltenWin32.pointer_value(msg, WPARAM_OFFSET) & 0xfff0
-        @minimize_requested = true if command == SC_MINIMIZE
+    def minimize_message(message, wparam)
+      window_state_monitor.synchronize do
+        if minimize_request_suppressed?
+          @minimize_requested = false
+          next false
+        end
+        if message == WM_SIZE
+          @minimize_requested = true if wparam.to_i == SIZE_MINIMIZED
+        elsif message == WM_SYSCOMMAND
+          @minimize_requested = true if (wparam.to_i & 0xfff0) == SC_MINIMIZE
+        end
       end
       false
     rescue Exception
       false
     end
 
-    def focus_message?(msg)
-      message = EltenWin32.dword_value(msg, MESSAGE_OFFSET)
-      wparam = EltenWin32.pointer_value(msg, WPARAM_OFFSET).to_i
+    def focus_message(message, wparam)
       case message
       when WM_SETFOCUS
         update_focus_state(true)
@@ -987,31 +1119,31 @@ module EltenWindow
       false
     end
 
-    def activation_key_message?(msg)
-      message = EltenWin32.dword_value(msg, MESSAGE_OFFSET)
+    def activation_key_message?(message)
       return false unless message == WM_KEYDOWN || message == WM_KEYUP || message == WM_SYSKEYDOWN || message == WM_SYSKEYUP || message == WM_SYSCHAR
       activation_input_blocked?
     rescue Exception
       false
     end
 
-    def record_key_message(msg)
-      message = EltenWin32.dword_value(msg, MESSAGE_OFFSET)
+    def record_key_message(message, wparam, lparam)
       return false unless message == WM_KEYDOWN || message == WM_KEYUP || message == WM_SYSKEYDOWN || message == WM_SYSKEYUP
-      key = EltenWin32.pointer_value(msg, WPARAM_OFFSET).to_i & 0xff
+      key = wparam.to_i & 0xff
       return false if key <= 0 || key > 255
       down = message == WM_KEYDOWN || message == WM_SYSKEYDOWN
-      event = down && repeated_key_message?(msg) ? :repeat : down
-      @key_event_queue ||= []
-      @key_event_queue << [key, event]
-      @key_event_queue.shift while @key_event_queue.size > 256
+      event = down && repeated_key_message?(lparam) ? :repeat : down
+      window_state_monitor.synchronize do
+        @key_event_queue ||= []
+        @key_event_queue << [key, event]
+        @key_event_queue.shift while @key_event_queue.size > 256
+      end
       false
     rescue Exception
       false
     end
 
-    def repeated_key_message?(msg)
-      (EltenWin32.pointer_value(msg, LPARAM_OFFSET).to_i & (1 << 30)) != 0
+    def repeated_key_message?(lparam)
+      (lparam.to_i & (1 << 30)) != 0
     rescue Exception
       false
     end
@@ -1020,26 +1152,27 @@ module EltenWindow
       code = wparam.to_i
       return if code == 0 || code == UNICODE_NOCHAR || code < 32 || (code >= 0x7F && code <= 0x9F)
       return if message == WM_DEADCHAR
-      @character_queue ||= []
-      if code >= 0xD800 && code <= 0xDBFF
-        @high_surrogate = code
-        return
-      elsif code >= 0xDC00 && code <= 0xDFFF && @high_surrogate != nil
-        @character_queue << [@high_surrogate, code].pack("S<S<").force_encoding("UTF-16LE").encode("UTF-8", invalid: :replace, undef: :replace)
-        @high_surrogate = nil
-      else
-        @high_surrogate = nil
-        @character_queue << [code].pack("U")
+      window_state_monitor.synchronize do
+        @character_queue ||= []
+        if code >= 0xD800 && code <= 0xDBFF
+          @high_surrogate = code
+          next
+        elsif code >= 0xDC00 && code <= 0xDFFF && @high_surrogate != nil
+          @character_queue << [@high_surrogate, code].pack("S<S<").force_encoding("UTF-16LE").encode("UTF-8", invalid: :replace, undef: :replace)
+          @high_surrogate = nil
+        else
+          @high_surrogate = nil
+          @character_queue << [code].pack("U")
+        end
       end
     rescue Exception
       @high_surrogate = nil
     end
 
-    def menu_message?(msg)
-      message = EltenWin32.dword_value(msg, MESSAGE_OFFSET)
+    def menu_message?(message, wparam)
       return true if message == WM_SYSKEYDOWN || message == WM_SYSKEYUP || message == WM_SYSCHAR
       return false if message != WM_SYSCOMMAND
-      (EltenWin32.pointer_value(msg, WPARAM_OFFSET) & 0xfff0) == SC_KEYMENU
+      (wparam.to_i & 0xfff0) == SC_KEYMENU
     end
 
     def wide_string(text)
@@ -1069,7 +1202,6 @@ module EltenTray
   NIN_BALLOONUSERCLICK = 0x0405
   IDI_APPLICATION = 32512
   ICON_ID = 1
-  GWL_WNDPROC = -4
 
   class << self
     def supported?
@@ -1077,13 +1209,15 @@ module EltenTray
     end
 
     def show(hwnd = 0)
+      if defined?(EltenWindow) && !EltenWindow.window_thread?
+        return EltenWindow.post_window_action(true) { show(hwnd) }
+      end
       hwnd = hwnd.to_i
       hwnd = @hwnd.to_i if hwnd == 0 && @hwnd.to_i != 0
       hwnd = $wnd.to_i if hwnd == 0 && $wnd != nil
       return 0 if hwnd == 0
       ensure_api
       @hwnd = hwnd
-      install_window_proc(hwnd)
       @nid = notify_icon_data(hwnd)
       result = @shell_notify_icon.call(@visible == true ? NIM_MODIFY : NIM_ADD, @nid)
       if result == 0 && @visible == true
@@ -1094,18 +1228,14 @@ module EltenTray
     end
 
     def hide
+      if defined?(EltenWindow) && !EltenWindow.window_thread?
+        return EltenWindow.post_window_action(true) { hide }
+      end
       return 1 if @visible != true || @nid == nil
       ensure_api
       result = @shell_notify_icon.call(NIM_DELETE, @nid)
       @visible = false if result != 0
       result
-    end
-
-    def handle_message?(msg)
-      return false if EltenWin32.dword_value(msg, EltenWin32::POINTER_SIZE) != CALLBACK_MESSAGE
-      wparam = EltenWin32.pointer_value(msg, EltenWin32::POINTER_SIZE == 8 ? 16 : 8)
-      lparam = EltenWin32.pointer_value(msg, EltenWin32::POINTER_SIZE == 8 ? 24 : 12)
-      handle_callback(wparam, lparam)
     end
 
     def restore_hotkey_pressed?
@@ -1142,49 +1272,10 @@ module EltenTray
       @shell_notify_icon = Fiddle::Function.new(shell32["Shell_NotifyIconW"], [Fiddle::TYPE_INT, Fiddle::TYPE_VOIDP], Fiddle::TYPE_INT)
       @load_icon = Fiddle::Function.new(user32["LoadIconW"], [INTPTR, INTPTR], INTPTR)
       @get_async_key_state = Fiddle::Function.new(user32["GetAsyncKeyState"], [Fiddle::TYPE_INT], Fiddle::TYPE_SHORT)
-      @call_window_proc = Fiddle::Function.new(user32["CallWindowProcW"], [INTPTR, INTPTR, Fiddle::TYPE_INT, INTPTR, INTPTR], INTPTR)
-      @def_window_proc = Fiddle::Function.new(user32["DefWindowProcW"], [INTPTR, Fiddle::TYPE_INT, INTPTR, INTPTR], INTPTR)
-      @set_window_long_ptr = begin
-        Fiddle::Function.new(user32["SetWindowLongPtrW"], [INTPTR, Fiddle::TYPE_INT, INTPTR], INTPTR)
-      rescue Fiddle::DLError
-        Fiddle::Function.new(user32["SetWindowLongW"], [INTPTR, Fiddle::TYPE_INT, INTPTR], INTPTR)
-      end
     end
 
     def key_down?(key)
       (@get_async_key_state.call(key) & 0x8000) != 0
-    end
-
-    def install_window_proc(hwnd)
-      return if hwnd.to_i == 0
-      return if @subclassed_hwnd.to_i == hwnd.to_i
-      @wndproc ||= Fiddle::Closure::BlockCaller.new(
-        INTPTR,
-        [INTPTR, Fiddle::TYPE_INT, INTPTR, INTPTR]
-      ) do |window, message, wparam, lparam|
-        begin
-          if message.to_i == CALLBACK_MESSAGE && handle_callback(wparam.to_i, lparam.to_i)
-            0
-          else
-            call_previous_window_proc(window, message, wparam, lparam)
-          end
-        rescue Exception
-          call_previous_window_proc(window, message, wparam, lparam) rescue 0
-        end
-      end
-      previous = @set_window_long_ptr.call(hwnd, GWL_WNDPROC, @wndproc.to_i)
-      @previous_window_proc = previous if previous != nil && previous.to_i != 0
-      @subclassed_hwnd = hwnd
-    rescue Exception => e
-      Log.warning("Tray window subclass failed: #{e}")
-    end
-
-    def call_previous_window_proc(window, message, wparam, lparam)
-      if @previous_window_proc != nil && @previous_window_proc.to_i != 0
-        @call_window_proc.call(@previous_window_proc, window, message, wparam, lparam)
-      else
-        @def_window_proc.call(window, message, wparam, lparam)
-      end
     end
 
     def restore_event?(event)
@@ -1250,32 +1341,6 @@ module EltenTray
       raw = raw.byteslice(0, (max_chars - 1) * 2) || ""
       raw = (raw.b + "\0\0".b).b
       buffer[offset, max_chars * 2] = raw.ljust(max_chars * 2, "\0")
-    end
-  end
-end
-
-module Input
-  LEFT = 0x25
-  UP = 0x26
-  RIGHT = 0x27
-  DOWN = 0x28
-  A = 0x10
-  B = 0x1B
-  C = 0x0D
-  CTRL = 0x11
-
-  class << self
-    def update
-      true
-    end
-
-    def trigger?(key)
-      defined?(EltenAPI::KeyboardState) && EltenAPI::KeyboardState.pressed?(key)
-    end
-
-    def repeat?(key)
-      return true if EltenWindow.keyboard_key_held?(key)
-      defined?(EltenAPI::KeyboardState) && EltenAPI::KeyboardState.held?(key)
     end
   end
 end

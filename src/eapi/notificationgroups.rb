@@ -247,22 +247,21 @@ module NotificationGroups
     cat = notification.cat.to_s
     case cat
     when "message"
-      notification.internal_id2.to_s.empty? ? ["message", message_participant(payload), normalized_subject(payload)].join(":") : notification.internal_id2.to_s
-    when "followedthread", "followedforum", "followedforumpost", "mention"
-      notification.internal_id.to_s.empty? ? ["forum", payload["threadid"].to_i].join(":") : notification.internal_id.to_s
-    when "followedblog", "blogcomment", "followedblogpost", "blogmention"
-      notification.internal_id.to_s.empty? ? ["blog", payload["blog"], payload["postid"].to_i].join(":") : notification.internal_id.to_s
+      if messages_grouped_by_subject?
+        ["message", message_participant(payload), normalized_subject(payload)].join(":")
+      else
+        ["message", message_participant(payload)].join(":")
+      end
+    when "followedthread", "followedforum", "followedforumpost"
+      ["forum", payload["threadid"].to_i].join(":")
+    when "followedblog", "blogcomment", "followedblogpost"
+      ["blog", payload["blog"], payload["postid"].to_i].join(":")
     when "blogfollower"
-      notification.internal_id2.to_s.empty? ? ["blog", payload["blog"]].join(":") : notification.internal_id2.to_s
-    when "friend", "birthday", "mtr"
-      notification.internal_id.to_s.empty? ? [cat, payload["user"]].join(":") : notification.internal_id.to_s
-    when "groupinvitation"
-      notification.internal_id.to_s.empty? ? [cat, payload["groupid"].to_i].join(":") : notification.internal_id.to_s
+      ["blog", payload["blog"]].join(":")
+    when "friend", "mtr"
+      [cat, payload["user"]].join(":")
     else
-      key = notification.internal_id.to_s
-      key = notification.internal_id2.to_s if key.empty?
-      key = notification.internal_id3.to_s if key.empty?
-      key.empty? ? [cat, notification.id.to_i].join(":") : key
+      [cat, notification.id.to_i].join(":")
     end
   end
 
@@ -335,7 +334,7 @@ module NotificationGroups
     when "blogmention"
       [blog_post_title(payload), payload["author"].to_s, payload["message"].to_s].reject(&:empty?).join(" - ")
     when "blogfollower"
-      [payload["user"].to_s, payload["blog"].to_s].reject(&:empty?).join(" - ")
+      [payload["user"].to_s, blog_display_name(payload)].reject(&:empty?).join(" - ")
     when "friend", "mtr"
       payload["user"].to_s
     when "groupinvitation"
@@ -353,6 +352,8 @@ module NotificationGroups
     participant = message_participant(payload)
     title = payload["groupname"].to_s
     title = participant if title.empty?
+    return title unless messages_grouped_by_subject?
+
     subject = payload["subject"].to_s
     subject = p_("Notifications", "No subject") if subject.empty?
     [title, subject].reject(&:empty?).join(": ")
@@ -360,9 +361,14 @@ module NotificationGroups
 
   def blog_post_title(payload)
     title = payload["title"].to_s
-    blog = payload["blog"].to_s
+    blog = blog_display_name(payload)
     return title if blog.empty? || title.include?(blog)
     title.empty? ? blog : "#{blog}: #{title}"
+  end
+
+  def blog_display_name(payload)
+    name = payload["blogname"].to_s
+    name.empty? ? payload["blog"].to_s : name
   end
 
   def update_title(payload)
@@ -388,9 +394,9 @@ module NotificationGroups
     when "message"
       Proc.new { open_message(payload) }
     when "followedthread", "followedforum", "followedforumpost", "mention"
-      Proc.new { open_forum_thread(payload) }
+      Proc.new { open_forum_thread(payload, cat.to_s) }
     when "followedblog", "blogcomment", "followedblogpost", "blogmention"
-      Proc.new { open_blog_post(payload) }
+      Proc.new { open_blog_post(payload, cat.to_s) }
     when "blogfollower"
       Proc.new { insert_scene(Scene_Blog_Followers.new(nil), true) }
     when "friend"
@@ -409,9 +415,14 @@ module NotificationGroups
     scene = if participant.to_s.empty?
       Scene_Messages.new(true, close_to_main: true)
     else
-      Scene_Messages.new(user: participant, subject: message_subject(payload), close_to_main: true)
+      subject = message_subject(payload) if messages_grouped_by_subject?
+      Scene_Messages.new(user: participant, subject: subject, close_to_main: true)
     end
     insert_scene(scene, true, return_to_main: true)
+  end
+
+  def messages_grouped_by_subject?
+    !LocalConfig['MessagesDefaultToAllMessages', type: :bool]
   end
 
   def message_participant(payload)
@@ -422,26 +433,35 @@ module NotificationGroups
   end
 
   def message_subject(payload)
-    subject = payload["subject"].to_s.delete("\r\n").gsub(/re: /i, "")
-    subject.empty? ? nil : subject
+    payload["subject"].to_s.delete("\r\n").gsub(/re: /i, "")
   end
 
   def normalized_subject(payload)
     payload["subject"].to_s.delete("\r\n").gsub(/re: /i, "").downcase.strip
   end
 
-  def open_forum_thread(payload)
+  def open_forum_thread(payload, cat=nil)
     thread_id = payload["threadid"].to_i
     if thread_id > 0
       post_id = payload["postid"].to_i
-      query = post_id > 0 ? post_id : ""
-      insert_scene(Scene_Forum_Thread.new(thread_id, -13, 0, query, nil, Scene_Main.new), true, return_to_main: true)
+      query = ["followedthread", "followedforumpost"].include?(cat.to_s) ? :first_unread : (post_id > 0 ? post_id : "")
+      mention = forum_mention_from_payload(payload) if cat.to_s == "mention" && post_id > 0
+      insert_scene(Scene_Forum_Thread.new(thread_id, -13, 0, query, mention, Scene_Main.new), true, return_to_main: true)
     else
       insert_scene(Scene_Forum.new, true, return_to_main: true)
     end
   end
 
-  def open_blog_post(payload)
+  def forum_mention_from_payload(payload)
+    mention = Struct_Forum_Mention.new(payload["mentionid"].to_i)
+    mention.thread = payload["threadid"].to_i
+    mention.post = payload["postid"].to_i
+    mention.author = payload["author"].to_s
+    mention.message = payload["message"].to_s
+    mention
+  end
+
+  def open_blog_post(payload, cat=nil)
     blog = payload["blog"].to_s
     post_id = payload["postid"].to_i
     if blog.empty? || post_id <= 0
@@ -453,7 +473,19 @@ module NotificationGroups
     post.owner = blog
     post.name = payload["title"].to_s
     post.author = payload["author"].to_s
-    insert_scene(Scene_Blog_Read.new(post, -1, 0, 0), true)
+    post.followed = true if cat.to_s == "followedblogpost"
+    post.mention = blog_mention_from_payload(payload) if cat.to_s == "blogmention" && payload["mentionid"].to_i > 0
+    insert_scene(Scene_Blog_Read.new(post, -1, 0, 0, Scene_Main.new), true, return_to_main: true)
+  end
+
+  def blog_mention_from_payload(payload)
+    mention = Struct_Blog_Mention.new
+    mention.id = payload["mentionid"].to_i
+    mention.blog = payload["blog"].to_s
+    mention.postid = payload["postid"].to_i
+    mention.author = payload["author"].to_s
+    mention.message = payload["message"].to_s
+    mention
   end
 
   def open_notification_group(group)

@@ -5,6 +5,11 @@
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
 
 class Scene_Account
+  WHATSNEW_DISABLE_LIST = 1
+  WHATSNEW_DISABLE_PC = 2
+  WHATSNEW_DISABLE_MOBILE = 4
+  WHATSNEW_DELIVERY_BITS = [WHATSNEW_DISABLE_LIST, WHATSNEW_DISABLE_PC, WHATSNEW_DISABLE_MOBILE]
+
   def initialize
     @settings=[]
   end
@@ -41,7 +46,9 @@ def save_category
     index=i-1
     field=@form.fields[index]
     next if field==nil
-    if setting[4]==false || !setting[1].is_a?(Array)
+    if setting[1]==:whatsnew_delivery
+      val=whatsnew_delivery_value(field.multiselections)
+    elsif setting[4]==false || !setting[1].is_a?(Array)
     val=field.value
     val=val.to_i if setting[1]==:number
     val=val ? 1 : 0 if setting[1]==:bool
@@ -76,6 +83,9 @@ for s in @settings[id][2..-1]
     field=EditBox.new(label, type: EditBox::Flags::Numbers, text: currentconfig(key),quiet: true)
     when :bool
       field=CheckBox.new(label, checked: currentconfig(key).to_i!=0)
+    when :whatsnew_delivery
+      field=ListBox.new(whatsnew_delivery_options, header: label, index: 0, flags: ListBox::Flags::MultiSelection)
+      whatsnew_delivery_selection(currentconfig(key).to_i).each { |selected_index| field.selected[selected_index]=true }
       when :custom
         field=Button.new(label)
         proc=key
@@ -118,6 +128,33 @@ def make_window
   @form.fields[2]=Button.new(_("Save"))
   @form.fields[3]=Button.new(_("Cancel"))
 end
+
+def whatsnew_delivery_options
+  [
+    p_("Account", "Show in what's new"),
+    p_("Account", "Alert on PC"),
+    p_("Account", "Notify on mobile devices")
+  ]
+end
+
+def whatsnew_delivery_selection(value)
+  value=value.to_i
+  selected=[]
+  WHATSNEW_DELIVERY_BITS.each_with_index do |bit, index|
+    selected.push(index) if (value&bit)==0
+  end
+  selected
+end
+
+def whatsnew_delivery_value(selected)
+  selected=selected.map(&:to_i)
+  value=0
+  WHATSNEW_DELIVERY_BITS.each_with_index do |bit, index|
+    value|=bit if !selected.include?(index)
+  end
+  value
+end
+
 def load_profile
   setting_category(p_("Account", "Profile"))
   make_setting(p_("Account", "Full name"), :text, "fullname")
@@ -260,11 +297,10 @@ def load_signs
 end
 def load_notifications_settings
   setting_category(p_("Account", "Notifications"))
-  options=[p_("Account", "Notice and show in what's new"),p_("Account", "Notice only"),p_("Account", "Ignore")]
   cats=[p_("Account", "New messages"),p_("Account", "New posts in followed threads"),p_("Account", "New posts on the followed blogs"),p_("Account", "New comments on your blog"),p_("Account", "New threads on followed forums"),p_("Account", "New posts on followed forums"),p_("Account", "New friends"),p_("Account", "Friends' birthday"),p_("Account", "Mentions"),p_("Account", "Followed blog posts"), p_("Account", "Blog followers"), p_("Account", "Blog mentions"), p_("Account", "Awaiting group invitations")]
   sets = ["wn_messages", "wn_followedthreads", "wn_followedblogs", "wn_blogcomments", "wn_followedforums", "wn_followedforumsthreads", "wn_friends", "wn_birthday", "wn_mentions", "wn_followedblogposts", "wn_blogfollowers","wn_blogmentions", "wn_groupinvitations"]
   for i in 0...sets.size
-    make_setting(cats[i], options, sets[i])
+    make_setting(cats[i], :whatsnew_delivery, sets[i])
     end
   end
   def load_security

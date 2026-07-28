@@ -34,7 +34,7 @@ class Scene_Users_AddedMeToContacts
     loop do
 loop_update
       @sel.update
-      if key_pressed?(:key_escape)
+      if key_pressed?(:key_escape) or (@new==true and @sel.collapsed?)
         begin
           EltenLink::Contacts.acknowledge_added_me(elten_link)
         rescue EltenLink::Error => e

@@ -51,17 +51,66 @@ module EltenLink
     end
   end
 
+  class RegistrationResult
+    attr_reader :name
+
+    def initialize(data)
+      @name = data["name"].to_s
+      @registered = truthy?(data["registered"])
+      @activated = truthy?(data["activated"])
+      @activation_required = truthy?(data["activation_required"])
+    end
+
+    def registered?
+      @registered
+    end
+
+    def activated?
+      @activated
+    end
+
+    def activation_required?
+      @activation_required
+    end
+
+    private
+
+    def truthy?(value)
+      value == true || value.to_s == "1" || value.to_s.downcase == "true"
+    end
+  end
+
   module Accounts
     class << self
+      def registration_name_availability(client, name:)
+        data = client.api_data("GET", "/api/v1/accounts/name-availability", { "name" => name })
+        return :available if truthy?(data["available"])
+
+        reason = data["reason"].to_s
+        %w[forbidden exists].include?(reason) ? reason.to_sym : :unavailable
+      end
+
       def register(client, name:, password:, mail:, stamp: nil)
         params = { "name" => name, "password" => password, "mail" => mail }
         if stamp != nil
-          params["stamp_timespan"] = stamp["timespan"]
+          params["stamp_timestamp"] = stamp["timestamp"]
           params["stamp_key_sha256"] = stamp["key_sha256"]
           params["stamp_hwid"] = stamp["hwid"]
           params["stamp_hmac"] = stamp["hmac"]
         end
-        client.api_data("POST", "/api/v1/accounts", params)
+        data = client.api_data("POST", "/api/v1/accounts", params)
+        RegistrationResult.new(data)
+      end
+
+      def activate(client, code:)
+        client.api_data("POST", "/api/v1/accounts/activation", { "code" => code })
+        true
+      end
+
+      def resend_activation(client, name:, mail: nil)
+        params = { "name" => name }
+        params["mail"] = mail if mail != nil
+        client.api_data("POST", "/api/v1/accounts/activation/resend", params)
         true
       end
 

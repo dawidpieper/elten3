@@ -36,6 +36,8 @@ module EltenSystemHelpers
   GET_FILE_VERSION_INFO_SIZE = Fiddle::Function.new(VERSION_DLL["GetFileVersionInfoSizeW"], [PTR, PTR], INT, ABI)
   GET_FILE_VERSION_INFO = Fiddle::Function.new(VERSION_DLL["GetFileVersionInfoW"], [PTR, INT, INT, PTR], INT, ABI)
   VER_QUERY_VALUE = Fiddle::Function.new(VERSION_DLL["VerQueryValueW"], [PTR, PTR, PTR, PTR], INT, ABI)
+  LOCALE_IFIRSTDAYOFWEEK = 0x100C
+  LOCALE_RETURN_NUMBER = 0x20000000
   LOCALE_SNAME = 0x5C
   LOCALE_USER_DEFAULT = 0x400
   CSIDL_APPDATA = 0x001A
@@ -66,6 +68,25 @@ module EltenSystemHelpers
       from_wide(buffer.byteslice(0, (length - 1) * 2).to_s)
     rescue Exception
       ""
+    end
+
+    def first_day_of_week
+      lcid = current_lcid
+      return 1 if lcid.to_i == 0
+      buffer = [0].pack("V")
+      length = GET_LOCALE_INFO_W.call(
+        lcid,
+        LOCALE_IFIRSTDAYOFWEEK | LOCALE_RETURN_NUMBER,
+        buffer,
+        buffer.bytesize / 2
+      )
+      return 1 if length.to_i <= 0
+      weekday = buffer.unpack1("V")
+      return 1 unless (0..6).include?(weekday)
+
+      (weekday + 1) % 7
+    rescue Exception
+      1
     end
 
     def logical_drives
@@ -376,7 +397,7 @@ module EltenSystemHelpers
         current_known = false
       end
 
-      requested = enabled.to_i == 1
+      requested = enabled == true
       if current != requested
         if requested
           Log.debug("AUT") if defined?(Log)

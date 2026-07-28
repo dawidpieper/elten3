@@ -5,6 +5,9 @@
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
 
 class Scene_Registration
+  USERNAME_PATTERN = /\A[a-zA-Z0-9._-]{3,32}\z/.freeze
+  USERNAME_LETTER_PATTERN = /[a-zA-Z]/.freeze
+
   def main
 begin
 stamp = get_stamp("")
@@ -17,13 +20,32 @@ end
     password = ""
     mail = ""
     while name == ""
-    name = input_text(p_("Registration", "Enter your username. It will be used for identification.The maximum length of the  username is 64 characters"), flags: 0, text: "", escapable: true, permitted_characters: (("a".."z").to_a+("A".."Z").to_a+("0".."9").to_a+["-","_"]))
+    name = input_text(p_("Registration", "Enter your username. It must contain between 3 and 32 characters, including at least one letter. You may use letters, numbers, dots, hyphens, and underscores."), flags: 0, text: "", escapable: true, permitted_characters: (("a".."z").to_a+("A".."Z").to_a+("0".."9").to_a+[".","-","_"]), max_length: 32)
     if name!="" && name!=nil
-      if user_exists(name)
+      if !registration_username_valid?(name)
+        alert(p_("Registration", "This username is forbidden."))
+        name=""
+        next
+      end
+      begin
+        availability = EltenLink::Accounts.registration_name_availability(elten_link, name: name)
+      rescue EltenLink::Error => e
+        Log.warning("Registration name availability failed: #{e.message}")
+        alert(p_("Registration", "An error occurred while connecting to the server."))
+        name=""
+        next
+      end
+      if availability == :forbidden
+        alert(p_("Registration", "This username is forbidden."))
+        name=""
+      elsif availability == :exists
         alert(p_("Registration", "User with this name already exists."))
         name=""
-        end
+      elsif availability != :available
+        alert(_("Error"))
+        name=""
       end
+    end
   end
   if name==nil
     $scene=Scene_Main.new
@@ -57,11 +79,19 @@ stamp = get_stamp(name)
 rescue Exception
 end
 begin
-EltenLink::Accounts.register(elten_link, name: name, password: password, mail: mail, stamp: stamp)
+result = EltenLink::Accounts.register(elten_link, name: name, password: password, mail: mail, stamp: stamp)
+if result.respond_to?(:activated?) && result.activated?
   alert(p_("Registration", "Registration is successful, thank you. You can log in using your username and  password."))
+else
+  alert(p_("Registration", "Registration is successful, thank you. An activation code has been sent to your e-mail address. You will need to enter it during login."))
+end
 rescue EltenLink::Error => e
-  if e.code.to_s == "accounts.name_unavailable"
+  if e.code.to_s == "accounts.name_forbidden"
+    alert(p_("Registration", "This username is forbidden."))
+  elsif e.code.to_s == "accounts.name_exists"
     alert(p_("Registration", "Account with the specified username already exists."))
+  elsif e.code.to_s == "accounts.disposable_email"
+    alert(p_("Registration", "Disposable e-mail addresses cannot be used for registration. Please use a permanent e-mail address."))
   elsif e.code.to_s == "network_error"
     alert(p_("Registration", "An error occurred while connecting to the server."))
   else
@@ -74,5 +104,11 @@ else
   speech_wait
   $scene = Scene_Loading.new
 end
+  end
+
+  private
+
+  def registration_username_valid?(name)
+    name.to_s.match?(USERNAME_PATTERN) && name.to_s.match?(USERNAME_LETTER_PATTERN)
   end
   end

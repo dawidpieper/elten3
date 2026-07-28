@@ -8,30 +8,6 @@ class Object
   include EltenAPI
   end
 
-module Elten
-VERSION_STRING="ELTEN 3.0 BETA 16"
-BRANCH="beta"
-class <<self
-  def version
-  return VERSION_STRING
-end
-def build_id
-  return nil if !const_defined?(:BuildID,false)
-  return const_get(:BuildID)
-end
-def build_date
-  return nil if !const_defined?(:BuildDate,false) || const_get(:BuildDate)==nil
-  t=Time.at(const_get(:BuildDate))
-  return sprintf("%04d-%02d-%02d %02d:%02d",t.year,t.month,t.day,t.hour,t.min)
-rescue Exception
-  nil
-end
-def branch
-  return BRANCH
-  end
-end
-end
-
 def mac_quit_shortcut_request
   EltenWindow.consume_quit_shortcut_request
 rescue Exception
@@ -69,6 +45,7 @@ $toscene = false
           if $scene != nil and $exit!=true
         $notifications_callback = nil
         Log.debug("Loading scene: #{$scene.class.to_s}")
+        EltenAPI::KeyboardState.clear_current_frame if defined?(EltenAPI::KeyboardState)
                               $scene.main
   else
     break
@@ -90,11 +67,15 @@ $toscene = false
               $exit = true
   if $exitupdate==true
     installer=platform_installer_path
-    if $exitupdate_donotsilent!=true
-    File.binwrite(EltenPath.join(Dirs.eltendata, "update.last"),Zlib::Deflate.deflate(Elten.version.to_s))
-    $exit_runproc=platform_update_install_command(installer, silent: true)
-  else
-    $exit_runproc=platform_update_install_command(installer, silent: false)
+    if !installer_sha256_valid?(installer, $update_installer_sha256)
+      Log.error("Installer hash verification failed immediately before execution")
+      $exitupdate=false
+      $exit_runproc=nil
+    elsif $exitupdate_donotsilent!=true
+      File.binwrite(EltenPath.join(Dirs.eltendata, "update.last"),Zlib::Deflate.deflate(Elten.version.to_s))
+      $exit_runproc=platform_update_install_command(installer, silent: true)
+    else
+      $exit_runproc=platform_update_install_command(installer, silent: false)
     end
   end
   end

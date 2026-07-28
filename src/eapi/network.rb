@@ -4,6 +4,8 @@
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
 
+require "digest"
+
 module EltenAPI
   module Network
     private
@@ -106,6 +108,43 @@ return false
       waiting_end if w && use_waiting
       return result == true
   end
+
+def installer_sha256_valid?(path, expected_sha256)
+  expected = expected_sha256.to_s.downcase
+  return false unless expected.match?(/\A[0-9a-f]{64}\z/) && File.file?(path)
+  Digest::SHA256.file(path).hexdigest == expected
+rescue Exception => e
+  Log.error("Installer hash verification failed: #{e.class}: #{e.message}")
+  false
+end
+
+def download_verified_installer(use_waiting: true, can_cancel: false)
+  installer = platform_installer_path
+  temporary = installer + ".download"
+  $update_installer_sha256 = nil
+  File.delete(temporary) if File.file?(temporary)
+
+  metadata = EltenLink::System.installer(elten_link, branch: get_updatesbranch, os: platform_os)
+  return false unless download_file(metadata.url, temporary, use_waiting: use_waiting, can_cancel: can_cancel, override: true)
+  unless File.size(temporary) == metadata.size && installer_sha256_valid?(temporary, metadata.sha256)
+    Log.error("Downloaded installer does not match server metadata")
+    return false
+  end
+
+  File.delete(installer) if File.file?(installer)
+  File.rename(temporary, installer)
+  $update_installer_sha256 = metadata.sha256
+  true
+rescue Exception => e
+  Log.error("Verified installer download failed: #{e.class}: #{e.message}")
+  false
+ensure
+  begin
+    File.delete(temporary) if temporary != nil && File.file?(temporary)
+  rescue Exception => e
+    Log.warning("Could not remove temporary installer: #{e.class}: #{e.message}")
+  end
+end
 
                   def html_decode(text)
                     EltenAPI::Html.text(text)

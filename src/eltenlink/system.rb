@@ -90,6 +90,12 @@ module EltenLink
     end
   end
 
+  InstallerInfo = Struct.new(:filename, :size, :sha256, :url, keyword_init: true) do
+    def valid?
+      filename.to_s != "" && size.to_i > 0 && sha256.to_s.match?(/\A[0-9a-f]{64}\z/i) && url.to_s != ""
+    end
+  end
+
   AppUpdateInfo = Struct.new(:id, :path, :name, :version, :build_id, :current_build_id, :author, :size, :url, keyword_init: true)
 
   SystemUpdateInfo = Struct.new(:client, :apps, keyword_init: true) do
@@ -189,6 +195,24 @@ module EltenLink
 
       def installer_url(base_url = nil, branch:, os:)
         Client.absolute_api_url("/#{installer_module(branch: branch, os: os)}")
+      end
+
+      def installer(client, branch:, os:)
+        data = client.api_data("GET", "/api/v1/system/installer", {
+          "branch" => branch.to_s,
+          "os" => os.to_s
+        })
+        url = data["url"].to_s
+        info = InstallerInfo.new(
+          filename: data["filename"].to_s,
+          size: data["size"].to_i,
+          sha256: data["sha256"].to_s.downcase,
+          url: url == "" ? "" : Client.absolute_api_url(url)
+        )
+        unless info.valid?
+          raise Error.new("Invalid installer metadata", code: "system.invalid_installer_metadata", module_name: "/api/v1/system/installer")
+        end
+        info
       end
 
       def extra_url(name)

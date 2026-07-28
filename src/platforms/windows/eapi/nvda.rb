@@ -158,7 +158,7 @@ elsif j['msgtype']==4
               @initialized==true
             end
     def braille(text, pos=nil, push=false, type=0, index=nil, cursor=nil)
-      return if Configuration.enablebraille==0
+      return if Configuration.enablebraille==false
                         text=text+""
                         realtext=""
                         @oldbraille="" if @oldbraille==nil
@@ -215,7 +215,7 @@ elsif j['msgtype']==4
     end
   end
   def braille_alert(text)
-    return if Configuration.enablebraille==0
+    return if Configuration.enablebraille==false
     return if text==@braillealert
     @braillealertthr.exit if @braillealertthr!=nil
     @braille_alert=text

@@ -30,21 +30,22 @@ module OSXSpeechBridge
 
   class << self
     def available?
-      objc != nil && cls("NSSpeechSynthesizer").to_i != 0
+      avfoundation != nil && objc != nil && cls("AVSpeechSynthesizer").to_i != 0 &&
+        cls("AVSpeechUtterance").to_i != 0 && cls("AVSpeechSynthesisVoice").to_i != 0
     rescue Exception
       false
     end
 
     def voices
       return [] unless available?
-      array = send_id(cls("NSSpeechSynthesizer"), "availableVoices")
+      array = send_id(cls("AVSpeechSynthesisVoice"), "speechVoices")
       count = send_size(array, "count")
       result = []
       for index in 0...count
-        voice_id = string(send_id(array, "objectAtIndex:", index, [SIZE_T]))
-        attrs = send_id(cls("NSSpeechSynthesizer"), "attributesForVoice:", nsstring(voice_id), [PTR])
-        name = dict_string(attrs, "NSVoiceName", "VoiceName")
-        locale = dict_string(attrs, "NSVoiceLocaleIdentifier", "VoiceLocaleIdentifier")
+        voice = send_id(array, "objectAtIndex:", index, [SIZE_T])
+        voice_id = string(send_id(voice, "identifier"))
+        name = string(send_id(voice, "name"))
+        locale = string(send_id(voice, "language"))
         name = voice_id.split(".").last.to_s if name.to_s == ""
         result << OSXSpeech::NativeVoice.new(voice_id, name, locale, :native)
       end
@@ -55,12 +56,8 @@ module OSXSpeechBridge
 
     def create_synth(voice_id = nil)
       return 0 unless available?
-      object = send_id(cls("NSSpeechSynthesizer"), "alloc")
-      if voice_id.to_s != ""
-        object = send_id(object, "initWithVoice:", nsstring(voice_id), [PTR])
-      else
-        object = send_id(object, "init")
-      end
+      object = send_id(cls("AVSpeechSynthesizer"), "new")
+      synth_settings(object)[:voice_id] = voice_id.to_s
       install_delegate(object)
       object
     rescue Exception
@@ -68,15 +65,16 @@ module OSXSpeechBridge
     end
 
     def set_voice(synth, voice_id)
-      return false if synth.to_i == 0 || voice_id.to_s == ""
-      send_bool(synth, "setVoice:", nsstring(voice_id), [PTR])
+      return false if synth.to_i == 0
+      synth_settings(synth)[:voice_id] = voice_id.to_s
+      true
     rescue Exception
       false
     end
 
-    def set_rate(synth, words_per_minute)
+    def set_rate(synth, rate)
       return false if synth.to_i == 0
-      send_void(synth, "setRate:", words_per_minute.to_f, [FLOAT])
+      synth_settings(synth)[:rate] = rate.to_i
       true
     rescue Exception
       false
@@ -84,30 +82,33 @@ module OSXSpeechBridge
 
     def set_volume(synth, volume)
       return false if synth.to_i == 0
-      send_void(synth, "setVolume:", volume.to_f, [FLOAT])
+      synth_settings(synth)[:volume] = volume.to_f
       true
     rescue Exception
       false
     end
 
-    def start(synth, text)
+    def start(synth, text, track: true)
       return false if synth.to_i == 0
-      reset_events(synth)
-      send_bool(synth, "startSpeakingString:", nsstring(text), [PTR])
+      reset_events(synth) if track
+      settings = synth_settings(synth)
+      utterance = build_utterance(text, settings[:voice_id], settings[:rate], settings[:volume])
+      track_utterance(synth, utterance) if track
+      send_void(synth, "speakUtterance:", utterance, [PTR])
+      true
     rescue Exception
       false
     end
 
     def stop(synth)
-      send_void(synth, "stopSpeaking") if synth.to_i != 0
-      true
+      return true if synth.to_i == 0
+      send_bool(synth, "stopSpeakingAtBoundary:", 0, [INT])
     rescue Exception
       false
     end
 
     def pause(synth)
       return false if synth.to_i == 0
-      # NSSpeechImmediateBoundary
       send_bool(synth, "pauseSpeakingAtBoundary:", 0, [INT])
     rescue Exception
       false
@@ -181,13 +182,7 @@ module OSXSpeechBridge
         end
       end
       synth = send_id(cls("AVSpeechSynthesizer"), "new")
-      utterance = send_id(cls("AVSpeechUtterance"), "speechUtteranceWithString:", nsstring(text.to_s), [PTR])
-      if voice_id.to_s != ""
-        voice = send_id(cls("AVSpeechSynthesisVoice"), "voiceWithIdentifier:", nsstring(voice_id.to_s), [PTR])
-        send_void(utterance, "setVoice:", voice, [PTR]) if voice.to_i != 0
-      end
-      send_void(utterance, "setRate:", av_speech_rate(rate), [FLOAT])
-      send_void(utterance, "setVolume:", [[volume.to_f, 0.0].max, 1.0].min, [FLOAT])
+      utterance = build_utterance(text, voice_id, rate, volume)
       send_void(synth, "writeUtterance:toBufferCallback:", utterance, callback[:block], [PTR, PTR])
       deadline = Time.now + render_timeout(text)
       mutex.synchronize do
@@ -213,7 +208,7 @@ module OSXSpeechBridge
 
     def objc
       return @objc if defined?(@objc)
-      @appkit = Fiddle.dlopen("/System/Library/Frameworks/AppKit.framework/AppKit")
+      @foundation = Fiddle.dlopen("/System/Library/Frameworks/Foundation.framework/Foundation")
       @objc = Fiddle.dlopen("/usr/lib/libobjc.A.dylib")
     rescue Exception
       @objc = nil
@@ -323,30 +318,30 @@ module OSXSpeechBridge
       @delegate_closures ||= []
       @delegate_closures << add_objc_method(
         klass,
-        "speechSynthesizer:willSpeakWord:ofString:",
+        "speechSynthesizer:willSpeakRangeOfSpeechString:utterance:",
         Fiddle::TYPE_VOID,
         [PTR, PTR, PTR, SIZE_T, SIZE_T, PTR],
         "v@:@#{range_encoding}@"
-      ) do |_self, _cmd, synth, location, _length, _string|
-        OSXSpeechBridge.send(:record_word_position, synth, location)
+      ) do |_self, _cmd, synth, location, _length, utterance|
+        OSXSpeechBridge.send(:record_word_position, synth, utterance, location)
       end
       @delegate_closures << add_objc_method(
         klass,
-        "speechSynthesizer:didFinishSpeaking:",
+        "speechSynthesizer:didFinishSpeechUtterance:",
         Fiddle::TYPE_VOID,
-        [PTR, PTR, PTR, INT],
-        "v@:@B"
-      ) do |_self, _cmd, synth, finished|
-        OSXSpeechBridge.send(:record_finished, synth, finished)
+        [PTR, PTR, PTR, PTR],
+        "v@:@@"
+      ) do |_self, _cmd, synth, utterance|
+        OSXSpeechBridge.send(:record_finished, synth, utterance, 1)
       end
       @delegate_closures << add_objc_method(
         klass,
-        "speechSynthesizer:didEncounterErrorAtIndex:ofString:message:",
+        "speechSynthesizer:didCancelSpeechUtterance:",
         Fiddle::TYPE_VOID,
-        [PTR, PTR, PTR, SIZE_T, PTR, PTR],
-        "v@:@Q@@"
-      ) do |_self, _cmd, synth, index, _string, message|
-        OSXSpeechBridge.send(:warning, "didEncounterError synth=#{synth.to_i} index=#{index.to_i} message=#{OSXSpeechBridge.send(:string, message)}")
+        [PTR, PTR, PTR, PTR],
+        "v@:@@"
+      ) do |_self, _cmd, synth, utterance|
+        OSXSpeechBridge.send(:record_finished, synth, utterance, 0)
       end
       objc_register_class_pair.call(klass)
       @speech_delegate_class = klass
@@ -365,26 +360,61 @@ module OSXSpeechBridge
       closure
     end
 
-    def record_word_position(synth, location)
+    def record_word_position(synth, utterance, location)
+      return unless tracked_utterance?(synth, utterance)
       @word_positions ||= {}
       @word_positions[synth.to_i] = location.to_i
     rescue Exception
     end
 
-    def record_finished(synth, finished)
+    def record_finished(synth, utterance, finished)
+      return unless tracked_utterance?(synth, utterance)
       @finished ||= {}
       @finished[synth.to_i] = finished.to_i != 0
+      @current_utterances.delete(synth.to_i)
     rescue Exception
     end
 
     def reset_events(synth)
       @word_positions ||= {}
       @finished ||= {}
+      @current_utterances ||= {}
       @word_positions.delete(synth.to_i)
       @finished.delete(synth.to_i)
+      @current_utterances.delete(synth.to_i)
       true
     rescue Exception
       false
+    end
+
+    def track_utterance(synth, utterance)
+      @current_utterances ||= {}
+      @current_utterances[synth.to_i] = utterance.to_i
+    end
+
+    def tracked_utterance?(synth, utterance)
+      @current_utterances ||= {}
+      @current_utterances[synth.to_i] == utterance.to_i
+    end
+
+    def synth_settings(synth)
+      @synth_settings ||= {}
+      @synth_settings[synth.to_i] ||= {
+        :voice_id => "",
+        :rate => 50,
+        :volume => 1.0
+      }
+    end
+
+    def build_utterance(text, voice_id, rate, volume)
+      utterance = send_id(cls("AVSpeechUtterance"), "speechUtteranceWithString:", nsstring(text.to_s), [PTR])
+      if voice_id.to_s != ""
+        voice = send_id(cls("AVSpeechSynthesisVoice"), "voiceWithIdentifier:", nsstring(voice_id.to_s), [PTR])
+        send_void(utterance, "setVoice:", voice, [PTR]) if voice.to_i != 0
+      end
+      send_void(utterance, "setRate:", av_speech_rate(rate), [FLOAT])
+      send_void(utterance, "setVolume:", [[volume.to_f, 0.0].max, 1.0].min, [FLOAT])
+      utterance
     end
 
     def nsstring(text)
@@ -548,16 +578,6 @@ module OSXSpeechBridge
       ""
     end
 
-    def dict_string(dict, *keys)
-      keys.each do |key|
-        value = string(send_id(dict, "objectForKey:", nsstring(key), [PTR]))
-        return value if value.to_s != ""
-      end
-      ""
-    rescue Exception
-      ""
-    end
-
   end
 end
 
@@ -712,11 +732,13 @@ class OSXSpeech < SpeechOutput
     def speak_text(text, method: 1, spelling: false, interrupt: true, pitch: 50)
       stop if interrupt
       @stop_requested = false
-      @bookmark = nil
-      @bookmark_id = nil
-      clear_index_tracking
+      if interrupt
+        @bookmark = nil
+        @bookmark_id = nil
+        clear_index_tracking
+      end
       text = text.to_s.chars.join(" ") if spelling
-      speak_async(text)
+      speak_async(text, false, track: interrupt)
       0
     rescue Exception => e
       Log.warning("OSX speech failed: #{e.class}: #{e.message}")
@@ -771,20 +793,20 @@ class OSXSpeech < SpeechOutput
     def apply_synth_settings(handle = nil)
       handle ||= @synth
       return false if handle == nil || handle.to_i == 0
-      OSXSpeechBridge.set_voice(handle, @voice_id) if @voice_id.to_s != ""
-      OSXSpeechBridge.set_rate(handle, words_per_minute)
+      OSXSpeechBridge.set_voice(handle, @voice_id)
+      OSXSpeechBridge.set_rate(handle, @rate || 50)
       OSXSpeechBridge.set_volume(handle, volume_float)
       true
     rescue Exception
       false
     end
 
-    def speak_async(text, stop_previous = true)
+    def speak_async(text, stop_previous = true, track: true)
       stop_current_backend if stop_previous
       return false unless bridge_active?
       @paused = false
       apply_synth_settings
-      OSXSpeechBridge.start(synth, text.to_s)
+      OSXSpeechBridge.start(synth, text.to_s, track: track)
       true
     end
 
@@ -871,15 +893,6 @@ class OSXSpeech < SpeechOutput
       text.to_s.encode("UTF-16LE", invalid: :replace, undef: :replace).bytesize / 2
     rescue Exception
       text.to_s.length
-    end
-
-    def words_per_minute
-      rate = [[@rate || 50, 0].max, 100].min
-      if rate <= 50
-        90 + rate * 3.4
-      else
-        260 + (rate - 50) * 9.6
-      end
     end
 
     def volume_float

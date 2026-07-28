@@ -30,6 +30,7 @@ module EltenAPI
     CONNECT_TIMEOUT = 8
     READ_TIMEOUT = 20
     STALE_AFTER = 20
+    ACTIVE_STALE_AFTER = 45
     MAX_REDIRECTS = 5
     TRANSPORT_SESSION_ALGORITHM = "AES-256-GCM-SESSION"
     TRANSPORT_SESSION_INFO = "elten transport session v1".b
@@ -38,37 +39,15 @@ module EltenAPI
     TRANSPORT_SESSION_SECRET_BYTES = TRANSPORT_SESSION_KEY_BYTES * 3
     TRANSPORT_SESSION_CLIENT_TTL = 300
 
+    @conn_mutex = Mutex.new
+    @http_mutex = Monitor.new
+    @ssl_mutex = Mutex.new
+    @pending_mutex = Mutex.new
+    @transport_session_mutex = Mutex.new
+
     class << self
       def init(force=false)
-        @conn_mutex ||= Mutex.new
-        @http_mutex ||= Monitor.new
-        @ssl_mutex ||= Mutex.new
-        @conn_mutex.synchronize do
-          return true if !force && connected?
-          close_http2(false)
-          socket = connect_socket(HOST, PORT)
-          ctx = OpenSSL::SSL::SSLContext.new
-          ctx.alpn_protocols = [HTTP2_ALPN]
-          ctx.options |= OpenSSL::SSL::OP_IGNORE_UNEXPECTED_EOF
-          ssl = OpenSSL::SSL::SSLSocket.new(socket, ctx)
-          ssl.sync_close = true
-          ssl.hostname = HOST if ssl.respond_to?(:hostname=)
-          Timeout.timeout(CONNECT_TIMEOUT) { ssl.connect }
-          @ssl = ssl
-          @http = HTTP2::Client.new(settings_max_frame_size: 131072)
-          @last_response = Time.now.to_i
-          @http.on(:frame) { |bytes| write_http2_frame(bytes) }
-          @http.on(:error) do |error|
-            log_warning("HTTP/2 connection error: #{error}")
-            close_http2(false)
-          end
-          start_reader
-          true
-        end
-      rescue Exception => e
-        log_error("HTTP/2 init error: #{format_exception(e)}")
-        close_http2(false)
-        false
+        connect_http2(force: force, reconnect_if_stale: false)
       end
 
       def close
@@ -81,16 +60,30 @@ module EltenAPI
         Thread.new do
           Thread.current.report_on_exception = false
           attempts = 0
+          pending_token = nil
+          request_generation = nil
           begin
             attempts += 1
-            init(true) if stale?
-            raise "HTTP/2 unavailable" unless init
+            pending_token = nil
+            request_generation = nil
+            raise "HTTP/2 unavailable" unless ensure_http2_connection
             encrypted_request = encrypted.nil? ? encrypted_transport? : encrypted == true
             json, decrypt_context = json_request_body(params, encrypted_request)
             body = "".b
             response_headers = {}
-            @http_mutex.synchronize do
-              stream = @http.new_stream
+            http_mutex.synchronize do
+              stream = nil
+              connection_mutex.synchronize do
+                request_generation = @connection_generation
+                http = @http
+                ssl = @ssl
+                raise "HTTP/2 connection changed" unless connection_current?(request_generation, ssl, http)
+
+                stream = http.new_stream
+                pending_token = register_pending_request(request_generation) do
+                  safe_call(block, :error, data)
+                end
+              end
               head = {
                 ":scheme" => "https",
                 ":authority" => "api.elten.link:443",
@@ -111,15 +104,18 @@ module EltenAPI
               end
               stream.on(:data) { |chunk| body << chunk.to_s.b }
               stream.on(:close) do
+                next unless take_pending_request(pending_token)
+
                 begin
                   @last_response = Time.now.to_i
+                  touch_connection_activity(request_generation)
                   decoded = decode_body(body, response_headers)
                   decoded = decrypt_json_response(decoded, decrypt_context) if decrypt_context != nil
                   safe_call(block, decoded, data)
                 rescue Exception => e
                   if transport_session_retry && decrypt_context.is_a?(Hash) && decrypt_context[:mode] == :session
                     log_warning("Encrypted session request failed, retrying with RSA: #{format_exception(e)}")
-                    clear_transport_session
+                    clear_transport_session(decrypt_context[:session_id])
                     ejrequest(method, path, params, data, encrypted: true, headers: headers, transport_session_retry: false, &block)
                     next
                   end
@@ -135,9 +131,14 @@ module EltenAPI
             end
           rescue Exception => e
             log_error("JSON request error: #{format_exception(e)}")
-            close_http2(false)
-            retry if attempts < 2
-            safe_call(block, :error, data)
+            close_http2(false, request_generation) if request_generation != nil
+            if pending_token != nil
+              fail_pending_request(pending_token)
+            elsif attempts < 2
+              retry
+            else
+              safe_call(block, :error, data)
+            end
           end
         end
       end
@@ -217,16 +218,98 @@ module EltenAPI
 
       private
 
+      def connection_mutex
+        @conn_mutex ||= Mutex.new
+      end
+
+      def http_mutex
+        @http_mutex ||= Monitor.new
+      end
+
+      def ssl_mutex
+        @ssl_mutex ||= Mutex.new
+      end
+
+      def pending_mutex
+        @pending_mutex ||= Mutex.new
+      end
+
+      def ensure_http2_connection
+        connect_http2(force: false, reconnect_if_stale: true)
+      end
+
+      def connect_http2(force:, reconnect_if_stale:)
+        detached = nil
+        socket = nil
+        ssl = nil
+        generation = nil
+
+        connection_mutex.synchronize do
+          if connected?
+            return true if !force && (!reconnect_if_stale || !stale?)
+          end
+
+          detached = detach_http2_locked
+          close_io(detached[:ssl]) if detached != nil
+
+          socket = connect_socket(HOST, PORT)
+          ctx = OpenSSL::SSL::SSLContext.new
+          ctx.alpn_protocols = [HTTP2_ALPN]
+          ctx.options |= OpenSSL::SSL::OP_IGNORE_UNEXPECTED_EOF
+          ssl = OpenSSL::SSL::SSLSocket.new(socket, ctx)
+          ssl.sync_close = true
+          ssl.hostname = HOST if ssl.respond_to?(:hostname=)
+          Timeout.timeout(CONNECT_TIMEOUT) { ssl.connect }
+
+          http = HTTP2::Client.new(settings_max_frame_size: 131072)
+          @connection_sequence = @connection_sequence.to_i + 1
+          generation = @connection_sequence
+          @connection_generation = generation
+          @ssl = ssl
+          @http = http
+          @last_response = Time.now.to_i
+          @last_activity = monotonic_time
+          http.on(:frame) { |bytes| write_http2_frame(bytes, generation, ssl) }
+          http.on(:error) do |error|
+            log_warning("HTTP/2 connection error: #{error}")
+            close_http2(false, generation)
+          end
+          start_reader(generation, ssl, http)
+        end
+
+        finalize_detached_connection(detached, false)
+        true
+      rescue Exception => e
+        finalize_detached_connection(detached, false)
+        if generation != nil
+          close_http2(false, generation)
+        else
+          close_io(ssl || socket)
+        end
+        log_error("HTTP/2 init error: #{format_exception(e)}")
+        false
+      end
+
       def connected?
-        @http != nil && @ssl != nil && !@ssl.closed? && @reader_thread != nil && @reader_thread.alive?
+        http = @http
+        http != nil &&
+          @ssl != nil &&
+          !@ssl.closed? &&
+          (!http.respond_to?(:closed?) || !http.closed?) &&
+          @reader_thread != nil &&
+          @reader_thread.alive?
       end
 
       def stale?
-        @last_response != nil && @last_response < Time.now.to_i - STALE_AFTER
+        last_activity = @last_activity
+        return false if last_activity == nil
+
+        threshold = active_connection_requests?(@connection_generation) ? ACTIVE_STALE_AFTER : STALE_AFTER
+        last_activity < monotonic_time - threshold
       end
 
       def disable_http2?
-        Configuration.disablehttp2.to_i == 1
+        Configuration.disablehttp2 == true
       end
 
       def encrypted_transport?
@@ -246,16 +329,21 @@ module EltenAPI
         Socket.tcp(host, port, connect_timeout: CONNECT_TIMEOUT)
       end
 
-      def start_reader
+      def start_reader(generation, ssl, http)
         @reader_thread = Thread.new do
           Thread.current.report_on_exception = false
           loop do
-            break unless connected?
+            break unless connection_current?(generation, ssl, http)
             begin
-              chunk = @ssl.read_nonblock(16_384)
-              @http_mutex.synchronize { @http << chunk } if chunk != nil && chunk.bytesize > 0
+              chunk = ssl.read_nonblock(16_384)
+              if chunk != nil && chunk.bytesize > 0
+                break unless connection_current?(generation, ssl, http)
+
+                touch_connection_activity(generation)
+                http_mutex.synchronize { http << chunk }
+              end
             rescue IO::WaitReadable
-              IO.select([@ssl], nil, nil, 0.5)
+              IO.select([ssl], nil, nil, 0.5)
             rescue EOFError, IOError
               break
             rescue Exception => e
@@ -263,31 +351,136 @@ module EltenAPI
               break
             end
           end
-          close_http2(false)
+          close_http2(false, generation)
         end
       end
 
-      def close_http2(kill_reader)
-        reader = @reader_thread
-        @reader_thread = nil
-        @http = nil
-        ssl = @ssl
-        @ssl = nil
-        close_io(ssl)
-        reader.kill if kill_reader && reader != nil && reader != Thread.current && reader.alive?
+      def close_http2(kill_reader, generation=nil)
+        detached = connection_mutex.synchronize do
+          detach_http2_locked(generation)
+        end
+        return false if detached == nil
+
+        finalize_detached_connection(detached, kill_reader)
+        true
       rescue Exception
+        false
       end
 
-      def write_http2_frame(bytes)
-        @ssl_mutex ||= Mutex.new
-        @ssl_mutex.synchronize do
-          return if @ssl == nil || @ssl.closed?
-          @ssl.write(bytes)
-          @ssl.flush
+      def write_http2_frame(bytes, generation, ssl)
+        ssl_mutex.synchronize do
+          return unless connection_current?(generation, ssl)
+          return if ssl.closed?
+
+          ssl.write(bytes)
+          ssl.flush
+          touch_connection_activity(generation)
         end
       rescue Exception => e
         log_error("HTTP frame write error: #{format_exception(e)}")
-        close_http2(false)
+        close_http2(false, generation)
+      end
+
+      def connection_current?(generation, ssl=nil, http=nil)
+        generation != nil &&
+          @connection_generation == generation &&
+          (ssl == nil || @ssl.equal?(ssl)) &&
+          (http == nil || @http.equal?(http))
+      end
+
+      def detach_http2_locked(expected_generation=nil)
+        return nil if expected_generation != nil && @connection_generation != expected_generation
+        return nil if @http == nil && @ssl == nil && @reader_thread == nil
+
+        detached = {
+          generation: @connection_generation,
+          http: @http,
+          ssl: @ssl,
+          reader: @reader_thread
+        }
+        @connection_generation = nil
+        @reader_thread = nil
+        @http = nil
+        @ssl = nil
+        @last_activity = nil
+        detached
+      end
+
+      def finalize_detached_connection(detached, kill_reader)
+        return if detached == nil
+
+        close_io(detached[:ssl])
+        reader = detached[:reader]
+        begin
+          reader.kill if kill_reader && reader != nil && reader != Thread.current && reader.alive?
+        rescue Exception
+        end
+        fail_pending_requests_for_generation(detached[:generation])
+      end
+
+      def monotonic_time
+        Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      rescue Exception
+        Time.now.to_f
+      end
+
+      def touch_connection_activity(generation)
+        @last_activity = monotonic_time if @connection_generation == generation
+      end
+
+      def register_pending_request(generation, &failure)
+        token = Object.new
+        pending_mutex.synchronize do
+          @pending_requests ||= {}
+          @pending_requests[token] = {
+            generation: generation,
+            failure: failure
+          }
+        end
+        token
+      end
+
+      def take_pending_request(token)
+        pending_mutex.synchronize do
+          @pending_requests != nil && @pending_requests.delete(token) != nil
+        end
+      end
+
+      def fail_pending_request(token)
+        entry = pending_mutex.synchronize do
+          @pending_requests == nil ? nil : @pending_requests.delete(token)
+        end
+        return false if entry == nil
+
+        entry[:failure].call if entry[:failure] != nil
+        true
+      rescue Exception
+        false
+      end
+
+      def fail_pending_requests_for_generation(generation)
+        return if generation == nil
+
+        entries = pending_mutex.synchronize do
+          requests = @pending_requests || {}
+          selected = requests.select { |_token, entry| entry[:generation] == generation }
+          selected.each_key { |token| requests.delete(token) }
+          selected.values
+        end
+        entries.each do |entry|
+          begin
+            entry[:failure].call if entry[:failure] != nil
+          rescue Exception
+          end
+        end
+      end
+
+      def active_connection_requests?(generation)
+        return false if generation == nil
+
+        pending_mutex.synchronize do
+          (@pending_requests || {}).any? { |_token, entry| entry[:generation] == generation }
+        end
       end
 
       def write_http1_request(io, method, path, host, headers, body)
@@ -597,8 +790,16 @@ module EltenAPI
         transport_session_mutex.synchronize { @transport_session = session }
       end
 
-      def clear_transport_session
-        transport_session_mutex.synchronize { @transport_session = nil }
+      def clear_transport_session(expected_session_id=nil)
+        transport_session_mutex.synchronize do
+          if expected_session_id != nil
+            current_id = @transport_session.is_a?(Hash) ? @transport_session[:id].to_s : ""
+            return false unless current_id == expected_session_id.to_s
+          end
+
+          @transport_session = nil
+          true
+        end
       end
 
       def decode_encrypted_payload(payload, content_encoding)

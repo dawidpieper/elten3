@@ -257,8 +257,8 @@ $scene=Scene_Blog_Options.new(blog_id, @scene)
 end
 
 class Scene_Blog_Posts
-  SORT_POSTS_BY_BLOG = 0
-  SORT_POSTS_BY_DATE = 1
+  SORT_POSTS_BY_BLOG = "blog"
+  SORT_POSTS_BY_DATE = "date"
   def initialize(owner,id,categoryselindex=0,postselindex=0,search=nil,page=0)
     @owner=owner
     @id = id
@@ -319,7 +319,7 @@ if @post.size==0 and @id=="NEW"
 end
 @sel.index=@postselindex
 @sel.focus
-@sel.on(:move) {play_sound("file_audio", volume: 50, pitch: 50, pan: @sel.lpos) if @post[@sel.index]!=nil && @post[@sel.index].audio && @post[@sel.index].audio_url.to_s==""}
+@sel.on(:move) {play_sound("file_audio", volume: 50, pitch: 50, pan: @sel.lpos) if @post[@sel.index]!=nil && (@post[@sel.index].audio || @post[@sel.index].audio_url.to_s!="")}
 @sel.trigger(:move)
 @sel.bind_context{|menu|context(menu)}
 loop do
@@ -385,7 +385,7 @@ for source in blogtemp.posts
   @post.push(post)
   end
 end
-if @id == "NEWFOLLOWEDBLOGS" and LocalConfig["BlogPostsSortBy"] == SORT_POSTS_BY_DATE
+if @id == "NEWFOLLOWEDBLOGS" and LocalConfig["BlogPostsSortBy", SORT_POSTS_BY_BLOG, type: :string] == SORT_POSTS_BY_DATE
   @post = @post.sort_by { |p| p.date * -1 }
 end
 @sel.rows=@post.map{|s|
@@ -452,13 +452,13 @@ else
     }
   end
   if @id == "NEWFOLLOWEDBLOGS"
-    if LocalConfig["BlogPostsSortBy"] == SORT_POSTS_BY_BLOG
+    if LocalConfig["BlogPostsSortBy", SORT_POSTS_BY_BLOG, type: :string] == SORT_POSTS_BY_BLOG
       opt = p_("Blog", "Sort posts by date")
     else
       opt = p_("Blog", "Sort posts by blog")
     end
     menu.option(opt) {
-    if LocalConfig["BlogPostsSortBy"] == SORT_POSTS_BY_BLOG
+    if LocalConfig["BlogPostsSortBy", SORT_POSTS_BY_BLOG, type: :string] == SORT_POSTS_BY_BLOG
       LocalConfig["BlogPostsSortBy"] = SORT_POSTS_BY_DATE
       info = p_("Blog", "Posts sorted by date.")
     else
@@ -481,7 +481,15 @@ else
           alert(p_("Blog", "Nobody added you to their contact list."))
           next
         end
-        form = Form.new([ListBox.new(users, header: p_("Blog", "User to mention")), EditBox.new(p_("Blog", "Message"), type: 0, text: "", quiet: true), Button.new(p_("Blog", "Mention post")), Button.new(_("Cancel"))])
+        form = Form.new([lst_users = ListBox.new(users, header: p_("Blog", "Users to mention"), index: 0, flags: ListBox::Flags::MultiSelection), EditBox.new(p_("Blog", "Message"), type: 0, text: "", quiet: true), btn_mentionOK = Button.new(p_("Blog", "Mention post")), Button.new(_("Cancel"))])
+        form.hide(btn_mentionOK)
+        lst_users.on(:multiselection_changed) {
+          if lst_users.multiselections.size <= 0
+            form.hide(btn_mentionOK)
+          else
+            form.show(btn_mentionOK)
+          end
+        }
         loop do
           loop_update
           form.update
@@ -491,45 +499,45 @@ else
             break
           end
           if (key_pressed?(:key_enter) or key_pressed?(:key_space)) and form.index == 2
+            selections = lst_users.multiselections()
             begin
-              EltenLink::Blog.send_mention(elten_link, user: users[form.fields[0].index], message: form.fields[1].text, blog: @post[@sel.index].owner, post_id: @post[@sel.index].id)
+              for i in 0..selections.size - 1
+                EltenLink::Blog.send_mention(elten_link, user: users[selections[i]], message: form.fields[1].text, blog: @post[@sel.index].owner, post_id: @post[@sel.index].id)
+              end
             rescue EltenLink::Error
               alert(_("Error"))
             else
-              alert(p_("Blog", "The mention has been sent."))
+              alert(np_("Blog", "The mention has been sent.", "The mentions have been sent.", selections.size))
               @sel.focus
               break
             end
           end
         end
       }
-  opt=""
-      if @post[@sel.index].followed==false
-    opt=p_("Blog", "Follow this post")
-  else
-    opt=p_("Blog", "Unfollow this post")
-  end
-  menu.option(opt, nil, "l") {
-  if requires_premiumpackage("courier")
-  begin
-    if @post[@sel.index].followed==false
-      EltenLink::Blog.follow_post(elten_link, blog: @post[@sel.index].owner, post_id: @post[@sel.index].id)
-    else
-      EltenLink::Blog.unfollow_post(elten_link, blog: @post[@sel.index].owner, post_id: @post[@sel.index].id)
-    end
-  rescue EltenLink::Error
-    alert(_("Error"))
-  else
-        if @post[@sel.index].followed==false
-      @post[@sel.index].followed=true
-      alert(p_("Blog", "Post followed"))
-    else
-      @post[@sel.index].followed=false
-      alert(p_("Blog", "Post unfollowed"))
+  post = @post[@sel.index]
+  if Session.name!="guest" && (post.followed==true || !post.owner.to_s.start_with?("[*"))
+    opt=post.followed==true ? p_("Blog", "Unfollow this post") : p_("Blog", "Follow this post")
+    menu.option(opt, nil, "l") {
+      next if post.followed==false && !requires_premiumpackage("courier")
+      begin
+        if post.followed==true
+          EltenLink::Blog.unfollow_post(elten_link, blog: post.owner, post_id: post.id)
+        else
+          EltenLink::Blog.follow_post(elten_link, blog: post.owner, post_id: post.id)
+        end
+      rescue EltenLink::Error
+        alert(_("Error"))
+      else
+        if post.followed==true
+          post.followed=false
+          alert(p_("Blog", "Post unfollowed"))
+        else
+          post.followed=true
+          alert(p_("Blog", "Post followed"))
+        end
       end
+    }
   end
-  end
-  }
   menu.option(p_("Blog", "Copy post URL")) {
   Clipboard.text=@post[@sel.index].url
   alert(p_("Blog", "Post URL copied to clipboard"))
@@ -568,6 +576,13 @@ if @post.mention!=nil
 @knownposts=blogtemp.known_posts
 @comments=blogtemp.comments_open ? 1 : 0
 @iseltenblog=blogtemp.is_elten_blog
+if @post.followed.nil? && Session.name!="guest"
+  begin
+    @post.followed=EltenLink::Blog.post_followed?(elten_link, blog: @post.owner, post_id: @post.id)
+  rescue EltenLink::Error => e
+    Log.warning("Cannot determine blog post follow state: #{e.message}")
+  end
+end
 @comments=0 if @iseltenblog==false
 text = ""
 @posts = []
@@ -733,35 +748,34 @@ def context(menu)
       }
       }
     end
-    if @iseltenblog
-        opt=""
-      if @post.followed==false
-    opt=p_("Blog", "Follow this post")
-  else
-    opt=p_("Blog", "Unfollow this post")
-  end
-  menu.option(opt, nil, "l") {
-  if requires_premiumpackage("courier")
-  begin
-    if @post.followed==false
-      EltenLink::Blog.follow_post(elten_link, blog: @post.owner, post_id: @post.id)
-    else
-      EltenLink::Blog.unfollow_post(elten_link, blog: @post.owner, post_id: @post.id)
+    if @iseltenblog && Session.name!="guest"
+      menu.option(p_("Blog", "Mention post"), nil, "w") {
+        mention
+      }
     end
-  rescue EltenLink::Error
-    alert(_("Error"))
-  else
-        if @post.followed==false
-      @post.followed=true
-      alert(p_("Blog", "Post followed"))
-    else
-      @post.followed=false
-      alert(p_("Blog", "Post unfollowed"))
-      end
-  end
-  end
-  }
-      end
+    if Session.name!="guest" && (@post.followed==true || (@iseltenblog && @post.followed==false))
+      opt=@post.followed==true ? p_("Blog", "Unfollow this post") : p_("Blog", "Follow this post")
+      menu.option(opt, nil, "l") {
+        next if @post.followed==false && !requires_premiumpackage("courier")
+        begin
+          if @post.followed==true
+            EltenLink::Blog.unfollow_post(elten_link, blog: @post.owner, post_id: @post.id)
+          else
+            EltenLink::Blog.follow_post(elten_link, blog: @post.owner, post_id: @post.id)
+          end
+        rescue EltenLink::Error
+          alert(_("Error"))
+        else
+          if @post.followed==true
+            @post.followed=false
+            alert(p_("Blog", "Post unfollowed"))
+          else
+            @post.followed=true
+            alert(p_("Blog", "Post followed"))
+          end
+        end
+      }
+    end
     menu.submenu(p_("Blog", "Navigation")) {|m|
     m.option(p_("Blog", "Go to post"), nil, ",") {
           @form.index=@postcur=0
@@ -791,6 +805,51 @@ def context(menu)
          main
          }
     }
+    end
+  end
+  def mention
+    users = []
+    begin
+      users = EltenLink::Contacts.added_me(elten_link)
+    rescue EltenLink::Error
+      alert(_("Error"))
+      return
+    end
+    if users.size == 0
+      alert(p_("Blog", "Nobody added you to their contact list."))
+      return
+    end
+    form = Form.new([lst_users = ListBox.new(users, header: p_("Blog", "Users to mention"), index: 0, flags: ListBox::Flags::MultiSelection), EditBox.new(p_("Blog", "Message"), type: 0, text: "", quiet: true), btn_mentionOK = Button.new(p_("Blog", "Mention post")), Button.new(_("Cancel"))])
+    form.hide(btn_mentionOK)
+    lst_users.on(:multiselection_changed) {
+      if lst_users.multiselections.size <= 0
+        form.hide(btn_mentionOK)
+      else
+        form.show(btn_mentionOK)
+      end
+    }
+    loop do
+      loop_update
+      form.update
+      if key_pressed?(:key_escape) or ((key_pressed?(:key_enter) or key_pressed?(:key_space)) and form.index == 3)
+        loop_update
+        @form.focus
+        break
+      end
+      if (key_pressed?(:key_enter) or key_pressed?(:key_space)) and form.index == 2
+        selections = lst_users.multiselections()
+        begin
+          for i in 0..selections.size - 1
+            EltenLink::Blog.send_mention(elten_link, user: users[selections[i]], message: form.fields[1].text, blog: @post.owner, post_id: @post.id)
+          end
+        rescue EltenLink::Error
+          alert(_("Error"))
+        else
+          alert(np_("Blog", "The mention has been sent.", "The mentions have been sent.", selections.size))
+          @form.focus
+          break
+        end
+      end
     end
   end
 end
@@ -973,7 +1032,7 @@ for source in blogtemp
   b.followed=source.followed
   b.lang=source.lang
   b.elten=true
-    @blogs.push(b) if LocalConfig["BlogShowUnknownLanguages",1]==1 || knownlanguages.size==0 || knownlanguages.include?(b.lang[0..1].upcase) || (@type.is_a?(String) || @type==3)
+    @blogs.push(b) if LocalConfig["BlogShowUnknownLanguages", true, type: :bool] || knownlanguages.size==0 || knownlanguages.include?(b.lang[0..1].upcase) || (@type.is_a?(String) || @type==3)
 end
 for b in @blogs
   bo=blogowners(b.id)
@@ -1176,11 +1235,9 @@ else
 if !@type.is_a?(String)
 if Session.languages.size>0
          s=p_("Blog", "Show blogs in unknown languages")
-      s=p_("Blog", "Hide blogs in unknown languages") if LocalConfig['BlogShowUnknownLanguages',1]==1
+      s=p_("Blog", "Hide blogs in unknown languages") if LocalConfig['BlogShowUnknownLanguages', true, type: :bool]
       menu.option(s) {
-      l=1
-      l=0 if LocalConfig['BlogShowUnknownLanguages',1]==1
-      LocalConfig['BlogShowUnknownLanguages']=l
+      LocalConfig['BlogShowUnknownLanguages'] = !LocalConfig['BlogShowUnknownLanguages', true, type: :bool]
 refresh
 @sel.focus
       }
@@ -1551,6 +1608,7 @@ def load_comments
   make_setting(p_("Blog", "Split comments on the website into pages"), :bool, "page_comments")
   make_setting(p_("Blog", "Comments per page"), :number, "comments_per_page")
   make_setting(p_("Blog", "Firstly display"), [p_("Blog", "Newest comments"), p_("Blog", "Oldest comments")], "default_comments_page", ["newest", "oldest"])
+  make_setting(p_("Blog", "Automatically approve comments from Elten users"), :bool, "elten_autoapprove_comments")
   make_setting(p_("Blog", "Pending comments"), :custom, Proc.new{insert_scene(Scene_Blog_Comments.new(@blog))})
   on_load {
   if currentconfig("comment_registration").to_i==1
@@ -1800,7 +1858,7 @@ class Struct_Blog_Post
     @excerpt=""
     @url=""
     @comments=0
-    @followed=false
+    @followed=nil
   end
 end
 
@@ -1931,19 +1989,17 @@ btn_cancel = Button.new(_("Cancel"))
 lst_tags.bind_context{|menu|
       menu.option(p_("Blog", "Add existing tag to this post"), nil, "e") {
           dialog_open
-        tag = selecttag
+        tags = selecttag
           dialog_close
-          for t in @tags
-            if tag != nil and t.name.downcase == tag.name.downcase
-              tagid = t.id
-              break
-            end
-          end
-          if tag != nil and tagid > 0
-            @tagids.push(tagid)
+          added = 0
+          for tag in tags
+            next if tag == nil || tag.id.to_i <= 0
+            next if @tagids.include?(tag.id)
+            @tagids.push(tag.id)
             lst_tags.options.push(tag.name)
-            lst_tags.focus
+            added += 1
           end
+            lst_tags.focus if added > 0
       }
 menu.option(p_("Blog", "Add tag to this post"), nil, "n") {
 tagname=input_text(p_("Blog", "Tag to add"), flags: 0, text: "", escapable: true)
@@ -2152,20 +2208,20 @@ if suc
     def selecttag
       if @tags.size < 1
       alert(p_("Blog", "There are currently no tags created, please add a new one."))
-      return nil
+      return []
     end
-    sel = ListBox.new(@tags.map { |t| t.name}, header: p_("Blog", "Select tag"), index: 0, flags: 0, quiet: false)
+    sel = ListBox.new(@tags.map { |t| t.name}, header: p_("Blog", "Select tag"), index: 0, flags: ListBox::Flags::MultiSelection, quiet: false)
       loop do
       loop_update
-      sel.update if @tags.size > 0
+      sel.update
         if key_pressed?(:key_escape)
         loop_update
-        return(nil)
+        return []
       end
-      if key_pressed?(:key_enter) and @tags.size > 0
+      if key_pressed?(:key_enter)
         loop_update
-        play_sound("listbox_select")
-        return(@tags[sel.index])
+        selections = sel.multiselections
+        return selections.empty? ? [@tags[sel.index]] : selections.map{ |i| @tags[i] }
       end
     end
   end

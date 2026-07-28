@@ -40,7 +40,13 @@ class Scene_Update
     loop_update
   end
   speak(p_("Update", "Please wait while files are downloaded."))
-            download_file(EltenLink::System.installer_url(branch: get_updatesbranch, os: platform_os),platform_installer_path,use_waiting: true,can_cancel: false, override: true)
+            unless download_verified_installer(use_waiting: true, can_cancel: false)
+              alert(p_("Update", "The update could not be downloaded or verified."))
+              $updating = false
+              $downloadstarted = false
+              $scene = Scene_Main.new
+              return
+            end
     speech_wait
     if Session.name!="" and Session.name!=nil
     alert(p_("Update", "The update has been downloaded. To install it, the program must be restarted.  Press enter to continue or escape to cancel."))
@@ -73,7 +79,13 @@ class Scene_Update
         speak(p_("Update", "Please wait while files are downloaded."))
                 $downloadstarted = true
         speak(p_("Update", "Please wait while files are downloaded."))
-            download_file(EltenLink::System.installer_url(branch: get_updatesbranch, os: platform_os),platform_installer_path,use_waiting: true,can_cancel: false, override: true)
+            unless download_verified_installer(use_waiting: true, can_cancel: false)
+              alert(p_("Update", "The update could not be downloaded or verified."))
+              $updating = false
+              $downloadstarted = false
+              $scene = Scene_Main.new
+              return
+            end
     speech_wait
     alert(p_("Update", "The program will be now reverted to the latest stable version. Elten will restart.  It may take several minutes."))
       $exit=true  

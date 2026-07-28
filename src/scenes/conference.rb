@@ -230,30 +230,19 @@ end
     motd=Conference.channel.motd||""
     if motd!=""
       motdh=Digest::SHA1.hexdigest(motd.to_s)
-            motds={}
-      motdsfile=EltenPath.join(Dirs.eltendata, "conferences_motds.json")
-      if FileTest.exists?(motdsfile)
-        begin
-          m=JSON.load(File.binread(motdsfile))
-          motds=m if m.is_a?(Hash)
-          rescue Exception
-          end
-        end
-        if motds[Conference.channel.uuid]!=motdh
-          motds[Conference.channel.uuid]=motdh
-          begin
-          File.binwrite(motdsfile, JSON.generate(motds))
-        rescue Exception
-        end
+      motds=LocalConfig[LocalConfig::CONFERENCE_MOTDS_KEY, type: :hash]
+      if motds[Conference.channel.uuid]!=motdh
+        motds[Conference.channel.uuid]=motdh
+        LocalConfig[LocalConfig::CONFERENCE_MOTDS_KEY]=motds
         form=Form.new([
-        edt_motd=EditBox.new(p_("Conference", "Message of the day"), type: EditBox::Flags::ReadOnly|EditBox::Flags::MultiLine, text: motd, quiet: true),
-        btn_ok = Button.new(p_("Conference", "OK"))
+          edt_motd=EditBox.new(p_("Conference", "Message of the day"), type: EditBox::Flags::ReadOnly|EditBox::Flags::MultiLine, text: motd, quiet: true),
+          btn_ok = Button.new(p_("Conference", "OK"))
         ], index: 0, silent: false, quiet: true)
         form.cancel_button=btn_ok
         btn_ok.on(:press) {form.resume}
         form.wait
-          end
       end
+    end
       }
     @users_hook.block.call
     @text_hook = Conference.on(:text) {
@@ -351,6 +340,7 @@ def invite(user)
     @call_id=EltenLink::Calls.call_user(elten_link, Conference.channel, user)
   rescue EltenLink::Error => e
     Log.warning("Call invite failed: #{e.message}")
+    alert(p_("EAPI_UI", "You cannot call this user")) if e.code.to_s == "calls.not_callable"
   end
     end
 def channel_summary(ch)
@@ -370,7 +360,7 @@ def list_channels(user=nil)
       locha = Proc.new{|chans|
       knownlanguages = Session.languages.split(",").map{|lg|lg.upcase}
       channels = chans.find_all{|c|
-      if LocalConfig["ConferenceShowUnknownLanguages"]==1 || knownlanguages.size==0 || knownlanguages.include?(c.lang[0..1].upcase)
+      if LocalConfig["ConferenceShowUnknownLanguages", type: :bool] || knownlanguages.size==0 || knownlanguages.include?(c.lang[0..1].upcase)
       if user==nil
         c.users.size>0 || (c.groupid!=nil && c.groupid!=0) || c.creator==Session.name
       else
@@ -399,11 +389,11 @@ if ch.passworded
   end
   if ps!=nil || !ch.passworded
     if !ch.passworded || ps!=nil
-      if ch.spatialization==0 || load_hrtf
-          Conference.join(ch.id, ps)
+          unless Conference.join(ch.id, ps)
+            alert(p_("Conference", "You cannot join this channel"))
+          end
                     @chans=get_channelslist
   locha.call(@chans)
-  end
 end
 end
   lst_channels.focus
@@ -479,11 +469,9 @@ when 1
   }
   if Session.languages.size>0
          s=p_("Conference", "Show channels in unknown languages")
-      s=p_("Conference", "Hide channels in unknown languages") if LocalConfig['ConferenceShowUnknownLanguages']==1
+      s=p_("Conference", "Hide channels in unknown languages") if LocalConfig['ConferenceShowUnknownLanguages', type: :bool]
       menu.option(s) {
-      l=1
-      l=0 if LocalConfig['ConferenceShowUnknownLanguages']==1
-      LocalConfig['ConferenceShowUnknownLanguages']=l
+      LocalConfig['ConferenceShowUnknownLanguages'] = !LocalConfig['ConferenceShowUnknownLanguages', type: :bool]
 @chans=get_channelslist
   locha.call(@chans)
   lst_channels.focus
@@ -491,7 +479,7 @@ when 1
     end
     menu.option(p_("Conference", "Show private channels"), nil, "p") {
     knownlanguages = Session.languages.split(",").map{|lg|lg.upcase}
-    users = @chans.find_all{|ch|LocalConfig["ConferenceShowUnknownLanguages"]==1 || knownlanguages.size==0 || knownlanguages.include?(ch.lang[0..1].upcase)}.map{|c|c.creator}.find_all{|u|u!=nil}.uniq.polsort
+    users = @chans.find_all{|ch|LocalConfig["ConferenceShowUnknownLanguages", type: :bool] || knownlanguages.size==0 || knownlanguages.include?(ch.lang[0..1].upcase)}.map{|c|c.creator}.find_all{|u|u!=nil}.uniq.polsort
     ind = selector(users, header: p_("Conference", "Select user"), start_index: 0, cancel_index: -1)
     if ind>=0
       user = users[ind]
@@ -514,11 +502,11 @@ when 1
     ps=input_text(p_("Conference", "Channel password"), flags: EditBox::Flags::Password, text: "", escapable: true) if ch.passworded
     loop_update if ch.passworded
     if !ch.passworded || ps!=nil
-      if ch.spatialization==0 || load_hrtf
-      Conference.join(ch.id, ps)
+      unless Conference.join(ch.id, ps)
+        alert(p_("Conference", "You cannot join this channel"))
+      end
       delay(1)
       return if Conference.channel.id!=0
-      end
       end
     end
     if setuser!=nil
@@ -598,6 +586,11 @@ for preset in presets
     chk_conference = CheckBox.new(p_("Conference", "Enable conference mode (only channel administrators and allowed users can speak)"), checked: channel.conference_mode>0),
     chk_waiting = CheckBox.new(p_("Conference", "Enable waiting room"), checked: channel.waiting_type>0),
     chk_allowguests = CheckBox.new(p_("Conference", "Allow guests to join this channel"), checked: channel.allow_guests),
+    lst_blacklist_policy = ListBox.new([
+      p_("Conference", "Disabled"),
+      p_("Conference", "Channel creator's blacklist"),
+      p_("Conference", "Blacklists of all channel administrators")
+    ], header: p_("Conference", "Block users from joining based on"), index: channel.blacklist_policy),
 chk_hidden = CheckBox.new(p_("Conference", "Make this channel hidden"), checked: !channel.public),
     chk_permanent = CheckBox.new(p_("Conference", "Store as permanent channel"), checked: channel.permanent),
     edt_width = EditBox.new(p_("Conference", "Channel width"), type: EditBox::Flags::Numbers, text: channel.width.to_s, quiet: true),
@@ -645,6 +638,7 @@ chk_hidden = CheckBox.new(p_("Conference", "Make this channel hidden"), checked:
       form.hide(chk_conference)
       end
   form.hide(chk_hidden) if (channel.groupid!=0 && channel.groupid!=nil)
+  form.hide(lst_blacklist_policy) if channel.groupid!=0 && channel.groupid!=nil
   form.hide(chk_permanent) if (channel.groupid!=0 && channel.groupid!=nil) || (channel.permanent==false && (chans.find_all{|c|c.creator==Session.name && c.permanent==true}.size>=3))
   lst_preset.on(:move) {
   if presets.size>lst_preset.index
@@ -714,13 +708,6 @@ chk_hidden = CheckBox.new(p_("Conference", "Make this channel hidden"), checked:
       suc=false
     end
     if suc
-          if lst_spatialization.index>=1
-      t=Time.now.to_f
-      l=load_hrtf
-            suc=false if l==false
-          end
-      end
-    if suc
       name=edt_name.text
       motd=edt_motd.text
             bitrate=bitrates[lst_bitrate.index]
@@ -743,6 +730,7 @@ chk_hidden = CheckBox.new(p_("Conference", "Make this channel hidden"), checked:
             waiting_type=chk_waiting.checked ? 1 : 0
             conference_mode=chk_conference.checked ? 1 : 0
             allow_guests=chk_allowguests.checked
+            blacklist_policy=lst_blacklist_policy.index
       permanent = chk_permanent.checked
 key_len=256
 case lst_encryption.index
@@ -754,9 +742,9 @@ when 1
       key_len=0
 end
       if channel.id==0
-      Conference.create(name, public, bitrate, framesize, vbr_type, codec_application, prediction_disabled, fec, password, spatialization, channels, lang, width, height, key_len, waiting_type, permanent, motd, allow_guests, conference_mode)
+      Conference.create(name, public, bitrate, framesize, vbr_type, codec_application, prediction_disabled, fec, password, spatialization, channels, lang, width, height, key_len, waiting_type, permanent, motd, allow_guests, conference_mode, blacklist_policy)
     else
-      Conference.edit(channel.id, name, public, bitrate, framesize, vbr_type, codec_application, prediction_disabled, fec, password, spatialization, channels, lang, width, height, key_len, waiting_type, permanent, motd, allow_guests, conference_mode)
+      Conference.edit(channel.id, name, public, bitrate, framesize, vbr_type, codec_application, prediction_disabled, fec, password, spatialization, channels, lang, width, height, key_len, waiting_type, permanent, motd, allow_guests, conference_mode, blacklist_policy)
       end
       form.resume
       end
@@ -1310,7 +1298,7 @@ end
 else
   alert(p_("Conference", "Push to talk enabled"))
     end
-  LocalConfig["ConferencePushToTalk"]=(Conference.pushtotalk)?(1):(0)
+  LocalConfig["ConferencePushToTalk"] = Conference.pushtotalk
   }
   end
 s=generate_pushtotalkkeyslabel

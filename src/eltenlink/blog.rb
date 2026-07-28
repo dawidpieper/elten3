@@ -138,7 +138,7 @@ module EltenLink
       end
 
       def read_post(client, blog:, post_id:)
-        data = client.api_data("GET", "/api/v1/blogs/#{blog.to_s.urlenc}/posts/#{post_id.to_i}")
+        data = client.api_data("GET", "/api/v1/blogs/#{blog.to_s.urlenc}/posts/#{post_id.to_i}", { "html" => 1 })
         BlogReadResult.new(
           entries: data["entries"].to_a.map { |row| build_read_entry(row) },
           known_posts: data["known_posts"].to_i,

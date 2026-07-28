@@ -23,6 +23,8 @@ module EltenLink
   end
 
   ForumThreadPage = Struct.new(:time, :count, :read_posts, :followed, :posts, keyword_init: true)
+  ForumUserPost = Struct.new(:post_id, :thread_id, :text, :transcription, :audio_url, :date, :format, keyword_init: true)
+  ForumUserPostsPage = Struct.new(:posts, :more, :next_before, keyword_init: true)
   ForumThreadStats = Struct.new(:followers, :mentions, :authors, :readers, :readers_below_half, :readers_above_90, :readers_all, keyword_init: true)
   ForumSearchResult = Struct.new(:thread, :count, keyword_init: true)
   ForumMember = Struct.new(:user, :role, :inherit, keyword_init: true)
@@ -70,6 +72,29 @@ module EltenLink
         )
       end
 
+      def user_posts(client, user:, before: nil, limit: 50)
+        data = client.api_data("GET", "/api/v1/forum/users/#{user.to_s.urlenc}/posts", clean_hash(
+          "before" => before,
+          "limit" => limit
+        ))
+        posts = data["posts"].to_a.map do |row|
+          ForumUserPost.new(
+            post_id: row["postid"].to_i,
+            thread_id: row["threadid"].to_i,
+            text: content_text(row, "text"),
+            transcription: row["transcription"].to_s,
+            audio_url: content_audio_url(row),
+            date: forum_post_date(row["date"]),
+            format: row["format"].to_i
+          )
+        end
+        ForumUserPostsPage.new(
+          posts: posts,
+          more: truthy?(data["more"]),
+          next_before: data["next_before"].nil? ? nil : data["next_before"].to_i
+        )
+      end
+
       def search(client, query:, type: nil, transcriptions: false)
         data = client.api_data("GET", "/api/v1/forum", clean_hash(
           "query" => query,
@@ -88,8 +113,8 @@ module EltenLink
         []
       end
 
-      def mark_forum_as_read(client, forum:)
-        client.api_data("PATCH", "/api/v1/forum", { "forum" => forum })
+      def mark_forum_as_read(client, forumid:)
+        client.api_data("PATCH", "/api/v1/forum", { "forum" => forumid.to_i })
         true
       end
 
@@ -98,8 +123,13 @@ module EltenLink
         true
       end
 
-      def follow_thread(client, thread_id:, forum: nil)
-        client.api_data("POST", "/api/v1/forum/followed-threads", clean_hash("thread" => thread_id, "forum" => forum))
+      def mark_thread_as_read(client, thread_id:)
+        client.api_data("PATCH", "/api/v1/forum", { "thread" => thread_id })
+        true
+      end
+
+      def follow_thread(client, thread_id:)
+        client.api_data("POST", "/api/v1/forum/followed-threads", { "thread" => thread_id })
         true
       end
 
@@ -108,13 +138,13 @@ module EltenLink
         true
       end
 
-      def follow_forum(client, forum:)
-        client.api_data("POST", "/api/v1/forum/followed-forums", { "forum" => forum })
+      def follow_forum(client, forumid:)
+        client.api_data("POST", "/api/v1/forum/followed-forums", { "forum" => forumid.to_i })
         true
       end
 
-      def unfollow_forum(client, forum:)
-        client.api_data("DELETE", "/api/v1/forum/followed-forum/#{forum.to_s.urlenc}", {})
+      def unfollow_forum(client, forumid:)
+        client.api_data("DELETE", "/api/v1/forum/followed-forum/#{forumid.to_i}", {})
         true
       end
 
@@ -136,8 +166,8 @@ module EltenLink
         true
       end
 
-      def move_thread(client, thread_id:, forum:)
-        client.api_data("PATCH", "/api/v1/forum/#{thread_id.to_i}", { "forum" => forum })
+      def move_thread(client, thread_id:, forum_id:)
+        client.api_data("PATCH", "/api/v1/forum/#{thread_id.to_i}", { "forum" => forum_id.to_i })
         true
       end
 
@@ -166,8 +196,8 @@ module EltenLink
         true
       end
 
-      def accept_thread_offer(client, thread_id:, forum:)
-        client.api_data("PATCH", "/api/v1/forum/#{thread_id.to_i}", { "forum" => forum })
+      def accept_thread_offer(client, thread_id:, forum_id:)
+        client.api_data("PATCH", "/api/v1/forum/#{thread_id.to_i}", { "forum" => forum_id.to_i })
         true
       end
 
@@ -176,9 +206,9 @@ module EltenLink
         true
       end
 
-      def create_thread(client, forum:, name:, text:, follow: false, polls: nil, attachments: nil, format: 0)
+      def create_thread(client, forumid:, name:, text:, follow: false, polls: nil, attachments: nil, format: 0)
         data = client.api_data("POST", "/api/v1/forum", clean_hash(
-          "forum" => forum,
+          "forum" => forumid.to_i,
           "thread_name" => name,
           "text" => text,
           "follow" => truth_param(follow),
@@ -189,13 +219,13 @@ module EltenLink
         data["thread"].to_i
       end
 
-      def create_audio_thread(client, forum:, name:, audio:, follow: false)
+      def create_audio_thread(client, forumid:, name:, audio:, follow: false)
         data = client.api_binary_data(
           "POST",
           "/api/v1/forum",
           audio.to_s.b,
           { "Content-Type" => "application/octet-stream" },
-          clean_hash("forum" => forum, "thread_name" => name, "audio" => 1, "follow" => truth_param(follow))
+          clean_hash("forum" => forumid.to_i, "thread_name" => name, "audio" => 1, "follow" => truth_param(follow))
         )
         data["thread"].to_i
       end
@@ -304,21 +334,21 @@ module EltenLink
         true
       end
 
-      def list_forum_tags(client, forum:)
-        data = client.api_data("GET", "/api/v1/forum/forum/#{forum.to_s.urlenc}/tags")
+      def list_forum_tags(client, forumid:)
+        data = client.api_data("GET", "/api/v1/forum/forum/#{forumid.to_i}/tags")
         data["tags"].to_a.map { |row| build_tag(row) }
       end
 
-      def create_forum_tag(client, forum:, label:, taglist:)
-        data = client.api_data("POST", "/api/v1/forum/forum/#{forum.to_s.urlenc}/tags", clean_hash(
+      def create_forum_tag(client, forumid:, label:, taglist:)
+        data = client.api_data("POST", "/api/v1/forum/forum/#{forumid.to_i}/tags", clean_hash(
           "label" => label,
           "taglist" => taglist
         ))
         data["id"].to_i
       end
 
-      def delete_forum_tag(client, forum:, tag_id:)
-        client.api_data("DELETE", "/api/v1/forum/forum/#{forum.to_s.urlenc}/tags/#{tag_id.to_i}", {})
+      def delete_forum_tag(client, forumid:, tag_id:)
+        client.api_data("DELETE", "/api/v1/forum/forum/#{forumid.to_i}/tags/#{tag_id.to_i}", {})
         true
       end
 
@@ -439,11 +469,11 @@ module EltenLink
           "description" => description,
           "type" => type
         ))
-        data["id"].to_s
+        data["forumid"].to_i
       end
 
-      def update_forum(client, forum:, name: nil, description: nil, type: nil)
-        client.api_data("PATCH", "/api/v1/forum/forum/#{forum.to_s.urlenc}", clean_hash(
+      def update_forum(client, forumid:, name: nil, description: nil, type: nil)
+        client.api_data("PATCH", "/api/v1/forum/forum/#{forumid.to_i}", clean_hash(
           "name" => name,
           "description" => description,
           "type" => type
@@ -451,18 +481,18 @@ module EltenLink
         true
       end
 
-      def set_forum_closed(client, forum:, closed:)
-        client.api_data("PATCH", "/api/v1/forum/forum/#{forum.to_s.urlenc}", { "closed" => truth_param(closed) })
+      def set_forum_closed(client, forumid:, closed:)
+        client.api_data("PATCH", "/api/v1/forum/forum/#{forumid.to_i}", { "closed" => truth_param(closed) })
         true
       end
 
-      def move_forum(client, forum:, position:)
-        client.api_data("PATCH", "/api/v1/forum/forum/#{forum.to_s.urlenc}", { "position" => position.to_i })
+      def move_forum(client, forumid:, position:)
+        client.api_data("PATCH", "/api/v1/forum/forum/#{forumid.to_i}", { "position" => position.to_i })
         true
       end
 
-      def delete_forum(client, forum:)
-        client.api_data("DELETE", "/api/v1/forum/forum/#{forum.to_s.urlenc}", {})
+      def delete_forum(client, forumid:)
+        client.api_data("DELETE", "/api/v1/forum/forum/#{forumid.to_i}", {})
         true
       end
 
@@ -472,6 +502,8 @@ module EltenLink
         data = JSON.parse(raw_cache.to_s)
         return nil unless data.is_a?(Hash)
         return nil unless data["groups"].is_a?(Array) && data["forums"].is_a?(Array) && data["threads"].is_a?(Array)
+        return nil unless data["forums"].all? { |row| row.is_a?(Hash) && row["forumid"].to_i.positive? }
+        return nil unless data["threads"].all? { |row| row.is_a?(Hash) && row["forumid"].to_i.positive? }
 
         raw_structure_data(data)
       rescue JSON::ParserError
@@ -490,7 +522,7 @@ module EltenLink
         return nil if cached_data == nil
 
         groups = expand_incremental_rows(data["groups"], cached_data["groups"], "id")
-        forums = expand_incremental_rows(data["forums"], cached_data["forums"], "id")
+        forums = expand_incremental_rows(data["forums"], cached_data["forums"], "forumid")
         threads = expand_incremental_rows(data["threads"], cached_data["threads"], "id")
         return nil if groups == nil || forums == nil || threads == nil
 
@@ -559,7 +591,7 @@ module EltenLink
       def build_forums(rows, groups)
         group_by_id = groups.each_with_object({}) { |group, result| result[group.id] = group }
         rows.to_a.map do |row|
-          forum = Struct_Forum_Forum.new(row["id"].to_s)
+          forum = Struct_Forum_Forum.new(row["forumid"].to_i)
           forum.fullname = row["name"].to_s
           forum.type = row["type"].to_i
           forum.group = group_by_id[row["group_id"].to_i] || Struct_Forum_Group.new(0)
@@ -579,7 +611,7 @@ module EltenLink
           thread = Struct_Forum_Thread.new(row["id"].to_i)
           thread.name = row["name"].to_s
           thread.author = row["author"].to_s
-          thread.forum = forum_by_id[row["forum"].to_s]
+          thread.forum = forum_by_id[row["forumid"].to_i]
           thread.pinned = truthy?(row["pinned"])
           thread.closed = truthy?(row["closed"])
           thread.followed = truthy?(row["followed"])
@@ -670,11 +702,11 @@ module EltenLink
         entry.action = row["action"].to_s
         entry.time = row["time"].to_i
         entry.group1 = row["group1"].to_i
-        entry.forum1 = row["forum1"].to_s
+        entry.forum1 = row["forum1id"].to_i
         entry.thread1 = row["thread1"].to_i
         entry.post1 = row["post1"].to_i
         entry.group2 = row["group2"].to_i
-        entry.forum2 = row["forum2"].to_s
+        entry.forum2 = row["forum2id"].to_i
         entry.thread2 = row["thread2"].to_i
         entry.post2 = row["post2"].to_i
         entry.oldcontent = row["oldcontent"].to_s
