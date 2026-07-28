@@ -912,10 +912,10 @@ msgctxt "MainMenu"
 msgid "Calenda&r"
 msgstr "Kalenda&rz"
 
-#: src/eapi/mainmenu.rb:60
+#: src/eapi/mainmenu.rb:58
 msgctxt "MainMenu"
-msgid "&Notifications"
-msgstr "Powiadomie&nia"
+msgid "Notification hi&story"
+msgstr "Hi&storia powiadomień"
 
 #: src/eapi/mainmenu.rb:61
 msgctxt "MainMenu"
@@ -1349,8 +1349,8 @@ msgstr "Mikrofon nie jest już wyciszony"
 
 #: src/eapi/quickactions.rb:262
 msgctxt "EAPI_QuickActions"
-msgid "Notifications"
-msgstr "Powiadomienia"
+msgid "Notification history"
+msgstr "Historia powiadomień"
 
 #: src/eapi/quickactions.rb:263
 msgctxt "EAPI_QuickActions"

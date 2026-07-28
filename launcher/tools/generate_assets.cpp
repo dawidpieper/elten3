@@ -163,8 +163,13 @@ bool IsMacOS(const Options &options) {
   return Lower(options.platform) == "osx";
 }
 
+bool IsLinux(const Options &options) {
+  return Lower(options.platform) == "linux";
+}
+
 std::string RuntimeDirectoryName(const Options &options) {
   if (IsWindows(options)) return "windows-" + options.arch;
+  if (IsLinux(options)) return "linux-" + options.arch;
   return options.platform;
 }
 
@@ -321,7 +326,8 @@ bool NativeArchPart(const std::string &part) {
   std::string lower = Lower(part);
   return lower.find("darwin") != std::string::npos ||
          lower.find("mingw") != std::string::npos ||
-         lower.find("ucrt") != std::string::npos;
+         lower.find("ucrt") != std::string::npos ||
+         lower.find("-linux") != std::string::npos;
 }
 
 bool SkippedDirectory(const fs::path &path) {
@@ -1423,6 +1429,10 @@ ZstdApi LoadZstd(const Options &options) {
   if (IsWindows(options)) {
     candidates.push_back(Slash(RuntimePackageRoot(options) / "libzstd.dll"));
     candidates.push_back("libzstd.dll");
+  } else if (IsLinux(options)) {
+    candidates.push_back(Slash(RuntimePackageRoot(options) / "libzstd.so"));
+    candidates.push_back("libzstd.so.1");
+    candidates.push_back("libzstd.so");
   } else {
     candidates.push_back(Slash(RuntimePackageRoot(options) / "libzstd.dylib"));
     candidates.push_back("libzstd.dylib");
@@ -1717,8 +1727,10 @@ std::string GeneratedIncludes(const Options &options) {
     out << "#ifndef NOMINMAX\n#define NOMINMAX\n#endif\n";
     out << "#ifndef WIN32_LEAN_AND_MEAN\n#define WIN32_LEAN_AND_MEAN\n#endif\n";
     out << "#include <windows.h>\n";
-  } else {
+  } else if (IsMacOS(options)) {
     out << "#include <dlfcn.h>\n#include <fcntl.h>\n#include <mach-o/dyld.h>\n#include <sys/stat.h>\n#include <unistd.h>\n";
+  } else {
+    out << "#include <dlfcn.h>\n#include <fcntl.h>\n#include <limits.h>\n#include <sys/stat.h>\n#include <unistd.h>\n";
   }
   out << "\n";
   return out.str();
@@ -1945,7 +1957,7 @@ Options Parse(int argc, char **argv) {
   if (options.rubyRoot.empty()) throw std::runtime_error("missing --ruby-root");
   if (options.nativeOutput.empty()) throw std::runtime_error("missing --native-output");
   if (options.output.empty() && !options.prepareOnly) throw std::runtime_error("missing --out");
-  if (!IsWindows(options) && !IsMacOS(options)) {
+  if (!IsWindows(options) && !IsMacOS(options) && !IsLinux(options)) {
     throw std::runtime_error("unsupported --platform " + options.platform);
   }
   if (IsWindows(options) && options.runtimeOutput.empty()) {
@@ -1990,6 +2002,95 @@ const ZstdApi &GetZstdApi() {
     ZstdApi value;
     value.dll = LoadLibraryW(L"libzstd.dll");
     if (value.dll == nullptr) throw std::runtime_error("Cannot load libzstd.dll for embedded Ruby payloads");
+    value.decompress = RequiredZstdProc<ZstdApi::decompress_t>(value.dll, "ZSTD_decompress");
+    value.is_error = RequiredZstdProc<ZstdApi::is_error_t>(value.dll, "ZSTD_isError");
+    value.get_error_name = RequiredZstdProc<ZstdApi::get_error_name_t>(value.dll, "ZSTD_getErrorName");
+    return value;
+  }();
+  return api;
+}
+
+std::vector<unsigned char> DecodePayload(const unsigned char *data, std::size_t stored_size, std::size_t raw_size) {
+  const ZstdApi &zstd = GetZstdApi();
+  std::vector<unsigned char> output(raw_size == 0 ? 1 : raw_size);
+  std::size_t result = zstd.decompress(output.data(), raw_size, data, stored_size);
+  if (zstd.is_error(result) != 0 || result != raw_size) {
+    const char *name = zstd.is_error(result) != 0 ? zstd.get_error_name(result) : "wrong decompressed size";
+    throw std::runtime_error(std::string("ZSTD decompression failed: ") + (name == nullptr ? "unknown" : name));
+  }
+  output.resize(raw_size);
+  return output;
+}
+)CPP";
+  }
+
+  if (IsLinux(options)) {
+    std::string runtimeDirName = RuntimeDirectoryName(options);
+    return R"CPP(
+struct ZstdApi {
+  using decompress_t = std::size_t (*)(void *, std::size_t, const void *, std::size_t);
+  using is_error_t = unsigned (*)(std::size_t);
+  using get_error_name_t = const char *(*)(std::size_t);
+  void *dll = nullptr;
+  decompress_t decompress = nullptr;
+  is_error_t is_error = nullptr;
+  get_error_name_t get_error_name = nullptr;
+};
+
+template <typename T>
+T RequiredZstdProc(void *dll, const char *name) {
+  auto proc = reinterpret_cast<T>(dlsym(dll, name));
+  if (proc == nullptr) throw std::runtime_error(std::string("ZSTD export not found: ") + name);
+  return proc;
+}
+
+std::string ExecutableDirectory() {
+  std::vector<char> buffer(PATH_MAX + 1, '\0');
+  ssize_t length = readlink("/proc/self/exe", buffer.data(), buffer.size() - 1);
+  if (length <= 0) return "";
+  buffer[static_cast<std::size_t>(length)] = '\0';
+
+  std::error_code ec;
+  std::filesystem::path executable = std::filesystem::weakly_canonical(buffer.data(), ec);
+  if (ec) {
+    ec.clear();
+    executable = std::filesystem::absolute(buffer.data(), ec);
+  }
+  if (ec) executable = std::filesystem::path(buffer.data());
+  return executable.parent_path().generic_string();
+}
+
+std::vector<std::string> ZstdCandidates() {
+  std::vector<std::string> candidates;
+  std::string executable_dir = ExecutableDirectory();
+  if (!executable_dir.empty()) {
+    std::filesystem::path dir(executable_dir);
+    candidates.push_back((dir / "bin" / ")CPP" + runtimeDirName + R"CPP(" / "libzstd.so").lexically_normal().generic_string());
+  }
+  candidates.push_back("libzstd.so.1");
+  candidates.push_back("libzstd.so");
+  candidates.push_back("./bin/)CPP" + runtimeDirName + R"CPP(/libzstd.so");
+  return candidates;
+}
+
+const ZstdApi &GetZstdApi() {
+  static ZstdApi api = [] {
+    ZstdApi value;
+    std::string errors;
+    for (const std::string &candidate : ZstdCandidates()) {
+      dlerror();
+      value.dll = dlopen(candidate.c_str(), RTLD_NOW | RTLD_LOCAL);
+      if (value.dll != nullptr) break;
+      const char *error = dlerror();
+      errors += "  ";
+      errors += candidate;
+      errors += ": ";
+      errors += error == nullptr ? "unknown dlopen error" : error;
+      errors += "\n";
+    }
+    if (value.dll == nullptr) {
+      throw std::runtime_error("Cannot load libzstd for embedded Ruby payloads:\n" + errors);
+    }
     value.decompress = RequiredZstdProc<ZstdApi::decompress_t>(value.dll, "ZSTD_decompress");
     value.is_error = RequiredZstdProc<ZstdApi::is_error_t>(value.dll, "ZSTD_isError");
     value.get_error_name = RequiredZstdProc<ZstdApi::get_error_name_t>(value.dll, "ZSTD_getErrorName");

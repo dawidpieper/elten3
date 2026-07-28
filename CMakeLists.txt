@@ -369,6 +369,195 @@ if(APPLE)
     COMMENT "Creating dist/osx/Elten.pkg"
     VERBATIM
   )
+elseif(UNIX AND NOT APPLE)
+  set(ELTEN_LAUNCHER_PLATFORM "linux")
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+    set(ELTEN_LAUNCHER_ARCH "arm64")
+  else()
+    set(ELTEN_LAUNCHER_ARCH "x64")
+  endif()
+  set(ELTEN_LAUNCHER_OUTPUT_NAME "elten")
+  set(ELTEN_RUNTIME_ARCH_DIR "linux-${ELTEN_LAUNCHER_ARCH}")
+  elten_configure_ruby_runtime(PLATFORM linux ARCH "${ELTEN_LAUNCHER_ARCH}")
+  set(ELTEN_PACKAGE_ROOT "${ELTEN_RELEASE_BASE}/linux")
+  set(ELTEN_RUNTIME_DIR "${ELTEN_PACKAGE_ROOT}/bin/${ELTEN_RUNTIME_ARCH_DIR}")
+  set(ELTEN_DIST_LINUX_DIR "${CMAKE_SOURCE_DIR}/dist/linux")
+
+  # Like macOS (and like Windows, which lets the generator find its own copy in
+  # the package root), take libzstd from the bundled runtime directory rather
+  # than from the build host: bin/${ELTEN_RUNTIME_ARCH_DIR} is copied into
+  # ELTEN_RUNTIME_DIR below, and the generated launcher looks for libzstd in
+  # exactly that directory at runtime. Until the library is bundled there, fall
+  # back to a system one - without REQUIRED, so configuring never fails over a
+  # library that is only needed when embedded payloads are compressed.
+  set(ELTEN_LINUX_ZSTD_ARGS)
+  if(ELTEN_COMPRESS_EMBEDDED_RUBY_ZSTD)
+    if(EXISTS "${CMAKE_SOURCE_DIR}/bin/${ELTEN_RUNTIME_ARCH_DIR}/libzstd.so")
+      set(ELTEN_ZSTD_LIBRARY "${ELTEN_RUNTIME_DIR}/libzstd.so" CACHE FILEPATH "libzstd used by Linux asset compression" FORCE)
+    else()
+      find_library(ELTEN_ZSTD_LIBRARY NAMES zstd)
+      if(ELTEN_ZSTD_LIBRARY)
+        message(WARNING "Using the host libzstd (${ELTEN_ZSTD_LIBRARY}); bundle bin/${ELTEN_RUNTIME_ARCH_DIR}/libzstd.so so the shipped launcher does not depend on one being installed")
+      else()
+        message(WARNING "libzstd was not found; the asset generator will try libzstd.so.1 from the loader path")
+        set(ELTEN_ZSTD_LIBRARY "")
+      endif()
+    endif()
+    if(ELTEN_ZSTD_LIBRARY)
+      list(APPEND ELTEN_LINUX_ZSTD_ARGS "--zstd-library" "${ELTEN_ZSTD_LIBRARY}")
+    endif()
+  endif()
+
+  file(GLOB_RECURSE ELTEN_LINUX_RUNTIME_INPUTS CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/bin/${ELTEN_RUNTIME_ARCH_DIR}/*"
+    "${CMAKE_SOURCE_DIR}/resources/*"
+    "${CMAKE_SOURCE_DIR}/locale/*"
+    "${CMAKE_SOURCE_DIR}/audio/*"
+  )
+
+  set(ELTEN_LINUX_BIN_COPY_COMMANDS)
+  if(EXISTS "${CMAKE_SOURCE_DIR}/bin/${ELTEN_RUNTIME_ARCH_DIR}")
+    list(APPEND ELTEN_LINUX_BIN_COPY_COMMANDS
+      COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/bin/${ELTEN_RUNTIME_ARCH_DIR}" "${ELTEN_RUNTIME_DIR}"
+    )
+  endif()
+
+  add_custom_command(
+    OUTPUT "${ELTEN_EMBEDDED_CPP}" "${ELTEN_STAMP_PAYLOAD_FILE}"
+    COMMAND "${CMAKE_COMMAND}" -E rm -rf "${ELTEN_PACKAGE_ROOT}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${ELTEN_GENERATED_DIR}" "${ELTEN_PACKAGE_ROOT}" "${ELTEN_RUNTIME_DIR}"
+    # Two passes, following the macOS shape, because the generator's stale-native
+    # -extension sweep deletes any .so in the runtime dir it did not place - and
+    # on Linux BASS and the bundled libraries are .so (harmless on Windows/macOS
+    # where they are .dll/.dylib). So:
+    #
+    # Pass 1 (--prepare-only): copy the gem extensions into an otherwise empty
+    # runtime dir and build the sound theme. The sweep runs but has only its own
+    # freshly-copied extensions to look at, so it deletes nothing of ours.
+    COMMAND "${CMAKE_COMMAND}" -E chdir "${CMAKE_BINARY_DIR}" "${ELTEN_ASSET_GENERATOR_COMMAND}"
+            "--root" "${CMAKE_SOURCE_DIR}"
+            "--package-root" "${ELTEN_PACKAGE_ROOT}"
+            "--ruby-root" "${ELTEN_RUBY_ROOT}"
+            "--gem-lockfile" "${ELTEN_RUBY_GEM_LOCKFILE}"
+            "--arch" "${ELTEN_LAUNCHER_ARCH}"
+            "--platform" "linux"
+            "--native-output" "${ELTEN_RUNTIME_DIR}"
+            "--prepare-only"
+    # Now assemble the rest of the runtime beside the extensions: BASS, then the
+    # host libraries the whole tree depends on, with RUNPATH patched in place.
+    ${ELTEN_LINUX_BIN_COPY_COMMANDS}
+    COMMAND "${CMAKE_COMMAND}" "-DRUNTIME_DIR=${ELTEN_RUNTIME_DIR}"
+            -P "${CMAKE_SOURCE_DIR}/cmake/bundle_linux_libs.cmake"
+    # Pass 2 (--no-copy-runtime-assets): embed the Ruby sources and hash the now
+    # fully assembled tree. It neither copies nor deletes - it records and
+    # verifies exactly what is there, so the digests match what ships.
+    COMMAND "${CMAKE_COMMAND}" -E chdir "${CMAKE_BINARY_DIR}" "${ELTEN_ASSET_GENERATOR_COMMAND}"
+            "--root" "${CMAKE_SOURCE_DIR}"
+            "--package-root" "${ELTEN_PACKAGE_ROOT}"
+            "--ruby-root" "${ELTEN_RUBY_ROOT}"
+            "--gem-lockfile" "${ELTEN_RUBY_GEM_LOCKFILE}"
+            "--arch" "${ELTEN_LAUNCHER_ARCH}"
+            "--platform" "linux"
+            "--native-output" "${ELTEN_RUNTIME_DIR}"
+            "--compression" "${ELTEN_EMBEDDED_COMPRESSION}"
+            ${ELTEN_LINUX_ZSTD_ARGS}
+            "--no-copy-runtime-assets"
+            "--out" "${ELTEN_EMBEDDED_CPP}"
+            "--stamp-payload-out" "${ELTEN_STAMP_PAYLOAD_FILE}"
+    DEPENDS
+            ${ELTEN_ASSET_GENERATOR_DEPENDS}
+            "${ELTEN_RUBY_RUNTIME_STAMP}"
+            ${ELTEN_RB_SOURCES}
+            ${ELTEN_LINUX_RUNTIME_INPUTS}
+            "${CMAKE_SOURCE_DIR}/cmake/bundle_linux_libs.cmake"
+            "${CMAKE_SOURCE_DIR}/filelist"
+    COMMENT "Preparing launcher assets for bin/${ELTEN_RUNTIME_ARCH_DIR}"
+    VERBATIM
+  )
+  add_custom_target(EltenEmbeddedAssets DEPENDS "${ELTEN_EMBEDDED_CPP}" "${ELTEN_STAMP_PAYLOAD_FILE}")
+  if(TARGET EltenStampSecretHeader)
+    add_dependencies(EltenStampSecretHeader EltenEmbeddedAssets)
+  endif()
+
+  add_executable(EltenLauncher
+    "launcher/src/launcher.cpp"
+    "launcher/src/platform_linux.cpp"
+    "launcher/src/platform.h"
+    "launcher/src/embedded_assets.hpp"
+    "launcher/src/blake3.hpp"
+    "launcher/src/sha256.hpp"
+    "launcher/src/stamp.cpp"
+    "launcher/src/stamp.hpp"
+    "${ELTEN_EMBEDDED_CPP}"
+  )
+
+  target_compile_definitions(EltenLauncher PRIVATE
+    ELTEN_LAUNCHER_ARCH="${ELTEN_LAUNCHER_ARCH}"
+    ELTEN_RUNTIME_DIR_NAME="${ELTEN_RUNTIME_ARCH_DIR}"
+    ELTEN_RUBY_ROOT_NAME="ruby"
+    ELTEN_RUBY_DLL_NAME="${ELTEN_RUBY_DLL}"
+    ELTEN_RUBY_API_VERSION="${ELTEN_RUNTIME_RUBY_API_VERSION}"
+    ELTEN_EMBEDDED_ZSTD=${ELTEN_EMBEDDED_ZSTD_DEFINE}
+  )
+  elten_configure_build_info_target(EltenLauncher)
+  elten_configure_stamp_target(EltenLauncher)
+
+  target_include_directories(EltenLauncher PRIVATE
+    "${CMAKE_SOURCE_DIR}/launcher/src"
+  )
+
+  target_link_libraries(EltenLauncher PRIVATE
+    dl
+    pthread
+  )
+
+  # Makes the libraries bundled next to the Ruby runtime findable, including for
+  # everything loaded indirectly: libruby, the native gem extensions Ruby dlopens
+  # afterwards, and their own dependencies.
+  #
+  # --disable-new-dtags is the point of this, not an afterthought. Modern
+  # linkers emit DT_RUNPATH by default, and DT_RUNPATH applies ONLY to the
+  # object that carries it - it is not consulted when resolving dependencies of
+  # anything that object goes on to load. With it, an rpath on the launcher does
+  # nothing for the extensions, and every single .so would have to be patched
+  # instead. The older DT_RPATH is inherited down the whole loading chain, and
+  # glibc still honours it, so one entry on the executable covers everything.
+  # Verified experimentally on this layout: with DT_RUNPATH an extension in a
+  # subdirectory fails to resolve a dependency sitting in the runtime directory,
+  # with DT_RPATH it resolves.
+  #
+  # LD_LIBRARY_PATH is not an option here: glibc reads it once at process start,
+  # so the setenv() the launcher does for its child processes has no effect on
+  # its own dlopen calls.
+  set_target_properties(EltenLauncher PROPERTIES
+    OUTPUT_NAME "${ELTEN_LAUNCHER_OUTPUT_NAME}"
+    RUNTIME_OUTPUT_DIRECTORY "${ELTEN_PACKAGE_ROOT}"
+    BUILD_RPATH "\$ORIGIN/bin/${ELTEN_RUNTIME_ARCH_DIR}"
+    INSTALL_RPATH "\$ORIGIN/bin/${ELTEN_RUNTIME_ARCH_DIR}"
+  )
+  target_link_options(EltenLauncher PRIVATE "LINKER:--disable-new-dtags")
+
+  add_dependencies(EltenLauncher EltenRubyRuntime)
+
+  add_custom_target(EltenApp
+    COMMAND "${CMAKE_COMMAND}" -E echo "Linux release assembled in ${ELTEN_PACKAGE_ROOT}"
+    DEPENDS EltenLauncher "${ELTEN_EMBEDDED_CPP}"
+    COMMENT "Assembling build/release/linux"
+    VERBATIM
+  )
+
+  # Filesystem-root layout: `tar -C / -xf` installs /opt/elten and the global
+  # menu entry in one step; the in-app updater extracts the same archive.
+  add_custom_target(EltenPkg
+    COMMAND "${CMAKE_COMMAND}" -E rm -rf "${ELTEN_DIST_LINUX_DIR}/stage"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${ELTEN_DIST_LINUX_DIR}/stage/opt" "${ELTEN_DIST_LINUX_DIR}/stage/usr/share/applications"
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${ELTEN_PACKAGE_ROOT}" "${ELTEN_DIST_LINUX_DIR}/stage/opt/elten"
+    COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_SOURCE_DIR}/tools/elten.desktop" "${ELTEN_DIST_LINUX_DIR}/stage/usr/share/applications/elten.desktop"
+    COMMAND "${CMAKE_COMMAND}" -E chdir "${ELTEN_DIST_LINUX_DIR}/stage" "${CMAKE_COMMAND}" -E tar cf "${ELTEN_DIST_LINUX_DIR}/elten-linux-${ELTEN_LAUNCHER_ARCH}.tar.zst" --zstd opt usr
+    DEPENDS EltenApp
+    COMMENT "Creating dist/linux/elten-linux-${ELTEN_LAUNCHER_ARCH}.tar.zst"
+    VERBATIM
+  )
 else()
   set(ELTEN_GENERATOR_PLATFORM "${CMAKE_VS_PLATFORM_NAME}")
   if(ELTEN_GENERATOR_PLATFORM STREQUAL "")
