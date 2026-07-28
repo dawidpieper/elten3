@@ -87,9 +87,7 @@ module EltenSystemHelpers
     end
 
     def appdata_dir
-      base = ENV["XDG_DATA_HOME"].to_s
-      base = File.join(home_dir, ".local", "share") if base == ""
-      base
+      xdg_dir("XDG_DATA_HOME", ".local", "share")
     end
 
     def user_dir
@@ -417,9 +415,19 @@ module EltenSystemHelpers
       "."
     end
 
+    # Per the XDG spec an unset variable, an empty one and a relative path all
+    # mean "use the default" - the last one because a relative base directory
+    # would resolve against whatever the current directory happens to be.
+    def xdg_dir(variable, *default_parts)
+      value = ENV[variable].to_s
+      return value if value.start_with?("/")
+      File.join(home_dir, *default_parts)
+    rescue Exception
+      File.join(home_dir, *default_parts)
+    end
+
     def xdg_user_dir(name)
-      config = ENV["XDG_CONFIG_HOME"].to_s
-      config = File.join(home_dir, ".config") if config == ""
+      config = xdg_dir("XDG_CONFIG_HOME", ".config")
       file = File.join(config, "user-dirs.dirs")
       return nil unless File.file?(file)
       line = File.foreach(file).find { |entry| entry =~ /\AXDG_#{name}_DIR=/ }

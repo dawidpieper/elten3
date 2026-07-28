@@ -362,10 +362,23 @@ module EltenBoot
 
     def appdata
       return File.join(Dir.home, "Library", "Application Support", "Elten") if EltenBoot.platform?(:osx)
-      return File.join(ENV.fetch("XDG_DATA_HOME", File.join(Dir.home, ".local", "share")), "elten") if EltenBoot.platform?(:linux)
+      return File.join(xdg_data_home, "elten") if EltenBoot.platform?(:linux)
       ENV["APPDATA"].to_s != "" ? ENV["APPDATA"] : File.join(Dir.home, "AppData", "Roaming")
     rescue Exception
       "."
+    end
+
+    # The XDG spec treats an unset variable and an empty one the same way, and
+    # requires ignoring a relative path outright - so ENV.fetch is not enough
+    # here: with XDG_DATA_HOME set but empty it hands back "" and the data
+    # directory becomes /elten, at the root of the filesystem. A relative value
+    # would be just as bad, putting it wherever the process happens to be.
+    def xdg_data_home
+      value = ENV["XDG_DATA_HOME"].to_s
+      return value if value.start_with?("/")
+      File.join(Dir.home, ".local", "share")
+    rescue Exception
+      File.join(Dir.home, ".local", "share")
     end
 
     def app_root
