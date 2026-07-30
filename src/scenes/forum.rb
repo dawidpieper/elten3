@@ -1554,7 +1554,7 @@ def forumtagsedit(forum)
   }
   if tags.size>0
     menu.option(p_("Forum", "Delete tag"), nil, :del) {
-    confirm(p_("Forum", "Are you sure you want to delete tag %{t}?")%{ :t => tags[sel.index][1]}) {
+    confirm(p_("Forum", "Are you sure you want to delete tag %{tag}?")%{ :tag => tags[sel.index][1]}) {
     if forum_attempt(nil) {
       EltenLink::Forum.delete_forum_tag(elten_link, forumid: forum.id, tag_id: tags[sel.index][0])
     }
@@ -1789,7 +1789,7 @@ break
         }
         if @sforums[@frmsel.index].posts == 0
           m.option(p_("Forum", "Delete forum")) {
-            confirm(p_("Forum", "Are you sure you want to delete forum %{n}?")%{ :n => @sforums[@frmsel.index].fullname}) {
+            confirm(p_("Forum", "Are you sure you want to delete forum %{forum}?")%{ :forum => @sforums[@frmsel.index].fullname}) {
               if forum_attempt(nil) {
                 EltenLink::Forum.delete_forum(elten_link, forumid: @sforums[@frmsel.index].id)
               }

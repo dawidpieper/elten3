@@ -69,7 +69,7 @@ loop_update
         end
         if key_pressed?(0x2e) and @type==0
           if @contact.size >= 1
-          if confirm(p_("Contacts", "Are you sure you want to delete contact %{c}?")%{ :c => @contact[@sel.index]})
+          if confirm(p_("Contacts", "Are you sure you want to delete contact %{contact}?")%{ :contact => @contact[@sel.index]})
             $scene = Scene_Contacts_Delete.new(@contact[@sel.index],self)
             @sel.disable_item(@sel.index)
 loop_update            

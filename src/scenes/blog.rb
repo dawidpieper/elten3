@@ -182,7 +182,7 @@ end
 @sel.focus
 end
 def categorydelete
-          confirm(p_("Blog", "Are you sure you want to delete category %{c}?")%{ :c => @categories[@sel.index-1].name}) {
+          confirm(p_("Blog", "Are you sure you want to delete category %{category}?")%{ :category => @categories[@sel.index-1].name}) {
             begin
               EltenLink::Blog.delete_category(elten_link, blog: @owner, category_id: @categories[@sel.index-1].id)
             rescue EltenLink::Error
@@ -420,7 +420,7 @@ else
   end
   end
   def postdelete
-    confirm(p_("Blog", "Are you sure you want to delete post %{p}?")%{ :p => @post[@sel.index].name}) {
+    confirm(p_("Blog", "Are you sure you want to delete post %{post}?")%{ :post => @post[@sel.index].name}) {
     begin
     EltenLink::Blog.delete_post(elten_link, blog: @owner, post_id: @post[@sel.index].id)
     rescue EltenLink::Error
@@ -1224,8 +1224,8 @@ if !blog.library
   @sel.focus
   }
 elsif blog.library && (blog.library_user==Session.name)
-  menu.option(p_("Blog", "Delete from Elten library")) {
-  confirm(p_("Blog", "Are you sure you want to delete blog %{b} from Elten library?")%{ :b => blog.name}) {
+  menu.option(p_("Blog", "Delete from Elten library"), nil, :del) {
+  confirm(p_("Blog", "Are you sure you want to delete blog %{blog} from Elten library?")%{ :blog => blog.name}) {
   EltenLink::Blog.library_delete(elten_link, blog: blog.id)
   }
   refresh

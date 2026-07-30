@@ -487,9 +487,9 @@ qacdown
   menu.option(p_("Main", "Delete"), nil, :del) {
   ac=0
   if @actions[qacindex].key==0 || @actions[qacindex].show==false
-      ac=confirm(p_("Main", "Are you sure you want to delete quick action %{n}?")%{ :n => @actions[qacindex].label}) ? 1 : 0
+      ac=confirm(p_("Main", "Are you sure you want to delete quick action %{action}?")%{ :action => @actions[qacindex].label}) ? 1 : 0
     else
-      ac=selector([_("Cancel"), p_("Main", "Delete"), p_("Main", "Hide this action")], header: p_("Main", "If you delete action %{n}, you will also delete the keyboard shortcut assigned to it. If you want to keep the keyboard shortcut, you can hide this action. You can show or remove hidden actions at any time.")%{ :n => @actions[qacindex].label}, start_index: 0, cancel_index: 0, flags: 1)
+      ac=selector([_("Cancel"), p_("Main", "Delete"), p_("Main", "Hide this action")], header: p_("Main", "If you delete action %{action}, you will also delete the keyboard shortcut assigned to it. If you want to keep the keyboard shortcut, you can hide this action. You can show or remove hidden actions at any time.")%{ :action => @actions[qacindex].label}, start_index: 0, cancel_index: 0, flags: 1)
       end
       if ac==1
           QuickActions.delete(qacindex)
