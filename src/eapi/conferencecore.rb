@@ -2364,6 +2364,7 @@ def userid
 end
 private
 def position_changed
+@transmitters[@voip.uid].move(@position.x, @position.y) if @transmitters[@voip.uid]!=nil
 for s in @outstreams
 s.set_user_position(@position.x, @position.y, @position.dir)
 end
@@ -2723,6 +2724,7 @@ if @fullsave_dir!=nil
 @transmitters[uid].begin_save(dir, uid, @fullsave_time)
 end
 end
+@transmitters[uid].move(@position.x, @position.y) if uid==@voip.uid
 end
 @channel_hooks.each{|h|h.call(params['channel'])}
 @volumes_hooks.each{|h|h.call(@volumes)}
