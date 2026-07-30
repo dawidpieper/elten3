@@ -746,6 +746,11 @@ def self.create(name="", public=true, bitrate=64, framesize=60, vbr_type=1, code
   @@created=nil
   params={'name'=>name, 'public'=>public, 'bitrate'=>bitrate, 'framesize'=>framesize, 'vbr_type'=>vbr_type, 'codec_application'=>codec_application, 'prediction_disabled'=>prediction_disabled, 'fec'=>fec, 'password'=>password, 'spatialization'=>spatialization, 'channels'=>channels, 'lang'=>lang, 'width'=>width, 'height'=>height, 'key_len'=>key_len, 'waiting_type'=>waiting_type, 'permanent'=>permanent, 'motd'=>motd, 'allow_guests'=>allow_guests, 'conference_mode'=>conference_mode, 'blacklist_policy'=>blacklist_policy}
   @@created=safe(nil) {@@core.create_channel(params) if @@core!=nil}
+  if @@created.is_a?(Integer) && allow_guests==true
+    edit_params=params.merge('channel'=>@@created)
+    safe(nil) {@@core.edit_channel(@@created, edit_params) if @@core!=nil}
+  end
+  delay(1) if @@created!=nil
   return @@created
 end
 def self.edit(id, name, public, bitrate, framesize, vbr_type, codec_application, prediction_disabled, fec, password, spatialization, channels, lang, width, height, key_len, waiting_type, permanent, motd, allow_guests, conference_mode, blacklist_policy=nil)
