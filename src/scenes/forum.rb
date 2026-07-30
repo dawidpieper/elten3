@@ -2874,7 +2874,17 @@ refresh
 return $scene=Scene_Main.new if @form==nil
     loop do
       loop_update
+      apply_background_count_result
+      was_composing = @form.index >= @postscount*3
       @form.update
+      is_composing = @form.index >= @postscount*3
+      if was_composing != is_composing
+        background_refresh(nil, focus_new: true)
+      elsif Time.now.to_f-(@background_refresh_time||0)>=5
+        @background_refresh_time=Time.now.to_f
+        background_check_count
+      end
+      notice_current_post_read
       if @noteditable == false
         case @posttype
         when 0
@@ -2997,6 +3007,7 @@ loop do
     lastindex=@form.index if @form!=nil
     index=-1
     getcache
+    @local_unread_post_ids ||= (@readposts >= 0 ? @posts[@readposts..].to_a.map(&:id) : []) if @posts != nil
     begin
       @sponsors = EltenLink::Admins.users(elten_link, "sponsors")
     rescue EltenLink::Error
@@ -3011,30 +3022,7 @@ loop do
       index = i * 3 if index == -1 and @param == -3 and @query.is_a?(Struct_Forum_SearchQuery) and post.author.downcase==@query.phrase.downcase && @query.phrase_in.include?(:author)
       index = i * 3 if @mention != nil and (@param == -7 or @param == -11) and post.id == @mention.post
       index = i * 3 if index == -1 and @param == -13 and @query.is_a?(Numeric) and @query==post.id
-      flags=EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly
-      flags|=EditBox::Flags::MarkDown if post.format==1
-      flags|=EditBox::Flags::Transcripted if post.transcription.strip!=""
-      label=post.authorname
-      label+=" (#{p_("Forum", "Banned")})" if post.banned
-      label+=" (#{p_("Forum", "Account archived")})" if post.archived
-      post_field = EditBox.new(label, type: flags, text: generate_posttext(post), quiet: true)
-      post_field.audio_url = post.audio_url if post.respond_to?(:audio_url) && post.audio_url.to_s != ""
-      @fields += [post_field, nil, nil]
-if @sponsors.include?(post.author)
-  @fields[-3].add_sound("user_sponsor")
-end
-      @fields[-1] = ListBox.new(name_attachments(post.attachments), header: p_("Forum", "Attachments")) if post.attachments.size > 0
-      if post.polls.size > 0
-        names = []
-        for o in post.polls
-          begin
-            poll = EltenLink::Polls.get(elten_link, o)
-            names.push(poll.name)
-          rescue EltenLink::Error
-          end
-        end
-        @fields[-2] = ListBox.new(names, header: p_("Forum", "Polls")) if names.size == post.polls.size
-      end
+      @fields += build_post_fields(post)
     end
 
     index = @readposts * 3 if index == -1 && @query == :first_unread && @readposts < @postscount
@@ -3078,6 +3066,111 @@ end
     @form = Form.new(@fields, index: index)
     @form.hide(@fields.size-2) if @threadclass.forum.group.preventattachments
     @form.bind_context(p_("Forum", "Forum")) {|menu|context(menu)}
+    @known_remote_post_count ||= @postscount
+    @background_refresh_time=Time.now.to_f
+  end
+
+  def build_post_fields(post)
+    flags=EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly
+    flags|=EditBox::Flags::MarkDown if post.format==1
+    flags|=EditBox::Flags::Transcripted if post.transcription.strip!=""
+    label=post.authorname
+    label+=" (#{p_("Forum", "Banned")})" if post.banned
+    label+=" (#{p_("Forum", "Account archived")})" if post.archived
+    post_field = EditBox.new(label, type: flags, text: generate_posttext(post), quiet: true)
+    post_field.audio_url = post.audio_url if post.respond_to?(:audio_url) && post.audio_url.to_s != ""
+    fields = [post_field, nil, nil]
+    fields[0].add_sound("user_sponsor") if @sponsors.include?(post.author)
+    fields[2] = ListBox.new(name_attachments(post.attachments), header: p_("Forum", "Attachments")) if post.attachments.size > 0
+    if post.polls.size > 0
+      names = []
+      for o in post.polls
+        begin
+          poll = EltenLink::Polls.get(elten_link, o)
+          names.push(poll.name)
+        rescue EltenLink::Error
+        end
+      end
+      fields[1] = ListBox.new(names, header: p_("Forum", "Polls")) if names.size == post.polls.size
+    end
+    fields
+  end
+
+  def background_check_count
+    return if @background_count_thread != nil && @background_count_thread.alive?
+    thread_id = @thread
+    client = elten_link
+    @background_count_thread = Thread.new do
+      begin
+        structure = EltenLink::Forum.structure(client)
+        thread = structure.threads.find { |candidate| candidate.id == thread_id }
+        @background_count_result = [:success, thread.posts] if thread != nil
+      rescue EltenLink::Error => e
+        @background_count_result = [:error, e]
+      end
+    end
+  end
+
+  def apply_background_count_result
+    result = @background_count_result
+    return if result == nil
+    @background_count_result = nil
+    if result[0] == :error
+      log_forum_error(result[1])
+      return
+    end
+    post_count = result[1]
+    new_count = post_count-(@known_remote_post_count||@postscount)
+    new_count.times { play_sound("messages_update") } if new_count > 0
+    @known_remote_post_count = post_count if post_count > (@known_remote_post_count||0)
+  end
+
+  def background_refresh(own_post_id=nil, focus_new: false)
+    begin
+      page = EltenLink::Forum.thread(elten_link, thread_id: @thread)
+    rescue EltenLink::Error => e
+      log_forum_error(e)
+      return
+    end
+    return if page == nil || @form == nil
+    known_ids = @posts.map(&:id)
+    new_posts = page.posts.reject { |post| known_ids.include?(post.id) }
+    return if new_posts.empty?
+    first_new_post_id = new_posts.first.id
+    unnotified_count = [page.count-(@known_remote_post_count||@postscount), 0].max
+    insert_at = @posts.size * 3
+    old_index = @form.index
+    @local_unread_post_ids ||= []
+    @local_unread_post_ids.concat(new_posts.reject { |post| post.id == own_post_id }.map(&:id))
+    new_posts.each_with_index do |post, new_index|
+      @posts.push(post)
+      @form.fields.insert(insert_at, *build_post_fields(post))
+      insert_at += 3
+      play_sound("messages_update") if post.id != own_post_id && new_index >= new_posts.size-unnotified_count
+    end
+    if old_index >= (@posts.size-new_posts.size)*3
+      @form.instance_variable_set(:@index, old_index+new_posts.size*3)
+    end
+    @postscount = @posts.size
+    @cache = page
+    @cachetime = page.time
+    @followed = page.followed
+    @known_remote_post_count = page.count
+    @form.show_all
+    @form.hide(@form.fields.size-2) if @threadclass.forum.group.preventattachments
+    if focus_new
+      first_new_index = @posts.find_index { |post| post.id == first_new_post_id }
+      if first_new_index != nil
+        @form.index = first_new_index*3
+        @form.focus
+      end
+    end
+  end
+
+  def notice_current_post_read
+    return if @local_unread_post_ids == nil || @form.index >= @postscount*3
+    post = @posts[@form.index/3]
+    @local_unread_post_ids.delete(post.id) if post != nil
   end
   
   def generate_posttext(post)
@@ -3129,13 +3222,14 @@ end
       if @form.fields[@postscount * 3+4]!=nil
         format = @form.fields[@postscount * 3+4].checked
         end
+      own_post_id = nil
       if forum_attempt(nil) {
-        EltenLink::Forum.create_post(elten_link, thread_id: @thread, text: text, attachments: attachments, format: format)
+        own_post_id = EltenLink::Forum.create_post(elten_link, thread_id: @thread, text: text, attachments: attachments, format: format)
       }
         @form.fields[@postscount * 3+1].set_text("")
         alert(p_("Forum", "The post was created."))
+        background_refresh(own_post_id)
       end
-      return main
     end
   end
 
@@ -3154,12 +3248,13 @@ end
         alert(_("Error"))
         return $scene = Scene_Main.new
       end
+      own_post_id = nil
       if forum_attempt(nil, p_("Forum", "Post creation failure.")) {
-        EltenLink::Forum.create_audio_post(elten_link, thread_id: @thread, audio: fl)
+        own_post_id = EltenLink::Forum.create_audio_post(elten_link, thread_id: @thread, audio: fl)
       }
               f.delete_audio(true)
         alert(p_("Forum", "The post was created."))
-              return main
+        background_refresh(own_post_id)
       end
     end
   end
@@ -3307,9 +3402,13 @@ if post.edited && !post.locked
         @form.index = @postscount * 3 - 3
         @form.focus
       }
-      if @readposts < @postscount && @readposts>=0
+      local_unread_index = nil
+      if @local_unread_post_ids != nil && @local_unread_post_ids.size > 0
+        local_unread_index = @posts.find_index { |post| post.id == @local_unread_post_ids.first }
+      end
+      if local_unread_index != nil
         m.option(p_("Forum", "Go to first new post"), nil, "u") {
-          @form.index = @readposts * 3
+          @form.index = local_unread_index * 3
           @form.focus
         }
       end
