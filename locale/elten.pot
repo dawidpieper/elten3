@@ -12501,6 +12501,16 @@ msgctxt "EAPI_UI"
 msgid "%{user} is calling you"
 msgstr ""
 
+#: src/ui/calls.rb:22
+msgctxt "EAPI_UI"
+msgid "%{user} is calling you on channel %{channel}"
+msgstr ""
+
+#: src/ui/calls.rb:31
+msgctxt "EAPI_UI"
+msgid "Participants (%{count}): %{users}"
+msgstr ""
+
 #: src/ui/calls.rb:16
 msgctxt "EAPI_UI"
 msgid "Answer"
