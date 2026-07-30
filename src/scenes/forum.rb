@@ -2590,6 +2590,17 @@ form.wait
     form.fields[-3].trigger(:move)
     polls = []
     files = []
+    confirm_missing_tag = lambda {
+      missing_tag_field = current_tag_fields.find { |field| field.index == 0 }
+      return true if missing_tag_field == nil
+      if confirm(p_("Forum", "You haven't selected all tags. Do you want to select the missing tags?"))
+        form.index = form.fields.index(missing_tag_field)
+        form.focus
+        false
+      else
+        true
+      end
+    }
         loop do
       loop_update
       if type==0
@@ -2682,12 +2693,14 @@ form.wait
       end
       if type == 0
         if (key_held?(0x11) and key_pressed?(:key_enter)) or (form.fields[-2]!=nil && form.fields[-2].pressed?)
+          next if !confirm_missing_tag.call
           play_sound("listbox_select")
           text = form.fields[1].text
           break
         end
       else
         if form.fields[-2]!=nil && form.fields[-2].pressed?
+          next if !confirm_missing_tag.call
           break
         end
       end
