@@ -2,9 +2,9 @@
 # Copyright (C) 2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
 
-# VoiceOver braille bridge for macOS.
-# Uses ApplicationServices AXPostNotification with kAXAnnouncementRequestedNotification
-# so that VoiceOver speaks and mirrors text on any connected Braille display.
+# VoiceOver bridge for macOS.
+# Uses ApplicationServices AXPostNotification with AXAnnouncementRequested
+# so that VoiceOver speaks the text and mirrors it on any connected Braille display.
 
 module OSXVoiceOverBridge
   PTR  = Fiddle::TYPE_VOIDP
@@ -25,13 +25,13 @@ module OSXVoiceOverBridge
       false
     end
 
-    # Send text as a VoiceOver announcement.
-    # VoiceOver will both speak it and show it on any connected Braille display.
-    def announce(text)
+    # Send text to VoiceOver. VoiceOver speaks it and mirrors it on Braille displays.
+    # Priority 90 (NSAccessibilityPriorityHigh) interrupts the current VoiceOver output.
+    def announce(text, priority: 90)
       return false unless voiceover_running?
       app_el = ax_ui_element_create_application.call(Process.pid)
       return false if app_el.to_i == 0
-      info = build_announcement_dict(text.to_s)
+      info = build_announcement_dict(text.to_s, priority)
       ax_post_notification.call(app_el, nsstring("AXAnnouncementRequested"), info)
       true
     rescue Exception => e
@@ -43,7 +43,6 @@ module OSXVoiceOverBridge
 
     def app_services
       return @app_services if defined?(@app_services)
-      # AppKit must be loaded first so NSObject etc. are available
       Fiddle.dlopen("/System/Library/Frameworks/AppKit.framework/AppKit") rescue nil
       @app_services = Fiddle.dlopen("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")
     rescue Exception
@@ -56,8 +55,6 @@ module OSXVoiceOverBridge
     rescue Exception
       @objc = nil
     end
-
-    # --- Objective-C helpers (same pattern as OSXSpeechBridge) ---
 
     def objc_msg_send(types, ret)
       @objc_msg_send ||= {}
@@ -100,24 +97,19 @@ module OSXVoiceOverBridge
       send_id(cls("NSNumber"), "numberWithInt:", value.to_i, [INT])
     end
 
-    # Build NSDictionary: { AXAnnouncement => text, AXPriority => 90 }
-    # AXPriority 90 = NSAccessibilityPriorityHigh (interrupts current VoiceOver output)
-    def build_announcement_dict(text)
+    def build_announcement_dict(text, priority)
       keys   = ns_mutable_array([nsstring("AXAnnouncement"), nsstring("AXPriority")])
-      values = ns_mutable_array([nsstring(text), nsnumber_int(90)])
+      values = ns_mutable_array([nsstring(text), nsnumber_int(priority)])
       send_id(cls("NSDictionary"), "dictionaryWithObjects:forKeys:count:",
               values, keys, 2, [PTR, PTR, PTR])
     end
 
     def ns_mutable_array(items)
       array = send_id(cls("NSMutableArray"), "array")
-      items.each do |item|
-        send_void(array, "addObject:", item, [PTR])
-      end
+      items.each { |item| send_void(array, "addObject:", item, [PTR]) }
       array
     end
 
-    # --- ApplicationServices functions ---
 
     def ax_is_voiceover_enabled
       @ax_is_voiceover_enabled ||= Fiddle::Function.new(
@@ -144,9 +136,14 @@ module OSXVoiceOverBridge
   end
 end
 
-# SpeechOutput subclass that provides Braille output via VoiceOver on macOS.
-# It has no speech voices – it is purely a Braille channel.
+# SpeechOutput that routes speech through VoiceOver via the Accessibility API.
+# When selected, VoiceOver speaks the text with its own voice and simultaneously
+# shows it on any connected Braille display — no separate Braille configuration needed.
 class OSXVoiceOverOutput < SpeechOutput
+  VOICE_ID   = "voiceover://system"
+  VOICE_NAME = "VoiceOver"
+
+
   class << self
     def available?
       OSXVoiceOverBridge.available?
@@ -160,34 +157,90 @@ class OSXVoiceOverOutput < SpeechOutput
       false
     end
 
-    # Do not auto-select as speech output
+    # Never selected automatically — user must choose it explicitly.
     def default?
       false
     end
 
-    # No speech voices – this output only handles Braille
     def voices
-      []
+      return [] unless available?
+      [SpeechOutput::Voice.new(
+        id:     VOICE_ID,
+        name:   VOICE_NAME,
+        output: self,
+        native: nil
+      )]
+    end
+
+    def apply_voice(_voice)
+      true
+    end
+
+    def speak_text(text, method: 1, spelling: false, interrupt: true, pitch: 50)
+      return 1 unless usable?
+      text = text.to_s.chars.join(" ") if spelling
+      OSXVoiceOverBridge.announce(text.to_s)
+      0
+    rescue Exception => e
+      Log.warning("OSXVoiceOverOutput.speak_text: #{e.class}: #{e.message}") if defined?(Log)
+      1
+    end
+
+    def stop
+      # Post an empty announcement to interrupt whatever VoiceOver is currently saying.
+      OSXVoiceOverBridge.announce("​") if usable?
+      0
+    rescue Exception
+      1
+    end
+
+    # VoiceOver manages its own speaking state; we cannot query it externally.
+    def speaking?
+      false
     end
 
     def braille_supported?
       true
     end
 
-    def braille(_text, _pos = nil, _push = false, _type = 0, _index = nil, _cursor = nil)
-      return if Configuration.enablebraille == 0
-      return unless usable?
-      OSXVoiceOverBridge.announce(_text.to_s)
+    # Braille output is automatic: VoiceOver mirrors speech to Braille displays.
+    def braille(text, _pos = nil, _push = false, _type = 0, _index = nil, _cursor = nil)
+      return unless Configuration.enablebraille == 1 && usable?
+      OSXVoiceOverBridge.announce(text.to_s)
     rescue Exception => e
       Log.warning("OSXVoiceOverOutput.braille: #{e.class}: #{e.message}") if defined?(Log)
     end
 
     def braille_alert(text)
-      return if Configuration.enablebraille == 0
-      return unless usable?
+      return unless Configuration.enablebraille == 1 && usable?
       OSXVoiceOverBridge.announce(text.to_s)
     rescue Exception => e
       Log.warning("OSXVoiceOverOutput.braille_alert: #{e.class}: #{e.message}") if defined?(Log)
+    end
+
+    # VoiceOver controls rate, volume, and pitch through its own settings.
+    def rate_supported?
+      false
+    end
+
+    def volume_supported?
+      false
+    end
+
+    def pitch_supported?
+      false
+    end
+
+    def pause_supported?
+      false
+    end
+
+    def indexed_supported?
+      false
+    end
+
+    def spelling_supported?
+      true
     end
   end
 end
