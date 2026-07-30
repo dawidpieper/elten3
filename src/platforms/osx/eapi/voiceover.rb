@@ -128,6 +128,33 @@ module OSXVoiceOverBridge
       )
     end
 
+    # Simulate a Control key press+release via CoreGraphics to interrupt VoiceOver.
+    # VoiceOver treats the Control key as its universal "stop speaking" command.
+    def stop_speech
+      return false unless voiceover_running?
+      cg = core_graphics
+      return false if cg == nil
+      kVK_Control      = 0x3B
+      kCGHIDEventTap   = 0
+      create_kb_event  = Fiddle::Function.new(cg["CGEventCreateKeyboardEvent"], [PTR, INT, INT], PTR)
+      post_event       = Fiddle::Function.new(cg["CGEventPost"], [INT, PTR], VOID)
+      key_down = create_kb_event.call(0, kVK_Control, 1)
+      key_up   = create_kb_event.call(0, kVK_Control, 0)
+      post_event.call(kCGHIDEventTap, key_down)
+      post_event.call(kCGHIDEventTap, key_up)
+      true
+    rescue Exception => e
+      log_warning("stop_speech failed: #{e.class}: #{e.message}")
+      false
+    end
+
+    def core_graphics
+      return @core_graphics if defined?(@core_graphics)
+      @core_graphics = Fiddle.dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
+    rescue Exception
+      @core_graphics = nil
+    end
+
     def log_warning(msg)
       Log.warning("OSXVoiceOverBridge: #{msg}") if defined?(Log)
     rescue Exception
@@ -185,8 +212,7 @@ class OSXVoiceOverOutput < SpeechOutput
     end
 
     def stop
-      # Post an empty announcement to interrupt whatever VoiceOver is currently saying.
-      OSXVoiceOverBridge.announce("​") if usable?
+      OSXVoiceOverBridge.stop_speech if usable?
       0
     rescue Exception
       1
