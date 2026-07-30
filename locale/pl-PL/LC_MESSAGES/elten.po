@@ -8170,6 +8170,11 @@ msgctxt "Forum"
 msgid "No tag value"
 msgstr "Nie ustawiaj wartości"
 
+#: src/scenes/forum.rb:2597
+msgctxt "Forum"
+msgid "You haven't selected all tags. Do you want to select the missing tags?"
+msgstr "Nie wybrano wszystkich tagów. Czy chcesz uzupełnić brakujące tagi?"
+
 #: src/scenes/forum.rb:2543 src/scenes/forum.rb:2551 src/scenes/forum.rb:3049
 #: src/scenes/forum.rb:3081
 msgctxt "Forum"
