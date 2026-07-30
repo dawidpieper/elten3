@@ -1403,6 +1403,9 @@ def initialize(nick=nil)
 @chid=0
 @waiting_channel_id=0
 @frame_id=0
+@fec_enabled=false
+@fec_loss=0.0
+@fec_last_update=0.0
 @chat=[]
 if nick==nil
 @username=$name
@@ -2226,7 +2229,7 @@ fs=(5000/@framesize.to_f).to_i
 for t in @transmitters.values
 if t.losses.size>fs
 all+=fs
-losses=t.losses[-fs..-1].sum
+losses+=t.losses[-fs..-1].sum
 end
 end
 return 0 if all==0
@@ -2581,6 +2584,13 @@ end
 end
 end
 def onstatus(latency,sendbytes,receivedbytes,curlost,curpackets,time)
+if @fec_enabled && Time.now.to_f-@fec_last_update>=10.0
+measured_loss=packetloss
+@fec_loss=@fec_loss*0.7+measured_loss*0.3
+target_loss=[[@fec_loss.round, 0].max, 10].min
+@encoder_mutex.synchronize {@encoder.packetloss=target_loss if @encoder!=nil}
+@fec_last_update=Time.now.to_f
+end
 status={}
 status['latency']=latency+@framesize/1000.0
 status['latency']=0 if latency==0
@@ -2630,9 +2640,12 @@ else
 @encoder.vbr=1
 @encoder.cvbr=0
 end
-@encoder.packetloss=10
+@fec_enabled=params['channel']['fec']==true
+@fec_loss=0.0
+@fec_last_update=Time.now.to_f
+@encoder.packetloss=0
 @encoder.prediction_disabled=true if params['channel']['prediction_disabled']==true
-@encoder.inband_fec=true if params['channel']['fec']==true
+@encoder.inband_fec=true if @fec_enabled
 @encoder.bitrate=params['channel']['bitrate']*1000
 @sltime=params['channel']['framesize']/1000.0
 @sltime=0.01 if @sltime<0.01
