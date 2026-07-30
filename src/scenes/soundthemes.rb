@@ -52,8 +52,8 @@ stdownload
           menu.option(p_("SoundThemes", "Edit"), nil, "e") {
                         $scene=Scene_Sounds.new(@soundthemes[@sel.index].file)
           }
-          menu.option(p_("SoundThemes", "Delete")) {
-                          confirm(p_("SoundThemes", "Are you sure you want to delete this soundtheme?")) {
+          menu.option(p_("SoundThemes", "Delete"), nil, :del) {
+                          confirm(p_("SoundThemes", "Are you sure you want to delete soundtheme %{n}?")%{ :n => @soundthemes[@sel.index].name}) {
                 File.delete(@soundthemes[@sel.index].file)
                 @return=true
                 main
