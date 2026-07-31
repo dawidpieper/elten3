@@ -148,8 +148,8 @@ module EltenLink
       end
 
       def create_comment(client, blog:, post_id:, content:)
-        client.api_data("POST", "/api/v1/blogs/#{blog.to_s.urlenc}/posts/#{post_id.to_i}/comments", { "content" => content })
-        true
+        data = client.api_data("POST", "/api/v1/blogs/#{blog.to_s.urlenc}/posts/#{post_id.to_i}/comments", { "content" => content })
+        data.is_a?(Hash) ? data.dig("raw", "status").to_s : ""
       end
 
       def followed_posts(client)
