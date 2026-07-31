@@ -1649,6 +1649,7 @@ end
 def load_comments
   setting_category(p_("Blog", "Comments"))
   make_setting(p_("Blog", "Comments can be written"), [p_("Blog", "By all visitors"), p_("Blog", "By all visitors, but I must approve each person's first comment"), p_("Blog", "By all visitors, but I must approve every comment"), p_("Blog", "By Elten users only")], "^commentingtype")
+  make_setting(p_("Blog", "Automatically approve comments from Elten users"), :bool, "elten_autoapprove_comments")
   make_setting(p_("Blog", "Disable commenting on older posts"), :bool, "close_comments_old_posts")
   make_setting(p_("Blog", "Number of days after which commenting on a post will be disabled"), :number, "close_comments_days_old")
   make_setting(p_("Blog", "Allow threaded comments"), :bool, "thread_comments")
@@ -1657,7 +1658,6 @@ def load_comments
   make_setting(p_("Blog", "Split comments on the website into pages"), :bool, "page_comments")
   make_setting(p_("Blog", "Comments per page"), :number, "comments_per_page")
   make_setting(p_("Blog", "Display first"), [p_("Blog", "Newest comments"), p_("Blog", "Oldest comments")], "default_comments_page", ["newest", "oldest"])
-  make_setting(p_("Blog", "Automatically approve comments from Elten users"), :bool, "elten_autoapprove_comments")
   make_setting(p_("Blog", "Pending comments"), :custom, Proc.new{insert_scene(Scene_Blog_Comments.new(@blog))})
   on_load {
   if currentconfig("comment_registration").to_i==1
@@ -1687,32 +1687,32 @@ def load_comments
     setcurrentconfig("comment_registration", 1)
   end
   }
-  @form.fields[2].on(:change) {
-  if @form.fields[2].checked
-    @form.show(3)
+  @form.fields[3].on(:change) {
+  if @form.fields[3].checked
+    @form.show(4)
   else
-    @form.hide(3)
+    @form.hide(4)
     end
   }
-  @form.fields[2].trigger(:change)
-  @form.fields[4].on(:change) {
-  if @form.fields[4].checked
-    @form.show(5)
+  @form.fields[3].trigger(:change)
+  @form.fields[5].on(:change) {
+  if @form.fields[5].checked
+    @form.show(6)
   else
-    @form.hide(5)
+    @form.hide(6)
     end
   }
-  @form.fields[4].trigger(:change)
-  @form.fields[7].on(:change) {
-  if @form.fields[7].checked
-    @form.show(8)
+  @form.fields[5].trigger(:change)
+  @form.fields[8].on(:change) {
+  if @form.fields[8].checked
     @form.show(9)
+    @form.show(10)
   else
-    @form.hide(8)
     @form.hide(9)
+    @form.hide(10)
     end
   }
-  @form.fields[7].trigger(:change)
+  @form.fields[8].trigger(:change)
   }
 end
 def load_posts
