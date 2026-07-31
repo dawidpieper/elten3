@@ -689,11 +689,15 @@ def update
       return
     end
     begin
-      EltenLink::Blog.create_comment(elten_link, blog: @post.owner, post_id: @post.id, content: txt)
+      comment_status = EltenLink::Blog.create_comment(elten_link, blog: @post.owner, post_id: @post.id, content: txt)
     rescue EltenLink::Error
       alert(_("Error"))
     else
-      alert(p_("Blog", "The comment has been added."))
+      if comment_status == "hold"
+        alert(p_("Blog", "The comment has been submitted and is awaiting moderation."))
+      else
+        alert(p_("Blog", "The comment has been added."))
+      end
       main
       return
     end
