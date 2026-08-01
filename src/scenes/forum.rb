@@ -83,6 +83,10 @@ class Scene_Forum
     { "type" => "forum", "id" => id.to_i }
   end
 
+  def self.mentions_target
+    { "type" => "mentions" }
+  end
+
   def initialize(pre = nil, preparam = nil, cat = 0, query = "", tc=nil, tag=nil)
     @pre = pre
     @preparam = preparam
@@ -96,6 +100,10 @@ class Scene_Forum
 
   def forum_target?(target)
     target.is_a?(Hash) && target["type"].to_s == "forum" && target["id"].to_i.positive?
+  end
+
+  def mentions_target?(target)
+    target.is_a?(Hash) && target["type"].to_s == "mentions"
   end
 
   def forum_target_id(target)
@@ -201,7 +209,9 @@ class Scene_Forum
     getcache
     return if $scene != self
     if @pre == nil
-      if forum_target?(@preparam)
+      if mentions_target?(@preparam)
+        return threadsmain(-11)
+      elsif forum_target?(@preparam)
         return threadsmain(forum_target_id(@preparam))
       elsif @preparam.is_a?(Integer)
 return forumsmain(@preparam)
@@ -644,6 +654,15 @@ return result
     menu.option(p_("Forum", "Open")) {
       groupopen(@grpsel.index, type)
     }
+    if @grpsel.index == @grpheadindex + @sgroups.size + 9
+      menu.option(p_("Forum", "Add received mentions to quick actions"), nil, "q") {
+        if QuickActions.create(Scene_Forum, p_("Forum", "Received mentions"), [nil, Scene_Forum.mentions_target])
+          alert(p_("Forum", "Received mentions added to quick actions"), false)
+        else
+          alert(_("Error"))
+        end
+      }
+    end
     if @grpsel.index >= @grpheadindex and @grpsel.index < @grpheadindex + @sgroups.size
       g = @sgroups[@grpsel.index - @grpheadindex]
       menu.option(p_("Forum", "Show all threads"), nil, :shift_enter) {
