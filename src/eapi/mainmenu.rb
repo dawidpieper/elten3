@@ -28,14 +28,24 @@ module GlobalMenu
     style=:menubar if defaults
     @menu = Menu.new("",style)
     if $activecontrols!=nil
-        for c in $activecontrols||[]
+      active_controls = $activecontrols || []
+      for c in active_controls
       if !c.menu_enabled?
         return
         end
+      end
       if defaults != :defaults && (Configuration.contextmenubar==true || defaults==false || force_context)
-        c.context(@menu, defaults)
-    end
-  end
+        if defaults
+          context_controls = active_controls.select { |control| control.hascontext }
+          if context_controls.size > 0
+            @menu.submenu(_("Context menu")) do |context_menu|
+              context_controls.each { |control| control.context(context_menu, false) }
+            end
+          end
+        else
+          active_controls.each { |control| control.context(@menu, false) }
+        end
+      end
   end
   if defaults==true && !$scene.is_a?(Scene_Main) && (Session.logged? || $preinitialized==true)
     @menu.submenu(p_("MainMenu", "Quick &actions")) {|m|
