@@ -62,18 +62,17 @@ text=text[0..5000]
  submit=Button.new(p_("EAPI_External", "Translate"))
  cancel=Button.new(_("Cancel"))
  form=Form.new([from,to,submit,cancel])
-loop do
-  loop_update
-  form.update
-  if key_pressed?(:key_escape) or ((key_pressed?(:key_space) or key_pressed?(:key_enter)) and form.index==3)
-    dialog_close
-    loop_update
-    return -1
-  end
-  if (key_pressed?(:key_space) or key_pressed?(:key_enter)) and form.index == 2
-        break
-    end
-  end
+ form.accept_button=submit
+ form.cancel_button=cancel
+ result=nil
+ submit.on(:press) { result=:ok; form.resume }
+ cancel.on(:press) { result=:cancel; form.resume }
+ form.wait
+ if result!=:ok
+   dialog_close
+   loop_update
+   return -1
+ end
   lfrom=0
   if from.index==0
       lfrom=0
