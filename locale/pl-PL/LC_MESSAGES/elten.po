@@ -9969,7 +9969,12 @@ msgctxt "Messages"
 msgid "Message has been sent"
 msgstr "Wiadomość została wysłana"
 
-#: src/scenes/messages.rb:740
+#: src/scenes/messages.rb:737
+msgctxt "Messages"
+msgid "Go to first unread message"
+msgstr "Przejdź do pierwszej nieprzeczytanej wiadomości"
+
+#: src/scenes/messages.rb:748
 msgctxt "Messages"
 msgid "Reply to message sender"
 msgstr "Odpowiedz nadawcy wiadomości"

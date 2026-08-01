@@ -733,6 +733,15 @@ if (key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form_messages.ind
       end
   def context_messages(menu)
     return if @sel_messages==nil
+    unread_index=@messages.find_index{|message|message.receiver==Session.name && message.mread==0}
+    if unread_index!=nil
+      menu.option(p_("Messages", "Go to first unread message"), nil, "u") {
+        @sel_messages.index=unread_index
+        @form_messages.index=0
+        @form_messages.focus
+        @sel_messages.say_option
+      }
+    end
     menu.option(p_("Messages", "Reply"), nil, "o") {
     $scene = Scene_Messages_New.new(@messages_user,"RE: " + (@messages_subject||"").sub("RE: ",""),@form_messages.fields[3],export)  
     }
