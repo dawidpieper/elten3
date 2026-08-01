@@ -3120,8 +3120,8 @@ end
     if post.likes > 0
       segments.push(np_("Forum", "%{count} user likes this post", "%{count} users like this post", post.likes)%{:count=>post.likes.to_s})
     end
-    if !(LocalConfig["ForumHideSignatures", type: :bool] && holds_premiumpackage("courier"))
-      segments.push(post.signature)
+    if !(LocalConfig["ForumHideSignatures", type: :bool] && holds_premiumpackage("courier")) && post.signature.to_s.strip!=""
+      segments.push(p_("Forum", "Signature")+":\r\n"+post.signature)
     end
     segments.push(post.date)
     segments.push(add)
