@@ -79,6 +79,9 @@ loop_update
         if key_pressed?(:key_enter) and @contact.size > 0
                     usermenu(@contact[@sel.index],false)
           end
+        if key_pressed?(:key_tab) and @contact.size > 0
+                    insert_scene(Scene_FeedViewer.new(@contact[@sel.index]))
+          end
         end
             
 

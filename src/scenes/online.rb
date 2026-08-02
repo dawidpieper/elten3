@@ -31,6 +31,9 @@ loop_update
       if key_pressed?(:key_enter)
                 usermenu(@onl[@sel.index],false)
         end
+      if key_pressed?(:key_tab) and @onl.size > 0
+        insert_scene(Scene_FeedViewer.new(@onl[@sel.index]))
+        end
       break if $scene != self
       end
     end

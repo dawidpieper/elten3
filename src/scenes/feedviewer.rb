@@ -43,7 +43,7 @@ ind=@ind if @ind!=-1
 loop do
   loop_update
   @sel.update
-  break if key_pressed?(:key_escape) or (@first!=true && @sel.collapsed?)
+  break if key_pressed?(:key_escape) or key_pressed?(:key_tab) or (@first!=true && @sel.collapsed?)
   break if $scene!=self
   if @sel.expanded? && @feeds.size>0 && @feeds[@sel.index].responses>0 && !responses_shown?(@feeds[@sel.index])
     feed=@feeds[@sel.index]
