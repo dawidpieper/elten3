@@ -287,6 +287,17 @@ class Scene_Calendar
     menu.option(p_("Calendar", "Upcoming events"), nil, "u") do
       $scene = Scene_Calendar_Upcoming.new(@filter_calendar_id, @grid.date)
     end
+    menu.option(p_("Calendar", "Public calendars"), nil, "p") do
+      begin
+        invitations = EltenLink::Calendars.invitations(elten_link)
+        excluded_ids = @calendars.map(&:id) + invitations.map { |invitation| invitation.calendar.id }
+        return_scene = Scene_Calendar.new(@filter_calendar_id, @grid.date)
+        $scene = Scene_Calendar_Public.new(@filter_calendar_id, @grid.date, excluded_ids, return_scene)
+      rescue EltenLink::Error => error
+        Log.warning("Public calendar access failed: #{error.message}")
+        alert(_("Error"))
+      end
+    end
     menu.option(p_("Calendar", "Calendars Management"), nil, "c") do
       $scene = Scene_Calendar_Management.new(@filter_calendar_id, @grid.date)
     end
@@ -541,10 +552,6 @@ class Scene_Calendar_Management
       end
     end
     menu.option(p_("Calendar", "New calendar"), nil, "n") { create_calendar }
-    menu.option(p_("Calendar", "Public calendars"), nil, "p") do
-      excluded_ids = @calendars.map(&:id) + @invitations.map { |invitation| invitation.calendar.id }
-      $scene = Scene_Calendar_Public.new(@return_filter_id, @return_date, excluded_ids)
-    end
     menu.option(_("Refresh"), nil, "r") { request_reload(calendar && calendar.id) }
   end
 
@@ -710,10 +717,11 @@ end
 class Scene_Calendar_Public
   include CalendarSceneHelpers
 
-  def initialize(return_filter_id=nil, date=nil, excluded_ids=[])
+  def initialize(return_filter_id=nil, date=nil, excluded_ids=[], return_scene=nil)
     @return_filter_id = return_filter_id == nil ? nil : return_filter_id.to_i
     @return_date = normalize_calendar_date(date || Date.today)
     @excluded_ids = excluded_ids.map(&:to_i).uniq
+    @return_scene = return_scene
   end
 
   def main
@@ -803,7 +811,7 @@ class Scene_Calendar_Public
   end
 
   def return_to_management
-    $scene = Scene_Calendar_Management.new(@return_filter_id, @return_date)
+    $scene = @return_scene || Scene_Calendar_Management.new(@return_filter_id, @return_date)
   end
 end
 
