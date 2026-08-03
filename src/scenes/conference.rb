@@ -8,10 +8,20 @@
 
 class Scene_Conference
   @@lastdiceindex=5
-  def initialize(timeout=nil, prefocus=0)
+  def self.channel_target(id)
+    { "type" => "channel", "id" => id.to_i }
+  end
+  def initialize(timeout=nil, prefocus=0, target=nil)
     @timeout=timeout
     @prefocus=prefocus
+    @target=target
+    if channel_target?(@target) && Conference.opened? && Conference.channel.id!=0 && (($scenes && $scenes[0].is_a?(Scene_Conference)) || $scene.is_a?(Scene_Conference))
+      speak(p_("Conference", "You are already connected to another channel."))
     end
+    end
+  def channel_target?(target)
+    target.is_a?(Hash) && target["type"].to_s == "channel" && target["id"].to_i.positive?
+  end
   def main
     nick=nil
     unless Session.logged?
@@ -319,7 +329,14 @@ btn_close.bind_context{|menu|context(menu)}
 lst_chathistory.bind_context{|menu|context(menu)}
 edt_chat.bind_context{|menu|context(menu)}
 if Conference.channel.id==0
-  list_channels
+  if channel_target?(@target)
+    join_target(@target)
+    list_channels if Conference.channel.id==0
+  else
+    list_channels
+  end
+elsif channel_target?(@target)
+  speak(p_("Conference", "You are already connected to another channel."))
     end
     @form.wait if Conference.channel.id!=0
             if Conference.opened?
@@ -399,6 +416,12 @@ end
   lst_channels.focus
     }
   end
+    menu.option(p_("Conference", "Add channel to quick actions"), nil, "q") {
+      if QuickActions.create(Scene_Conference, ch.name+" (#{p_("Conference", "Channel")})", [nil, 0, Scene_Conference.channel_target(ch.id)])
+        alert(p_("Conference", "Channel added to quick actions"), false)
+      end
+      lst_channels.focus
+    }
   if ch.passworded==false
     if ch.followed==false
       menu.option(p_("Conference", "Follow"), nil, "l") {
@@ -752,6 +775,25 @@ end
     form.wait
   end
   private
+  def join_target(target)
+    id=target["id"].to_i
+    @chans=get_channelslist
+    ch=@chans.find{|c|c.id==id}
+    if ch==nil
+      alert(p_("Conference", "This channel no longer exists."))
+      return
+    end
+    ps=nil
+    if ch.passworded
+      ps=input_text(p_("Conference", "Channel password"), flags: EditBox::Flags::Password, text: "", escapable: true)
+      loop_update
+      return if ps==nil
+    end
+    unless Conference.join(ch.id, ps)
+      alert(p_("Conference", "You cannot join this channel"))
+    end
+    delay(1)
+  end
   def get_channelslist
     Conference.update_channels
 if Conference.channels==[]
