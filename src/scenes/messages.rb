@@ -727,7 +727,7 @@ elsif @form_messages.fields[3].text!="" and @form_messages.fields[4]==nil
 load_messages(@messages_user, @messages_subject, @messages_sp, @messages_limit, true)
       end
 if (key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form_messages.index==5
-    $scene = Scene_Messages_New.new(@messages_user,"RE: " + (@messages_subject||"").sub("RE: ",""),@form_messages.fields[3],export)  
+    $scene = Scene_Messages_New.new(@messages_user,"RE: " + (@messages_subject||"").sub("RE: ",""),@form_messages.fields[3],export,5)  
   end
           end
       end
@@ -885,11 +885,12 @@ def audiolimit
     end
      
      class Scene_Messages_New
-       def initialize(receiver="",subject="",text="",scene=false)
+       def initialize(receiver="",subject="",text="",scene=false,focus_field=nil)
          @receiver = receiver
          @subject = subject
          @text = text
          @scene = scene
+         @focus_field = focus_field
          end
        def main
          receiver=@receiver
@@ -981,6 +982,7 @@ def audiolimit
                       ind=0
            ind=1 if receiver!=""
            ind=2 if receiver!="" and subject!=""
+           ind=@focus_field if @focus_field!=nil && @fields[@focus_field]!=nil
            @form = Form.new(@fields,index: ind)
 @attachments=[]
 @polls=[]
