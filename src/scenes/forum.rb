@@ -795,11 +795,14 @@ if (((@sgroups[@grpsel.index - @grpheadindex].role==1 || (@sgroups[@grpsel.index
       }
       s = ""
       s = p_("Forum", "Join") if @sgroups[@grpsel.index - @grpheadindex].role == 0 and @sgroups[@grpsel.index - @grpheadindex].open and @sgroups[@grpsel.index - @grpheadindex].public
+      s = p_("Forum", "Join") if @sgroups[@grpsel.index - @grpheadindex].role == 0 and !@sgroups[@grpsel.index - @grpheadindex].open and !@sgroups[@grpsel.index - @grpheadindex].public
       s = p_("Forum", "Accept invitation") if @sgroups[@grpsel.index - @grpheadindex].role == 5
       s = p_("Forum", "Ask to be enrolled in this group") if @sgroups[@grpsel.index - @grpheadindex].role == 0 && ((@sgroups[@grpsel.index - @grpheadindex].public && !@sgroups[@grpsel.index - @grpheadindex].open) || (@sgroups[@grpsel.index - @grpheadindex].open && !@sgroups[@grpsel.index - @grpheadindex].public))
       if s != ""
         menu.option(s, nil, "j") {
-        if canjoin(@sgroups[@grpsel.index - @grpheadindex])
+        if @sgroups[@grpsel.index - @grpheadindex].role == 0 && !@sgroups[@grpsel.index - @grpheadindex].open && !@sgroups[@grpsel.index - @grpheadindex].public
+          alert(p_("Forum", "closed (only invited users can join)"))
+        elsif canjoin(@sgroups[@grpsel.index - @grpheadindex])
           if @sgroups[@grpsel.index - @grpheadindex].role == 0 && ((@sgroups[@grpsel.index - @grpheadindex].public && !@sgroups[@grpsel.index - @grpheadindex].open) || (@sgroups[@grpsel.index - @grpheadindex].open && !@sgroups[@grpsel.index - @grpheadindex].public))
             s = p_("Forum", "Do you wish to ask to be enrolled in %{groupname}")
           else
