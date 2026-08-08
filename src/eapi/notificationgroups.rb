@@ -402,11 +402,20 @@ module NotificationGroups
     when "friend"
       Proc.new { insert_scene(Scene_Users_AddedMeToContacts.new(true), true) }
     when "birthday"
-      Proc.new { insert_scene(Scene_Contacts.new(1), true) }
+      Proc.new { open_birthday(payload) }
     when "groupinvitation"
       Proc.new { insert_scene(Scene_Forum.new(nil, nil, 4), true) }
     else
       nil
+    end
+  end
+
+  def open_birthday(payload)
+    user = payload["user"].to_s
+    if user.empty?
+      insert_scene(Scene_Contacts.new(1), true)
+    else
+      usermenu(user)
     end
   end
 
