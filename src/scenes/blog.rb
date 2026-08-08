@@ -1649,6 +1649,7 @@ end
 def load_comments
   setting_category(p_("Blog", "Comments"))
   make_setting(p_("Blog", "Comments can be written"), [p_("Blog", "By all visitors"), p_("Blog", "By all visitors, but I must commit first comment of the specific person"), p_("Blog", "By all visitors, but I must commit all of them"), p_("Blog", "By Elten users only")], "^commentingtype")
+  make_setting(p_("Blog", "Automatically approve comments from Elten users"), :bool, "elten_autoapprove_comments")
   make_setting(p_("Blog", "Disable commenting of older posts"), :bool, "close_comments_old_posts")
   make_setting(p_("Blog", "Days after commenting of a post will be disabled"), :number, "close_comments_days_old")
   make_setting(p_("Blog", "Allow comments threading"), :bool, "thread_comments")
@@ -1657,7 +1658,6 @@ def load_comments
   make_setting(p_("Blog", "Split comments on the website into pages"), :bool, "page_comments")
   make_setting(p_("Blog", "Comments per page"), :number, "comments_per_page")
   make_setting(p_("Blog", "Firstly display"), [p_("Blog", "Newest comments"), p_("Blog", "Oldest comments")], "default_comments_page", ["newest", "oldest"])
-  make_setting(p_("Blog", "Automatically approve comments from Elten users"), :bool, "elten_autoapprove_comments")
   make_setting(p_("Blog", "Pending comments"), :custom, Proc.new{insert_scene(Scene_Blog_Comments.new(@blog))})
   on_load {
   if currentconfig("comment_registration").to_i==1
@@ -1687,32 +1687,32 @@ def load_comments
     setcurrentconfig("comment_registration", 1)
   end
   }
-  @form.fields[2].on(:change) {
-  if @form.fields[2].checked
-    @form.show(3)
+  @form.fields[3].on(:change) {
+  if @form.fields[3].checked
+    @form.show(4)
   else
-    @form.hide(3)
+    @form.hide(4)
     end
   }
-  @form.fields[2].trigger(:change)
-  @form.fields[4].on(:change) {
-  if @form.fields[4].checked
-    @form.show(5)
+  @form.fields[3].trigger(:change)
+  @form.fields[5].on(:change) {
+  if @form.fields[5].checked
+    @form.show(6)
   else
-    @form.hide(5)
+    @form.hide(6)
     end
   }
-  @form.fields[4].trigger(:change)
-  @form.fields[7].on(:change) {
-  if @form.fields[7].checked
-    @form.show(8)
+  @form.fields[5].trigger(:change)
+  @form.fields[8].on(:change) {
+  if @form.fields[8].checked
     @form.show(9)
+    @form.show(10)
   else
-    @form.hide(8)
     @form.hide(9)
+    @form.hide(10)
     end
   }
-  @form.fields[7].trigger(:change)
+  @form.fields[8].trigger(:change)
   }
 end
 def load_posts
@@ -2025,7 +2025,7 @@ lst_editor = ListBox.new([p_("Blog", "Formattable editor"), p_("Blog", "Source E
 edt_post = EditBox.new(p_("Blog", "Post"), type: EditBox::Flags::MultiLine|EditBox::Flags::HTML|EditBox::Flags::Formattable,text: "",quiet: true),
 btn_audio = OpusRecordButton.new(p_("Blog", "Audio content"), EltenPath.join(Dirs.temp, "audioblogpost.opus"), max_bitrate: 128),
 lst_categories = ListBox.new(@categories.map{|c|c.name},header: p_("Blog", "Post categories"),index: 0,flags: ListBox::Flags::MultiSelection),
-lst_tags = ListBox.new([],header: p_("Blog", "Post tags")),
+lst_tags = ListBox.new(@tags.map{ |t| t.name}, header: p_("Blog", "Post tags"), index: 0, flags: ListBox::Flags::MultiSelection),
 lst_visibility = ListBox.new([p_("Blog", "Show to everyone"),p_("Blog", "Show to Elten users only")],header: p_("Blog", "Visibility")),
 edt_excerpt = EditBox.new(p_("Blog", "Excerpt"), type: EditBox::Flags::MultiLine,text: "",quiet: true),
 chk_schedule = CheckBox.new(p_("Blog", "Schedule this post to be published in the future")),
@@ -2034,54 +2034,38 @@ chk_comments = CheckBox.new(p_("Blog", "Allow users to comment this post"), chec
 btn_send = Button.new(p_("Blog", "Send")),
 btn_cancel = Button.new(_("Cancel"))
 ]
-@tagids=[]
 lst_tags.bind_context{|menu|
-      menu.option(p_("Blog", "Add existing tag to this post"), nil, "e") {
-          dialog_open
-        tags = selecttag
-          dialog_close
-          added = 0
-          for tag in tags
-            next if tag == nil || tag.id.to_i <= 0
-            next if @tagids.include?(tag.id)
-            @tagids.push(tag.id)
-            lst_tags.options.push(tag.name)
-            added += 1
-          end
-            lst_tags.focus if added > 0
-      }
 menu.option(p_("Blog", "Add tag to this post"), nil, "n") {
 tagname=input_text(p_("Blog", "Tag to add"), flags: 0, text: "", escapable: true)
 if tagname!=nil
-tagid=-1
-for t in @tags
-  if t.name.downcase==tagname.downcase
-    tagid=t.id
+tagindex=-1
+for i in 0...@tags.size
+  if @tags[i].name.downcase==tagname.downcase
+    tagindex=i
     break
     end
 end
-if tagid==-1 and confirm(p_("Blog", "This tag does not exist, do you want to create it now?"))
+if tagindex==-1 and confirm(p_("Blog", "This tag does not exist, do you want to create it now?"))
+  tagid=-1
   begin
     tagid=EltenLink::Blog.tag_create(elten_link, blog: @owner, name: tagname).to_i
   rescue EltenLink::Error
     tagid=-1
   end
-end
-if tagid>0
-  @tagids.push(tagid)
-  lst_tags.options.push(tagname)
+  if tagid>0
+    @tags.push(Struct_Blog_Tag.new(tagid))
+    @tags.last.name=tagname
+    lst_tags.options.push(tagname)
+    tagindex=@tags.size-1
+    end
+  end
+if tagindex>=0
+  lst_tags.select_multiselection_indices([tagindex])
+  lst_tags.index=tagindex
   lst_tags.focus
   end
 end
 }
-if @tagids.size>0
-  menu.option(p_("Blog", "Remove tag from this post"), nil, :del) {
-  @tagids.delete_at(lst_tags.index)
-  lst_tags.options.delete_at(lst_tags.index)
-  play_sound("editbox_delete")
-  lst_tags.say_option
-}
-end
 }
 changed=false
 edt_post.on(:delete) {changed=true}
@@ -2127,14 +2111,9 @@ ph = EltenLink::Client.absolute_api_url(ph)
     for i in 0...@categories.size
       lst_categories.selected[i]=(cats.include?(@categories[i].id))
     end
-    for tagid in tags
-      for tag in @tags
-        if tag.id==tagid
-          @tagids.push(tagid)
-          lst_tags.options.push(tag.name)
-          end
-        end
-      end
+    for i in 0...@tags.size
+      lst_tags.selected[i] = (tags.include?(@tags[i].id))
+    end
     end
     @lasteditor=0
     lst_editor.on(:move) {
@@ -2202,6 +2181,10 @@ cats=[]
 for i in 0...@categories.size
   cats.push(@categories[i].id) if lst_categories.selected[i]==true
 end
+tagids = []
+for i in 0...@tags.size
+  tagids.push(@tags[i].id) if lst_tags.selected[i] == true
+end
 if suc
   date_value = nil
   date_value=date if date!=0
@@ -2213,9 +2196,9 @@ if suc
     content = changed ? text : nil
     begin
       if @post>0
-        EltenLink::Blog.update_post(elten_link, blog: @owner, post_id: @post, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: @tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
+        EltenLink::Blog.update_post(elten_link, blog: @owner, post_id: @post, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
       else
-        EltenLink::Blog.create_post(elten_link, blog: @owner, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: @tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
+        EltenLink::Blog.create_post(elten_link, blog: @owner, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
       end
     rescue EltenLink::Error
       alert(_("Error"))
@@ -2237,9 +2220,9 @@ if suc
       audio_content = %Q([audio src="#{audio_url}"][/audio])
       content = [text.to_s, audio_content].reject { |part| part.to_s.strip == "" }.join("\n\n")
       if @post>0
-        EltenLink::Blog.update_post(elten_link, blog: @owner, post_id: @post, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: @tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
+        EltenLink::Blog.update_post(elten_link, blog: @owner, post_id: @post, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
       else
-        EltenLink::Blog.create_post(elten_link, blog: @owner, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: @tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
+        EltenLink::Blog.create_post(elten_link, blog: @owner, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
       end
     rescue EltenLink::Error
       alert(_("Error"))
@@ -2253,26 +2236,6 @@ if suc
       end
   end
     $scene = Scene_Blog_Posts.new(@owner,@category,@categoryselindex,@postselindex)
-  end
-    def selecttag
-      if @tags.size < 1
-      alert(p_("Blog", "There are currently no tags created, please add a new one."))
-      return []
-    end
-    sel = ListBox.new(@tags.map { |t| t.name}, header: p_("Blog", "Select tag"), index: 0, flags: ListBox::Flags::MultiSelection, quiet: false)
-      loop do
-      loop_update
-      sel.update
-        if key_pressed?(:key_escape)
-        loop_update
-        return []
-      end
-      if key_pressed?(:key_enter)
-        loop_update
-        selections = sel.multiselections
-        return selections.empty? ? [@tags[sel.index]] : selections.map{ |i| @tags[i] }
-      end
-    end
   end
   end
   
