@@ -19,6 +19,7 @@ module EltenAPI
       ES_LEFT = 0x00000000
       ES_MULTILINE = 0x0004
       ES_AUTOVSCROLL = 0x0040
+      ES_WANTRETURN = 0x1000
       BS_DEFPUSHBUTTON = 0x00000001
       SW_MAXIMIZE = 3
       SWP_NOSIZE = 0x0001
@@ -38,8 +39,10 @@ module EltenAPI
       EN_CHANGE = 0x0300
       VK_ESCAPE = 0x1B
       VK_RETURN = 0x0D
-      VK_TAB = 0x09
+      VK_CONTROL = 0x11
+      VK_MENU = 0x12
       VK_SHIFT = 0x10
+      VK_A = 0x41
       DLGC_WANTARROWS = 0x0001
       DLGC_WANTTAB = 0x0002
       DLGC_WANTALLKEYS = 0x0004
@@ -49,6 +52,8 @@ module EltenAPI
       EM_SETSEL = 0x00B1
       EM_SETLIMITTEXT = 0x00C5
       DELETE_WORD_CHARACTER = 0x7F
+      IDOK = 1
+      IDCANCEL = 2
       IDC_ARROW = 32512
       IDI_APPLICATION = 32512
       COLOR_WINDOW = 5
@@ -145,7 +150,6 @@ module EltenAPI
           @get_window_text = Fiddle::Function.new(user32["GetWindowTextW"], [PTR, Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT], Fiddle::TYPE_INT)
           @get_window_text_length = Fiddle::Function.new(user32["GetWindowTextLengthW"], [PTR], Fiddle::TYPE_INT)
           @get_key_state = Fiddle::Function.new(user32["GetKeyState"], [Fiddle::TYPE_INT], Fiddle::TYPE_SHORT)
-          @get_next_tab_item = Fiddle::Function.new(user32["GetNextDlgTabItem"], [PTR, PTR, Fiddle::TYPE_INT], PTR)
           @call_window_proc = Fiddle::Function.new(user32["CallWindowProcW"], [PTR, PTR, Fiddle::TYPE_INT, PTR, PTR], PTR)
           @def_window_proc = Fiddle::Function.new(user32["DefWindowProcW"], [PTR, Fiddle::TYPE_INT, PTR, PTR], PTR)
           @load_cursor = Fiddle::Function.new(user32["LoadCursorW"], [PTR, PTR], PTR)
@@ -170,7 +174,7 @@ module EltenAPI
           :set_active_window, :set_focus, :set_window_text, :post_message, :post_thread_message, :get_foreground_window, :get_window_thread_process_id, :attach_thread_input,
           :get_current_thread_id, :get_message, :translate_message, :dispatch_message, :is_dialog_message,
           :post_quit_message, :send_message, :get_window_text, :get_window_text_length, :get_key_state,
-          :get_next_tab_item, :call_window_proc, :def_window_proc, :set_window_long_ptr, :window_proc, :edit_proc,
+          :call_window_proc, :def_window_proc, :set_window_long_ptr, :window_proc, :edit_proc,
           :get_open_file_name
 
         def last_error
@@ -374,7 +378,12 @@ module EltenAPI
         def edit_proc(hwnd, message, wparam, lparam)
           case message
           when WM_GETDLGCODE
-            DLGC_WANTCHARS | DLGC_HASSETSEL | DLGC_WANTALLKEYS | DLGC_WANTARROWS | DLGC_WANTTAB
+            code = call_previous(hwnd, message, wparam, lparam).to_i & ~(DLGC_WANTTAB | DLGC_WANTALLKEYS)
+            if wparam.to_i == VK_RETURN && (NativeDialogs.api.get_key_state.call(VK_SHIFT) & 0x8000) != 0
+              code | DLGC_WANTALLKEYS
+            else
+              code
+            end
           when WM_SETFOCUS
             @focus_hwnd = hwnd.to_i
             call_previous(hwnd, message, wparam, lparam)
@@ -390,10 +399,8 @@ module EltenAPI
             if key == VK_ESCAPE
               close(false)
               return 0
-            elsif key == VK_TAB
-              reverse = (NativeDialogs.api.get_key_state.call(VK_SHIFT) & 0x8000) != 0
-              next_hwnd = NativeDialogs.api.get_next_tab_item.call(@hwnd, hwnd, reverse ? 1 : 0)
-              NativeDialogs.api.set_focus.call(next_hwnd) if next_hwnd.to_i != 0
+            elsif key == VK_A && (NativeDialogs.api.get_key_state.call(VK_CONTROL) & 0x8000) != 0 && (NativeDialogs.api.get_key_state.call(VK_MENU) & 0x8000) == 0
+              NativeDialogs.api.send_message.call(hwnd, EM_SETSEL, 0, -1)
               return 0
             elsif key == VK_RETURN && (NativeDialogs.api.get_key_state.call(VK_SHIFT) & 0x8000) == 0
               submit
@@ -443,7 +450,7 @@ module EltenAPI
             edit_height = field[:multiline] ? (@fields.size == 1 ? 350 : 210) : 28
             label = api.create_window.call(0, NativeDialogs.wide("STATIC"), NativeDialogs.wide(field[:label]), WS_CHILD | WS_VISIBLE | SS_LEFT, 20, y, 190, label_height, @hwnd, 0, api.get_module_handle.call(nil), nil)
             edit_style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_LEFT
-            edit_style |= ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL if field[:multiline]
+            edit_style |= ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL if field[:multiline]
             edit = api.create_window.call(0, NativeDialogs.wide("EDIT"), NativeDialogs.wide(field[:value].to_s), edit_style, 220, y, 400, edit_height, @hwnd, 0, api.get_module_handle.call(nil), nil)
             @hwnds.push(label.to_i, edit.to_i)
             @field_hwnds[field[:id]] = edit
@@ -457,8 +464,8 @@ module EltenAPI
             @edit_previous[edit.to_i] = previous if previous.to_i != 0
             y += edit_height + 18
           end
-          @send_button = api.create_window.call(0, NativeDialogs.wide("BUTTON"), NativeDialogs.wide(@send_label), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON, 20, 410, 300, 42, @hwnd, 0, api.get_module_handle.call(nil), nil)
-          @cancel_button = api.create_window.call(0, NativeDialogs.wide("BUTTON"), NativeDialogs.wide(@cancel_label), WS_CHILD | WS_VISIBLE | WS_TABSTOP, 320, 410, 300, 42, @hwnd, 0, api.get_module_handle.call(nil), nil)
+          @send_button = api.create_window.call(0, NativeDialogs.wide("BUTTON"), NativeDialogs.wide(@send_label), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON, 20, 410, 300, 42, @hwnd, IDOK, api.get_module_handle.call(nil), nil)
+          @cancel_button = api.create_window.call(0, NativeDialogs.wide("BUTTON"), NativeDialogs.wide(@cancel_label), WS_CHILD | WS_VISIBLE | WS_TABSTOP, 320, 410, 300, 42, @hwnd, IDCANCEL, api.get_module_handle.call(nil), nil)
           @hwnds.push(@send_button.to_i, @cancel_button.to_i)
           @focus_hwnd = @fields.any? { |field| field[:value].to_s != "" } ? @field_hwnds[@fields.last[:id]] : first_edit
           api.show_window.call(@hwnd, SW_MAXIMIZE)

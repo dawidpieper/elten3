@@ -163,6 +163,7 @@ module EltenAPI
         @message_id_pending = false
         @message_request_pending = false
         @message_request_token = 0
+        @message_submit_token = 0
         @message_lasttext = nil
         @message_lastsubject = nil
         @message_lastrecipient = nil
@@ -193,7 +194,9 @@ module EltenAPI
         when :message_result
           handle_message_result(job[1], job[2], job[3])
         when :message_submit
-          submit_message(job[1])
+          start_message_submit(job[1])
+        when :message_submit_result
+          finish_message_submit(job[1], job[2], job[3])
         when :feed_submit
           submit_feed(job[1], job[2])
         when :chat_submit
@@ -240,6 +243,7 @@ module EltenAPI
 
       def reset_session
         @message_request_token = @message_request_token.to_i + 1
+        @message_submit_token = @message_submit_token.to_i + 1
         @message_request_pending = false
         @message_id = 0
         @message_id_pending = false
@@ -717,17 +721,33 @@ module EltenAPI
         play_sound("signal")
       end
 
-      def submit_message(values)
-        EltenLink::Messages.send_text(
-          elten_link,
-          to: values[:recipient].to_s,
-          subject: values[:subject].to_s,
-          text: values[:text].to_s
-        )
+      def start_message_submit(values)
+        token = @message_submit_token.to_i
         play_sound("messages_update")
-      rescue Exception => e
-        Log.error("InvisibleInterface message submit: #{e.class}: #{e.message}")
-        open_message_dialog(values[:recipient], values[:subject], values[:text], p_("Messages", "Failed to send message"))
+        Thread.new do
+          Thread.current.report_on_exception = false
+          error = nil
+          begin
+            EltenLink::Messages.send_text(
+              elten_link,
+              to: values[:recipient].to_s,
+              subject: values[:subject].to_s,
+              text: values[:text].to_s
+            )
+          rescue Exception => e
+            error = e
+          ensure
+            @jobs << [:message_submit_result, token, values, error]
+          end
+        end
+      end
+
+      def finish_message_submit(token, values, error)
+        return if token.to_i != @message_submit_token.to_i
+        if error != nil
+          Log.error("InvisibleInterface message submit: #{error.class}: #{error.message}")
+          open_message_dialog(values[:recipient], values[:subject], values[:text], p_("Messages", "Failed to send message"))
+        end
       end
 
       def submit_feed(text, response=0)
