@@ -131,18 +131,20 @@ module OSXVoiceOverBridge
 
     # Simulate a Control key press+release via CoreGraphics to interrupt VoiceOver.
     # VoiceOver treats the Control key as its universal "stop speaking" command.
+    # kCGSessionEventTap scopes the event to the current login session rather than
+    # the raw HID stream, so it cannot reach apps in other user sessions.
     def stop_speech
       return false unless voiceover_running?
       cg = core_graphics
       return false if cg == nil
-      kVK_Control      = 0x3B
-      kCGHIDEventTap   = 0
-      create_kb_event  = Fiddle::Function.new(cg["CGEventCreateKeyboardEvent"], [PTR, INT, INT], PTR)
-      post_event       = Fiddle::Function.new(cg["CGEventPost"], [INT, PTR], VOID)
-      key_down = create_kb_event.call(0, kVK_Control, 1)
-      key_up   = create_kb_event.call(0, kVK_Control, 0)
-      post_event.call(kCGHIDEventTap, key_down)
-      post_event.call(kCGHIDEventTap, key_up)
+      kVK_Control          = 0x3B
+      kCGSessionEventTap   = 1
+      key_down = cg_create_kb_event.call(0, kVK_Control, 1)
+      key_up   = cg_create_kb_event.call(0, kVK_Control, 0)
+      cg_post_event.call(kCGSessionEventTap, key_down)
+      cg_post_event.call(kCGSessionEventTap, key_up)
+      cf_release.call(key_down)
+      cf_release.call(key_up)
       true
     rescue Exception => e
       log_warning("stop_speech failed: #{e.class}: #{e.message}")
@@ -154,6 +156,21 @@ module OSXVoiceOverBridge
       @core_graphics = Fiddle.dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
     rescue Exception
       @core_graphics = nil
+    end
+
+    def cg_create_kb_event
+      @cg_create_kb_event ||= Fiddle::Function.new(core_graphics["CGEventCreateKeyboardEvent"], [PTR, INT, INT], PTR)
+    end
+
+    def cg_post_event
+      @cg_post_event ||= Fiddle::Function.new(core_graphics["CGEventPost"], [INT, PTR], VOID)
+    end
+
+    def cf_release
+      @cf_release ||= Fiddle::Function.new(
+        Fiddle.dlopen("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")["CFRelease"],
+        [PTR], VOID
+      )
     end
 
     def log_warning(msg)
@@ -203,7 +220,7 @@ class OSXVoiceOverOutput < SpeechOutput
       true
     end
 
-    def speak_text(text, method: 1, spelling: false, interrupt: true, pitch: 50)
+    def speak_text(text, method: 1, spelling: false, _interrupt: true, _pitch: 50)
       return 1 unless usable?
       text = text.to_s.chars.join(" ") if spelling
       OSXVoiceOverBridge.announce(text.to_s)
