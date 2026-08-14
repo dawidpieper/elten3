@@ -355,7 +355,7 @@ def make_window
           make_setting(braille_label, :bool, "Interface", "EnableBraille")
         end
         make_setting(p_("Settings", "Use a voice dictionary when processing characters (requires NVDA addon when using NVDA as a speech output)"), :bool, "Voice", "UseVoiceDictionary")
-                        make_setting(p_("Settings", "Typing echo"), [p_("Settings", "Characters"),p_("Settings", "Words"),p_("Settings", "Characters and words"),p_("Settings", "None")], "Interface", "TypingEcho")
+                        make_setting(p_("Settings", "Typing echo"), [p_("Settings", "Characters"),p_("Settings", "Words"),p_("Settings", "Characters and words"),p_("Settings", "None")], "Interface", "TypingEcho", ["characters", "words", "characters_and_words", "none"])
         on_load {
         voice_output=Proc.new {
           voice=voicesmapping[@form.fields[1].index].to_s

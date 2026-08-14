@@ -231,14 +231,14 @@ class OSXVoiceOverOutput < SpeechOutput
 
     # Braille output is automatic: VoiceOver mirrors speech to Braille displays.
     def braille(text, _pos = nil, _push = false, _type = 0, _index = nil, _cursor = nil)
-      return unless Configuration.enablebraille == 1 && usable?
+      return unless Configuration.enablebraille && usable?
       OSXVoiceOverBridge.announce(text.to_s)
     rescue Exception => e
       Log.warning("OSXVoiceOverOutput.braille: #{e.class}: #{e.message}") if defined?(Log)
     end
 
     def braille_alert(text)
-      return unless Configuration.enablebraille == 1 && usable?
+      return unless Configuration.enablebraille && usable?
       OSXVoiceOverBridge.announce(text.to_s)
     rescue Exception => e
       Log.warning("OSXVoiceOverOutput.braille_alert: #{e.class}: #{e.message}") if defined?(Log)
