@@ -47,6 +47,7 @@ module EltenAPI
       text<<" " if text!=""
       message_header=p_("FeedViewer", "Message")
       edit=EditBox.new(message_header, type: 0, text: text, max_length: message_max_length)
+      edit.index=edit.check=text.length
       update_message_header=lambda do
         count=edit.text.to_s.chrsize
         edit.header = if count>0
