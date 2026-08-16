@@ -8,7 +8,7 @@ msgstr ""
 "Project-Id-Version: Elten 3.0\n"
 "Report-Msgid-Bugs-To: dawidpieper@o2.pl\n"
 "POT-Creation-Date: 2026-08-13 12:31+0200\n"
-"PO-Revision-Date: 2026-08-16 09:50+0500\n"
+"PO-Revision-Date: 2026-08-16 10:26+0500\n"
 "Last-Translator: Danil Kostenkov <danilkostenkov38@gmail.com>\n"
 "Language-Team: monstricek, russiandan2019\n"
 "Language: ru\n"
@@ -23,9 +23,44 @@ msgctxt "EAPI_Common"
 msgid "Exit..."
 msgstr "Выход..."
 
-#: src/eapi/common/console.rb:16 src/eapi/eltensrv/attachments.rb:55 src/eapi/eltensrv/feeds.rb:68 src/eapi/external.rb:63 src/eapi/program_settings.rb:198 src/eapi/speechtofile.rb:146 src/eapi/speechtofile.rb:174 src/platforms/windows/invisibleinterface/service.rb:717 src/platforms/windows/invisibleinterface/service.rb:733 src/platforms/windows/invisibleinterface/service.rb:749 src/scenes/account.rb:129 src/scenes/account.rb:915 src/scenes/account.rb:1016 src/scenes/ban.rb:26 src/scenes/ban.rb:119 src/scenes/blog.rb:484 src/scenes/blog.rb:872 src/scenes/blog.rb:1113 src/scenes/blog.rb:1323 src/scenes/blog.rb:1442 src/scenes/blog.rb:1500 src/scenes/blog.rb:1632 src/scenes/blog.rb:2035 src/scenes/blog.rb:2445 src/scenes/blog.rb:2575 src/scenes/calendar.rb:80 src/scenes/calendar.rb:640 src/scenes/calendar.rb:725 src/scenes/clock.rb:12 src/scenes/clock.rb:68
-#: src/scenes/conference.rb:870 src/scenes/conference.rb:936 src/scenes/conference.rb:964 src/scenes/conference.rb:1038 src/scenes/conference.rb:1154 src/scenes/conference.rb:1227 src/scenes/conference.rb:1371 src/scenes/conference.rb:1744 src/scenes/conference.rb:1776 src/scenes/conference.rb:1813 src/scenes/conference.rb:1915 src/scenes/conference.rb:1936 src/scenes/conference.rb:1961 src/scenes/conference.rb:2218 src/scenes/forum.rb:925 src/scenes/forum.rb:950 src/scenes/forum.rb:1063 src/scenes/forum.rb:1385 src/scenes/forum.rb:1423 src/scenes/forum.rb:1600 src/scenes/forum.rb:1733 src/scenes/forum.rb:1829 src/scenes/forum.rb:2389 src/scenes/forum.rb:2454 src/scenes/forum.rb:2549 src/scenes/forum.rb:3690 src/scenes/forum.rb:3750 src/scenes/forum.rb:3864 src/scenes/forum.rb:3888 src/scenes/forum.rb:4463 src/scenes/login.rb:106 src/scenes/login.rb:307
-#: src/scenes/main.rb:556 src/scenes/messages.rb:330 src/scenes/messages.rb:908 src/scenes/notes.rb:87 src/scenes/notes.rb:231 src/scenes/polls.rb:146 src/scenes/polls.rb:204 src/scenes/polls.rb:375 src/scenes/programs.rb:55 src/scenes/programs.rb:75 src/scenes/settings.rb:152 src/scenes/sounds.rb:271 src/scenes/speedtest.rb:9 src/scenes/tasks.rb:117 src/scenes/tasks.rb:326 src/scenes/tasks.rb:420 src/ui/controls/date_button.rb:34 src/ui/controls/edit_box.rb:528 src/ui/controls/edit_box.rb:639 src/ui/controls/opus_record_button.rb:190 src/ui/controls/opus_record_button.rb:268 src/ui/controls/opus_record_button.rb:331 src/ui/controls/player.rb:158 src/ui/controls/player.rb:224 src/ui/dialogs.rb:135
+#: src/eapi/common/console.rb:16 src/eapi/eltensrv/attachments.rb:55
+#: src/eapi/eltensrv/feeds.rb:68 src/eapi/external.rb:63
+#: src/eapi/program_settings.rb:198 src/eapi/speechtofile.rb:146
+#: src/eapi/speechtofile.rb:174
+#: src/platforms/windows/invisibleinterface/service.rb:717
+#: src/platforms/windows/invisibleinterface/service.rb:733
+#: src/platforms/windows/invisibleinterface/service.rb:749
+#: src/scenes/account.rb:129 src/scenes/account.rb:915
+#: src/scenes/account.rb:1016 src/scenes/ban.rb:26 src/scenes/ban.rb:119
+#: src/scenes/blog.rb:484 src/scenes/blog.rb:872 src/scenes/blog.rb:1113
+#: src/scenes/blog.rb:1323 src/scenes/blog.rb:1442 src/scenes/blog.rb:1500
+#: src/scenes/blog.rb:1632 src/scenes/blog.rb:2035 src/scenes/blog.rb:2445
+#: src/scenes/blog.rb:2575 src/scenes/calendar.rb:80 src/scenes/calendar.rb:640
+#: src/scenes/calendar.rb:725 src/scenes/clock.rb:12 src/scenes/clock.rb:68
+#: src/scenes/conference.rb:870 src/scenes/conference.rb:936
+#: src/scenes/conference.rb:964 src/scenes/conference.rb:1038
+#: src/scenes/conference.rb:1154 src/scenes/conference.rb:1227
+#: src/scenes/conference.rb:1371 src/scenes/conference.rb:1744
+#: src/scenes/conference.rb:1776 src/scenes/conference.rb:1813
+#: src/scenes/conference.rb:1915 src/scenes/conference.rb:1936
+#: src/scenes/conference.rb:1961 src/scenes/conference.rb:2218
+#: src/scenes/forum.rb:925 src/scenes/forum.rb:950 src/scenes/forum.rb:1063
+#: src/scenes/forum.rb:1385 src/scenes/forum.rb:1423 src/scenes/forum.rb:1600
+#: src/scenes/forum.rb:1733 src/scenes/forum.rb:1829 src/scenes/forum.rb:2389
+#: src/scenes/forum.rb:2454 src/scenes/forum.rb:2549 src/scenes/forum.rb:3690
+#: src/scenes/forum.rb:3750 src/scenes/forum.rb:3864 src/scenes/forum.rb:3888
+#: src/scenes/forum.rb:4463 src/scenes/login.rb:106 src/scenes/login.rb:307
+#: src/scenes/main.rb:556 src/scenes/messages.rb:330 src/scenes/messages.rb:908
+#: src/scenes/notes.rb:87 src/scenes/notes.rb:231 src/scenes/polls.rb:146
+#: src/scenes/polls.rb:204 src/scenes/polls.rb:375 src/scenes/programs.rb:55
+#: src/scenes/programs.rb:75 src/scenes/settings.rb:152
+#: src/scenes/sounds.rb:271 src/scenes/speedtest.rb:9 src/scenes/tasks.rb:117
+#: src/scenes/tasks.rb:326 src/scenes/tasks.rb:420
+#: src/ui/controls/date_button.rb:34 src/ui/controls/edit_box.rb:528
+#: src/ui/controls/edit_box.rb:639 src/ui/controls/opus_record_button.rb:190
+#: src/ui/controls/opus_record_button.rb:268
+#: src/ui/controls/opus_record_button.rb:331 src/ui/controls/player.rb:158
+#: src/ui/controls/player.rb:224 src/ui/dialogs.rb:135
 msgid "Cancel"
 msgstr "Отменить"
 
@@ -34,7 +69,9 @@ msgctxt "EAPI_Common"
 msgid "Hide program in Tray"
 msgstr "Скрыть программу в трей"
 
-#: src/eapi/common/console.rb:18 src/scenes/account.rb:866 src/scenes/authentication.rb:24 src/scenes/authentication.rb:26 src/scenes/forgotpassword.rb:30 src/scenes/loading.rb:322
+#: src/eapi/common/console.rb:18 src/scenes/account.rb:866
+#: src/scenes/authentication.rb:24 src/scenes/authentication.rb:26
+#: src/scenes/forgotpassword.rb:30 src/scenes/loading.rb:322
 msgid "Exit"
 msgstr "Закрыть программу"
 
@@ -68,12 +105,14 @@ msgctxt "EAPI_Common"
 msgid "Enable auto clear input"
 msgstr "Включить автоочистку ввода"
 
-#: src/eapi/common/console.rb:117 src/eapi/common/console.rb:131 src/eapi/common/console.rb:149
+#: src/eapi/common/console.rb:117 src/eapi/common/console.rb:131
+#: src/eapi/common/console.rb:149
 msgctxt "EAPI_Common"
 msgid "Disabled"
 msgstr "Отключено"
 
-#: src/eapi/common/console.rb:120 src/eapi/common/console.rb:134 src/eapi/common/console.rb:146
+#: src/eapi/common/console.rb:120 src/eapi/common/console.rb:134
+#: src/eapi/common/console.rb:146
 msgctxt "EAPI_Common"
 msgid "Enabled"
 msgstr "Включено"
@@ -497,13 +536,90 @@ msgctxt "Documentation"
 msgid "Current Invisible Interface modifier key"
 msgstr "Текущая горячая клавиша"
 
-#: src/eapi/eltensrv/attachments.rb:25 src/eapi/eltensrv/attachments.rb:32 src/eapi/eltensrv/attachments.rb:74 src/eapi/eltensrv/bugs.rb:29 src/eapi/eltensrv/feeds.rb:131 src/eapi/eltensrv/feeds.rb:162 src/eapi/eltensrv/monitors.rb:15 src/eapi/eltensrv/monitors.rb:24 src/eapi/eltensrv/users.rb:17 src/eapi/eltensrv/users.rb:67 src/eapi/eltensrv/users.rb:75 src/eapi/eltensrv/users.rb:83 src/eapi/eltensrv/users.rb:103 src/eapi/notificationgroups.rb:517 src/eapi/notificationgroups.rb:536 src/eapi/quickactions.rb:36 src/eapi/quickactions.rb:51 src/eapi/quickactions.rb:179 src/scenes/account.rb:514 src/scenes/account.rb:572 src/scenes/account.rb:840 src/scenes/account.rb:848 src/scenes/account.rb:855 src/scenes/account.rb:882 src/scenes/account.rb:927 src/scenes/account.rb:949 src/scenes/account.rb:976 src/scenes/account.rb:993 src/scenes/admins.rb:67
-#: src/scenes/auctions.rb:29 src/scenes/authentication.rb:18 src/scenes/authentication.rb:60 src/scenes/authentication.rb:107 src/scenes/authentication.rb:122 src/scenes/ban.rb:76 src/scenes/ban.rb:110 src/scenes/ban.rb:137 src/scenes/blog.rb:94 src/scenes/blog.rb:112 src/scenes/blog.rb:152 src/scenes/blog.rb:173 src/scenes/blog.rb:189 src/scenes/blog.rb:249 src/scenes/blog.rb:359 src/scenes/blog.rb:427 src/scenes/blog.rb:477 src/scenes/blog.rb:507 src/scenes/blog.rb:528 src/scenes/blog.rb:571 src/scenes/blog.rb:691 src/scenes/blog.rb:697 src/scenes/blog.rb:777 src/scenes/blog.rb:827 src/scenes/blog.rb:853 src/scenes/blog.rb:865 src/scenes/blog.rb:895 src/scenes/blog.rb:994 src/scenes/blog.rb:1061 src/scenes/blog.rb:1123 src/scenes/blog.rb:1172 src/scenes/blog.rb:1202 src/scenes/blog.rb:1209 src/scenes/blog.rb:1219 src/scenes/blog.rb:1245
-#: src/scenes/blog.rb:1258 src/scenes/blog.rb:1271 src/scenes/blog.rb:1310 src/scenes/blog.rb:1340 src/scenes/blog.rb:1375 src/scenes/blog.rb:1403 src/scenes/blog.rb:1416 src/scenes/blog.rb:1466 src/scenes/blog.rb:1492 src/scenes/blog.rb:1508 src/scenes/blog.rb:1624 src/scenes/blog.rb:1781 src/scenes/blog.rb:1923 src/scenes/blog.rb:1939 src/scenes/blog.rb:1997 src/scenes/blog.rb:2011 src/scenes/blog.rb:2080 src/scenes/blog.rb:2204 src/scenes/blog.rb:2211 src/scenes/blog.rb:2217 src/scenes/blog.rb:2228 src/scenes/blog.rb:2318 src/scenes/blog.rb:2327 src/scenes/blog.rb:2337 src/scenes/blog.rb:2381 src/scenes/blog.rb:2437 src/scenes/blog.rb:2544 src/scenes/blog.rb:2587 src/scenes/calendar.rb:201 src/scenes/calendar.rb:214 src/scenes/calendar.rb:319 src/scenes/calendar.rb:332 src/scenes/calendar.rb:590 src/scenes/calendar.rb:665 src/scenes/calendar.rb:676
-#: src/scenes/calendar.rb:687 src/scenes/calendar.rb:698 src/scenes/calendar.rb:720 src/scenes/calendar.rb:739 src/scenes/calendar.rb:776 src/scenes/calendar.rb:839 src/scenes/calendar.rb:851 src/scenes/calendar.rb:921 src/scenes/callhistory.rb:18 src/scenes/conference.rb:864 src/scenes/conference.rb:886 src/scenes/conference.rb:905 src/scenes/feedviewer.rb:22 src/scenes/feedviewer.rb:132 src/scenes/forgotpassword.rb:24 src/scenes/forum.rb:8 src/scenes/forum.rb:15 src/scenes/forum.rb:662 src/scenes/forum.rb:830 src/scenes/forum.rb:1718 src/scenes/forum.rb:2636 src/scenes/forum.rb:2757 src/scenes/forum.rb:2801 src/scenes/forum.rb:3261 src/scenes/forum.rb:3649 src/scenes/forum.rb:3676 src/scenes/forum.rb:3817 src/scenes/honors.rb:16 src/scenes/honors.rb:71 src/scenes/honors.rb:102 src/scenes/honors.rb:120 src/scenes/loading.rb:296 src/scenes/main.rb:606
-#: src/scenes/main.rb:716 src/scenes/messages.rb:144 src/scenes/messages.rb:205 src/scenes/messages.rb:222 src/scenes/messages.rb:229 src/scenes/messages.rb:257 src/scenes/messages.rb:287 src/scenes/messages.rb:321 src/scenes/messages.rb:375 src/scenes/messages.rb:398 src/scenes/messages.rb:414 src/scenes/messages.rb:434 src/scenes/messages.rb:443 src/scenes/messages.rb:522 src/scenes/messages.rb:541 src/scenes/messages.rb:554 src/scenes/messages.rb:561 src/scenes/messages.rb:763 src/scenes/messages.rb:772 src/scenes/messages.rb:790 src/scenes/messages.rb:799 src/scenes/messages.rb:857 src/scenes/messages.rb:947 src/scenes/messages.rb:1060 src/scenes/notes.rb:18 src/scenes/notes.rb:82 src/scenes/notes.rb:112 src/scenes/notes.rb:153 src/scenes/notes.rb:168 src/scenes/notes.rb:204 src/scenes/notes.rb:220 src/scenes/notes.rb:251
-#: src/scenes/notifications.rb:58 src/scenes/online.rb:14 src/scenes/polls.rb:29 src/scenes/polls.rb:58 src/scenes/polls.rb:103 src/scenes/polls.rb:315 src/scenes/polls.rb:333 src/scenes/polls.rb:416 src/scenes/polls.rb:450 src/scenes/polls.rb:463 src/scenes/polls.rb:518 src/scenes/polls.rb:541 src/scenes/premiumpackages.rb:288 src/scenes/premiumpackages.rb:375 src/scenes/premiumpackages.rb:414 src/scenes/premiumpackages.rb:432 src/scenes/premiumpackages.rb:443 src/scenes/registration.rb:45 src/scenes/settings.rb:236 src/scenes/sounds.rb:297 src/scenes/sounds.rb:330 src/scenes/sounds.rb:356 src/scenes/soundthemes.rb:83 src/scenes/soundthemes.rb:162 src/scenes/sponsors.rb:14 src/scenes/tasks.rb:247 src/scenes/tasks.rb:358 src/scenes/tasks.rb:369 src/scenes/tasks.rb:392 src/scenes/tasks.rb:404 src/scenes/tasks.rb:415 src/scenes/tasks.rb:434
-#: src/scenes/tasks.rb:500 src/scenes/tasks.rb:617 src/scenes/tasks.rb:635 src/scenes/tasks.rb:664 src/scenes/tasks.rb:731 src/scenes/users_recentlyactived.rb:14 src/scenes/users_recentlyregistered.rb:14 src/scenes/usersaddedmetocontacts.rb:22 src/scenes/usersearch.rb:21
+#: src/eapi/eltensrv/attachments.rb:25 src/eapi/eltensrv/attachments.rb:32
+#: src/eapi/eltensrv/attachments.rb:74 src/eapi/eltensrv/bugs.rb:29
+#: src/eapi/eltensrv/feeds.rb:131 src/eapi/eltensrv/feeds.rb:162
+#: src/eapi/eltensrv/monitors.rb:15 src/eapi/eltensrv/monitors.rb:24
+#: src/eapi/eltensrv/users.rb:17 src/eapi/eltensrv/users.rb:67
+#: src/eapi/eltensrv/users.rb:75 src/eapi/eltensrv/users.rb:83
+#: src/eapi/eltensrv/users.rb:103 src/eapi/notificationgroups.rb:517
+#: src/eapi/notificationgroups.rb:536 src/eapi/quickactions.rb:36
+#: src/eapi/quickactions.rb:51 src/eapi/quickactions.rb:179
+#: src/scenes/account.rb:514 src/scenes/account.rb:572
+#: src/scenes/account.rb:840 src/scenes/account.rb:848
+#: src/scenes/account.rb:855 src/scenes/account.rb:882
+#: src/scenes/account.rb:927 src/scenes/account.rb:949
+#: src/scenes/account.rb:976 src/scenes/account.rb:993 src/scenes/admins.rb:67
+#: src/scenes/auctions.rb:29 src/scenes/authentication.rb:18
+#: src/scenes/authentication.rb:60 src/scenes/authentication.rb:107
+#: src/scenes/authentication.rb:122 src/scenes/ban.rb:76 src/scenes/ban.rb:110
+#: src/scenes/ban.rb:137 src/scenes/blog.rb:94 src/scenes/blog.rb:112
+#: src/scenes/blog.rb:152 src/scenes/blog.rb:173 src/scenes/blog.rb:189
+#: src/scenes/blog.rb:249 src/scenes/blog.rb:359 src/scenes/blog.rb:427
+#: src/scenes/blog.rb:477 src/scenes/blog.rb:507 src/scenes/blog.rb:528
+#: src/scenes/blog.rb:571 src/scenes/blog.rb:691 src/scenes/blog.rb:697
+#: src/scenes/blog.rb:777 src/scenes/blog.rb:827 src/scenes/blog.rb:853
+#: src/scenes/blog.rb:865 src/scenes/blog.rb:895 src/scenes/blog.rb:994
+#: src/scenes/blog.rb:1061 src/scenes/blog.rb:1123 src/scenes/blog.rb:1172
+#: src/scenes/blog.rb:1202 src/scenes/blog.rb:1209 src/scenes/blog.rb:1219
+#: src/scenes/blog.rb:1245 src/scenes/blog.rb:1258 src/scenes/blog.rb:1271
+#: src/scenes/blog.rb:1310 src/scenes/blog.rb:1340 src/scenes/blog.rb:1375
+#: src/scenes/blog.rb:1403 src/scenes/blog.rb:1416 src/scenes/blog.rb:1466
+#: src/scenes/blog.rb:1492 src/scenes/blog.rb:1508 src/scenes/blog.rb:1624
+#: src/scenes/blog.rb:1781 src/scenes/blog.rb:1923 src/scenes/blog.rb:1939
+#: src/scenes/blog.rb:1997 src/scenes/blog.rb:2011 src/scenes/blog.rb:2080
+#: src/scenes/blog.rb:2204 src/scenes/blog.rb:2211 src/scenes/blog.rb:2217
+#: src/scenes/blog.rb:2228 src/scenes/blog.rb:2318 src/scenes/blog.rb:2327
+#: src/scenes/blog.rb:2337 src/scenes/blog.rb:2381 src/scenes/blog.rb:2437
+#: src/scenes/blog.rb:2544 src/scenes/blog.rb:2587 src/scenes/calendar.rb:201
+#: src/scenes/calendar.rb:214 src/scenes/calendar.rb:319
+#: src/scenes/calendar.rb:332 src/scenes/calendar.rb:590
+#: src/scenes/calendar.rb:665 src/scenes/calendar.rb:676
+#: src/scenes/calendar.rb:687 src/scenes/calendar.rb:698
+#: src/scenes/calendar.rb:720 src/scenes/calendar.rb:739
+#: src/scenes/calendar.rb:776 src/scenes/calendar.rb:839
+#: src/scenes/calendar.rb:851 src/scenes/calendar.rb:921
+#: src/scenes/callhistory.rb:18 src/scenes/conference.rb:864
+#: src/scenes/conference.rb:886 src/scenes/conference.rb:905
+#: src/scenes/feedviewer.rb:22 src/scenes/feedviewer.rb:132
+#: src/scenes/forgotpassword.rb:24 src/scenes/forum.rb:8 src/scenes/forum.rb:15
+#: src/scenes/forum.rb:662 src/scenes/forum.rb:830 src/scenes/forum.rb:1718
+#: src/scenes/forum.rb:2636 src/scenes/forum.rb:2757 src/scenes/forum.rb:2801
+#: src/scenes/forum.rb:3261 src/scenes/forum.rb:3649 src/scenes/forum.rb:3676
+#: src/scenes/forum.rb:3817 src/scenes/honors.rb:16 src/scenes/honors.rb:71
+#: src/scenes/honors.rb:102 src/scenes/honors.rb:120 src/scenes/loading.rb:296
+#: src/scenes/main.rb:606 src/scenes/main.rb:716 src/scenes/messages.rb:144
+#: src/scenes/messages.rb:205 src/scenes/messages.rb:222
+#: src/scenes/messages.rb:229 src/scenes/messages.rb:257
+#: src/scenes/messages.rb:287 src/scenes/messages.rb:321
+#: src/scenes/messages.rb:375 src/scenes/messages.rb:398
+#: src/scenes/messages.rb:414 src/scenes/messages.rb:434
+#: src/scenes/messages.rb:443 src/scenes/messages.rb:522
+#: src/scenes/messages.rb:541 src/scenes/messages.rb:554
+#: src/scenes/messages.rb:561 src/scenes/messages.rb:763
+#: src/scenes/messages.rb:772 src/scenes/messages.rb:790
+#: src/scenes/messages.rb:799 src/scenes/messages.rb:857
+#: src/scenes/messages.rb:947 src/scenes/messages.rb:1060
+#: src/scenes/notes.rb:18 src/scenes/notes.rb:82 src/scenes/notes.rb:112
+#: src/scenes/notes.rb:153 src/scenes/notes.rb:168 src/scenes/notes.rb:204
+#: src/scenes/notes.rb:220 src/scenes/notes.rb:251
+#: src/scenes/notifications.rb:58 src/scenes/online.rb:14
+#: src/scenes/polls.rb:29 src/scenes/polls.rb:58 src/scenes/polls.rb:103
+#: src/scenes/polls.rb:315 src/scenes/polls.rb:333 src/scenes/polls.rb:416
+#: src/scenes/polls.rb:450 src/scenes/polls.rb:463 src/scenes/polls.rb:518
+#: src/scenes/polls.rb:541 src/scenes/premiumpackages.rb:288
+#: src/scenes/premiumpackages.rb:375 src/scenes/premiumpackages.rb:414
+#: src/scenes/premiumpackages.rb:432 src/scenes/premiumpackages.rb:443
+#: src/scenes/registration.rb:45 src/scenes/settings.rb:236
+#: src/scenes/sounds.rb:297 src/scenes/sounds.rb:330 src/scenes/sounds.rb:356
+#: src/scenes/soundthemes.rb:83 src/scenes/soundthemes.rb:162
+#: src/scenes/sponsors.rb:14 src/scenes/tasks.rb:247 src/scenes/tasks.rb:358
+#: src/scenes/tasks.rb:369 src/scenes/tasks.rb:392 src/scenes/tasks.rb:404
+#: src/scenes/tasks.rb:415 src/scenes/tasks.rb:434 src/scenes/tasks.rb:500
+#: src/scenes/tasks.rb:617 src/scenes/tasks.rb:635 src/scenes/tasks.rb:664
+#: src/scenes/tasks.rb:731 src/scenes/users_recentlyactived.rb:14
+#: src/scenes/users_recentlyregistered.rb:14
+#: src/scenes/usersaddedmetocontacts.rb:22 src/scenes/usersearch.rb:21
 msgid "Error"
 msgstr "Ошибка"
 
@@ -552,11 +668,14 @@ msgctxt "EAPI_Common"
 msgid "Sent."
 msgstr "Отправлено."
 
-#: src/eapi/eltensrv/contacts.rb:21 src/eapi/eltensrv/profiles.rb:15 src/scenes/contacts.rb:27 src/scenes/contacts.rb:131 src/scenes/contacts.rb:169 src/scenes/users.rb:19
+#: src/eapi/eltensrv/contacts.rb:21 src/eapi/eltensrv/profiles.rb:15
+#: src/scenes/contacts.rb:27 src/scenes/contacts.rb:131
+#: src/scenes/contacts.rb:169 src/scenes/users.rb:19
 msgid "Database Error"
 msgstr "Ошибка в базе данных"
 
-#: src/eapi/eltensrv/contacts.rb:25 src/scenes/contacts.rb:31 src/scenes/contacts.rb:134 src/scenes/contacts.rb:172 src/scenes/users.rb:23
+#: src/eapi/eltensrv/contacts.rb:25 src/scenes/contacts.rb:31
+#: src/scenes/contacts.rb:134 src/scenes/contacts.rb:172 src/scenes/users.rb:23
 msgid "Token expired"
 msgstr "Ключ истёк"
 
@@ -570,7 +689,8 @@ msgctxt "EAPI_Common"
 msgid "Select contact"
 msgstr "Выберите контакт"
 
-#: src/eapi/eltensrv/feeds.rb:27 src/eapi/eltensrv/feeds.rb:179 src/platforms/windows/invisibleinterface/service.rb:564
+#: src/eapi/eltensrv/feeds.rb:27 src/eapi/eltensrv/feeds.rb:179
+#: src/platforms/windows/invisibleinterface/service.rb:564
 msgctxt "FeedViewer"
 msgid "Audio content"
 msgstr "Аудиоконтент"
@@ -580,7 +700,9 @@ msgctxt "FeedViewer"
 msgid "Message"
 msgstr "Сообщение"
 
-#: src/eapi/eltensrv/feeds.rb:53 src/platforms/windows/invisibleinterface/nativedialogs.rb:587 src/ui/form.rb:402
+#: src/eapi/eltensrv/feeds.rb:53
+#: src/platforms/windows/invisibleinterface/nativedialogs.rb:587
+#: src/ui/form.rb:402
 msgctxt "EAPI_Form"
 msgid "%{count} of %{maximum} characters"
 msgstr "%{count} из %{maximum} символов"
@@ -590,7 +712,11 @@ msgctxt "FeedViewer"
 msgid "Attach audio"
 msgstr "Добавить аудиофайл"
 
-#: src/eapi/eltensrv/feeds.rb:67 src/platforms/windows/invisibleinterface/service.rb:716 src/platforms/windows/invisibleinterface/service.rb:732 src/platforms/windows/invisibleinterface/service.rb:748 src/scenes/messages.rb:714 src/scenes/messages.rb:993
+#: src/eapi/eltensrv/feeds.rb:67
+#: src/platforms/windows/invisibleinterface/service.rb:716
+#: src/platforms/windows/invisibleinterface/service.rb:732
+#: src/platforms/windows/invisibleinterface/service.rb:748
+#: src/scenes/messages.rb:714 src/scenes/messages.rb:993
 msgctxt "Messages"
 msgid "Send"
 msgstr "Отправить"
@@ -655,7 +781,8 @@ msgctxt "EAPI_Common"
 msgid "User"
 msgstr "Пользователь"
 
-#: src/eapi/eltensrv/profiles.rb:44 src/scenes/account.rb:161 src/scenes/welcome_wizard.rb:627 src/scenes/welcome_wizard.rb:1442
+#: src/eapi/eltensrv/profiles.rb:44 src/scenes/account.rb:161
+#: src/scenes/welcome_wizard.rb:627 src/scenes/welcome_wizard.rb:1442
 msgid "Female"
 msgstr "Женский"
 
@@ -790,7 +917,8 @@ msgctxt "MainMenu"
 msgid "Menu"
 msgstr "Меню"
 
-#: src/eapi/mainmenu.rb:41 src/ui/controls/edit_box.rb:616 src/ui/controls/files_tree.rb:369 src/ui/form.rb:106 src/ui/form.rb:108
+#: src/eapi/mainmenu.rb:41 src/ui/controls/edit_box.rb:616
+#: src/ui/controls/files_tree.rb:369 src/ui/form.rb:106 src/ui/form.rb:108
 msgid "Context menu"
 msgstr "Контекстное меню"
 
@@ -1259,7 +1387,8 @@ msgctxt "Program"
 msgid "The program has been closed."
 msgstr "Приложение закрыто."
 
-#: src/eapi/program_settings.rb:196 src/scenes/account.rb:127 src/scenes/blog.rb:1630 src/scenes/forum.rb:4461 src/scenes/settings.rb:150
+#: src/eapi/program_settings.rb:196 src/scenes/account.rb:127
+#: src/scenes/blog.rb:1630 src/scenes/forum.rb:4461 src/scenes/settings.rb:150
 msgid "Apply"
 msgstr "Применить"
 
@@ -1267,7 +1396,17 @@ msgstr "Применить"
 msgid "OK"
 msgstr "ОК"
 
-#: src/eapi/program_settings.rb:207 src/eapi/speechtofile.rb:164 src/scenes/account.rb:340 src/scenes/account.rb:344 src/scenes/blog.rb:1342 src/scenes/blog.rb:1377 src/scenes/blog.rb:1836 src/scenes/blog.rb:1840 src/scenes/clock.rb:34 src/scenes/clock.rb:78 src/scenes/conference.rb:2194 src/scenes/conference.rb:2252 src/scenes/conference.rb:2300 src/scenes/forum.rb:1271 src/scenes/forum.rb:1750 src/scenes/forum.rb:1796 src/scenes/forum.rb:4593 src/scenes/forum.rb:4597 src/scenes/messages.rb:273 src/scenes/messages.rb:405 src/scenes/settings.rb:405 src/scenes/settings.rb:409 src/scenes/sounds.rb:280 src/scenes/soundthemes.rb:73 src/scenes/soundthemes.rb:202 src/ui/controls/opus_record_button.rb:400 src/ui/controls/player.rb:255
+#: src/eapi/program_settings.rb:207 src/eapi/speechtofile.rb:164
+#: src/scenes/account.rb:340 src/scenes/account.rb:344 src/scenes/blog.rb:1342
+#: src/scenes/blog.rb:1377 src/scenes/blog.rb:1836 src/scenes/blog.rb:1840
+#: src/scenes/clock.rb:34 src/scenes/clock.rb:78 src/scenes/conference.rb:2194
+#: src/scenes/conference.rb:2252 src/scenes/conference.rb:2300
+#: src/scenes/forum.rb:1271 src/scenes/forum.rb:1750 src/scenes/forum.rb:1796
+#: src/scenes/forum.rb:4593 src/scenes/forum.rb:4597 src/scenes/messages.rb:273
+#: src/scenes/messages.rb:405 src/scenes/settings.rb:405
+#: src/scenes/settings.rb:409 src/scenes/sounds.rb:280
+#: src/scenes/soundthemes.rb:73 src/scenes/soundthemes.rb:202
+#: src/ui/controls/opus_record_button.rb:400 src/ui/controls/player.rb:255
 msgid "Saved"
 msgstr "Сохранено"
 
@@ -1696,7 +1835,18 @@ msgctxt "EAPI_SpeechToFile"
 msgid "Bitrate"
 msgstr "Битрейт"
 
-#: src/eapi/speechtofile.rb:145 src/scenes/account.rb:128 src/scenes/account.rb:1015 src/scenes/blog.rb:1322 src/scenes/blog.rb:1442 src/scenes/blog.rb:1631 src/scenes/calendar.rb:79 src/scenes/clock.rb:11 src/scenes/clock.rb:68 src/scenes/conference.rb:935 src/scenes/conference.rb:963 src/scenes/conference.rb:1037 src/scenes/forum.rb:924 src/scenes/forum.rb:949 src/scenes/forum.rb:1599 src/scenes/forum.rb:1738 src/scenes/forum.rb:3888 src/scenes/forum.rb:4462 src/scenes/notes.rb:129 src/scenes/notes.rb:146 src/scenes/polls.rb:203 src/scenes/settings.rb:151 src/scenes/tasks.rb:116 src/scenes/tasks.rb:325 src/ui/controls/opus_record_button.rb:189 src/ui/controls/opus_record_button.rb:267 src/ui/controls/opus_record_button.rb:330 src/ui/controls/player.rb:223
+#: src/eapi/speechtofile.rb:145 src/scenes/account.rb:128
+#: src/scenes/account.rb:1015 src/scenes/blog.rb:1322 src/scenes/blog.rb:1442
+#: src/scenes/blog.rb:1631 src/scenes/calendar.rb:79 src/scenes/clock.rb:11
+#: src/scenes/clock.rb:68 src/scenes/conference.rb:935
+#: src/scenes/conference.rb:963 src/scenes/conference.rb:1037
+#: src/scenes/forum.rb:924 src/scenes/forum.rb:949 src/scenes/forum.rb:1599
+#: src/scenes/forum.rb:1738 src/scenes/forum.rb:3888 src/scenes/forum.rb:4462
+#: src/scenes/notes.rb:129 src/scenes/notes.rb:146 src/scenes/polls.rb:203
+#: src/scenes/settings.rb:151 src/scenes/tasks.rb:116 src/scenes/tasks.rb:325
+#: src/ui/controls/opus_record_button.rb:189
+#: src/ui/controls/opus_record_button.rb:267
+#: src/ui/controls/opus_record_button.rb:330 src/ui/controls/player.rb:223
 msgid "Save"
 msgstr "Сохранить"
 
@@ -1725,97 +1875,117 @@ msgctxt "EAPI_UI"
 msgid "Errors occurred while trying to register keyboard shortcuts for the Invisible Interface. Make sure that the specified shortcuts are not used by other applications. You can change the Invisible Interface modifier keys in the Settings window."
 msgstr "При попытке назначить горячие клавиши возникли ошибки. Пожалуйста, убедитесь, что другие приложения не используют указанные клавиши. Вы можете изменить клавиши-модификаторы в настройках."
 
-#: src/platforms/windows/invisibleinterface/service.rb:305 src/scenes/messages.rb:160
+#: src/platforms/windows/invisibleinterface/service.rb:305
+#: src/scenes/messages.rb:160
 msgctxt "Messages"
 msgid "Messages"
 msgstr "Сообщения"
 
-#: src/platforms/windows/invisibleinterface/service.rb:307 src/scenes/feedviewer.rb:41
+#: src/platforms/windows/invisibleinterface/service.rb:307
+#: src/scenes/feedviewer.rb:41
 msgctxt "FeedViewer"
 msgid "Feed"
 msgstr "Лента"
 
-#: src/platforms/windows/invisibleinterface/service.rb:309 src/scenes/conference.rb:196 src/scenes/conference.rb:316
+#: src/platforms/windows/invisibleinterface/service.rb:309
+#: src/scenes/conference.rb:196 src/scenes/conference.rb:316
 msgctxt "Conference"
 msgid "Conference"
 msgstr "Голосовой чат"
 
-#: src/platforms/windows/invisibleinterface/service.rb:346 src/scenes/messages.rb:187 src/scenes/messages.rb:745
+#: src/platforms/windows/invisibleinterface/service.rb:346
+#: src/scenes/messages.rb:187 src/scenes/messages.rb:745
 msgctxt "Messages"
 msgid "Reply"
 msgstr "Ответить"
 
-#: src/platforms/windows/invisibleinterface/service.rb:445 src/platforms/windows/invisibleinterface/service.rb:446 src/scenes/messages.rb:839
+#: src/platforms/windows/invisibleinterface/service.rb:445
+#: src/platforms/windows/invisibleinterface/service.rb:446
+#: src/scenes/messages.rb:839
 msgctxt "Messages"
 msgid "To"
 msgstr "Кому"
 
-#: src/platforms/windows/invisibleinterface/service.rb:511 src/scenes/feedviewer.rb:134
+#: src/platforms/windows/invisibleinterface/service.rb:511
+#: src/scenes/feedviewer.rb:134
 msgctxt "FeedViewer"
 msgid "Message disliked"
 msgstr "Дизлайк поставлен"
 
-#: src/platforms/windows/invisibleinterface/service.rb:511 src/scenes/feedviewer.rb:134
+#: src/platforms/windows/invisibleinterface/service.rb:511
+#: src/scenes/feedviewer.rb:134
 msgctxt "FeedViewer"
 msgid "Message liked"
 msgstr "Лайк поставлен"
 
-#: src/platforms/windows/invisibleinterface/service.rb:529 src/scenes/main.rb:694
+#: src/platforms/windows/invisibleinterface/service.rb:529
+#: src/scenes/main.rb:694
 msgctxt "Main"
 msgid "Reply"
 msgstr "Ответить"
 
-#: src/platforms/windows/invisibleinterface/service.rb:600 src/scenes/conference.rb:1304
+#: src/platforms/windows/invisibleinterface/service.rb:600
+#: src/scenes/conference.rb:1304
 msgctxt "Conference"
 msgid "Unmute microphone"
 msgstr "Включить микрофон"
 
-#: src/platforms/windows/invisibleinterface/service.rb:600 src/scenes/conference.rb:1303
+#: src/platforms/windows/invisibleinterface/service.rb:600
+#: src/scenes/conference.rb:1303
 msgctxt "Conference"
 msgid "Mute microphone"
 msgstr "Выключить микрофон"
 
-#: src/platforms/windows/invisibleinterface/service.rb:602 src/scenes/conference.rb:1310
+#: src/platforms/windows/invisibleinterface/service.rb:602
+#: src/scenes/conference.rb:1310
 msgctxt "Conference"
 msgid "Microphone unmuted"
 msgstr "Микрофон включён"
 
-#: src/platforms/windows/invisibleinterface/service.rb:602 src/scenes/conference.rb:1308
+#: src/platforms/windows/invisibleinterface/service.rb:602
+#: src/scenes/conference.rb:1308
 msgctxt "Conference"
 msgid "Microphone muted"
 msgstr "Микрофон выключен"
 
-#: src/platforms/windows/invisibleinterface/service.rb:604 src/scenes/conference.rb:1358
+#: src/platforms/windows/invisibleinterface/service.rb:604
+#: src/scenes/conference.rb:1358
 msgctxt "Conference"
 msgid "Roll a 6-sided die"
 msgstr "Бросить 6-гранный кубик"
 
-#: src/platforms/windows/invisibleinterface/service.rb:605 src/scenes/conference.rb:1359
+#: src/platforms/windows/invisibleinterface/service.rb:605
+#: src/scenes/conference.rb:1359
 msgctxt "Conference"
 msgid "Roll a custom die"
 msgstr "Бросить другой кубик"
 
-#: src/platforms/windows/invisibleinterface/service.rb:608 src/scenes/conference.rb:1196
+#: src/platforms/windows/invisibleinterface/service.rb:608
+#: src/scenes/conference.rb:1196
 msgctxt "Conference"
 msgid "Stream audio file"
 msgstr "Включить аудиострим"
 
-#: src/platforms/windows/invisibleinterface/service.rb:610 src/scenes/conference.rb:877 src/scenes/conference.rb:1199
+#: src/platforms/windows/invisibleinterface/service.rb:610
+#: src/scenes/conference.rb:877 src/scenes/conference.rb:1199
 msgctxt "Conference"
 msgid "Select audio file"
 msgstr "Выберите аудиофайл"
 
-#: src/platforms/windows/invisibleinterface/service.rb:617 src/scenes/conference.rb:1180
+#: src/platforms/windows/invisibleinterface/service.rb:617
+#: src/scenes/conference.rb:1180
 msgctxt "Conference"
 msgid "Remove audio stream"
 msgstr "Отключить аудиострим"
 
-#: src/platforms/windows/invisibleinterface/service.rb:619 src/scenes/conference.rb:1334
+#: src/platforms/windows/invisibleinterface/service.rb:619
+#: src/scenes/conference.rb:1334
 msgctxt "Conference"
 msgid "Enable push-to-talk"
 msgstr "Включить режим рации"
 
-#: src/platforms/windows/invisibleinterface/service.rb:619 src/scenes/conference.rb:1335
+#: src/platforms/windows/invisibleinterface/service.rb:619
+#: src/scenes/conference.rb:1335
 msgctxt "Conference"
 msgid "Disable push-to-talk"
 msgstr "Отключить режим рации"
@@ -1830,12 +2000,14 @@ msgctxt "Conference"
 msgid "Post in chat"
 msgstr "Сообщение в чате"
 
-#: src/platforms/windows/invisibleinterface/service.rb:667 src/scenes/conference.rb:1567
+#: src/platforms/windows/invisibleinterface/service.rb:667
+#: src/scenes/conference.rb:1567
 msgctxt "Conference"
 msgid "Which dice do you want to roll?"
 msgstr "Какой кубик вы хотите бросить?"
 
-#: src/platforms/windows/invisibleinterface/service.rb:670 src/scenes/conference.rb:1567
+#: src/platforms/windows/invisibleinterface/service.rb:670
+#: src/scenes/conference.rb:1567
 msgctxt "Conference"
 msgid "%{count}-sided"
 msgstr "%{count}-гранный"
@@ -1850,62 +2022,76 @@ msgctxt "Conference"
 msgid "End whispering"
 msgstr "Закончить и отправить лично"
 
-#: src/platforms/windows/invisibleinterface/service.rb:693 src/scenes/conference.rb:150
+#: src/platforms/windows/invisibleinterface/service.rb:693
+#: src/scenes/conference.rb:150
 msgctxt "Conference"
 msgid "Whisper"
 msgstr "Сказать лично"
 
-#: src/platforms/windows/invisibleinterface/service.rb:696 src/scenes/conference.rb:96
+#: src/platforms/windows/invisibleinterface/service.rb:696
+#: src/scenes/conference.rb:96
 msgctxt "Conference"
 msgid "Mute user"
 msgstr "Приглушить пользователя"
 
-#: src/platforms/windows/invisibleinterface/service.rb:696 src/scenes/conference.rb:97
+#: src/platforms/windows/invisibleinterface/service.rb:696
+#: src/scenes/conference.rb:97
 msgctxt "Conference"
 msgid "Unmute user"
 msgstr "Выключить приглушение пользователя"
 
-#: src/platforms/windows/invisibleinterface/service.rb:703 src/scenes/conference.rb:146
+#: src/platforms/windows/invisibleinterface/service.rb:703
+#: src/scenes/conference.rb:146
 msgctxt "Conference"
 msgid "Go to user"
 msgstr "Перейти к пользователю"
 
-#: src/platforms/windows/invisibleinterface/service.rb:712 src/scenes/messages.rb:279
+#: src/platforms/windows/invisibleinterface/service.rb:712
+#: src/scenes/messages.rb:279
 msgctxt "Messages"
 msgid "Send a new message"
 msgstr "Отправить новое сообщение"
 
-#: src/platforms/windows/invisibleinterface/service.rb:713 src/scenes/messages.rb:900
+#: src/platforms/windows/invisibleinterface/service.rb:713
+#: src/scenes/messages.rb:900
 msgctxt "Messages"
 msgid "Recipient"
 msgstr "Получатель"
 
-#: src/platforms/windows/invisibleinterface/service.rb:714 src/scenes/messages.rb:902
+#: src/platforms/windows/invisibleinterface/service.rb:714
+#: src/scenes/messages.rb:902
 msgctxt "Messages"
 msgid "Subject:"
 msgstr "Тема:"
 
-#: src/platforms/windows/invisibleinterface/service.rb:715 src/scenes/messages.rb:903
+#: src/platforms/windows/invisibleinterface/service.rb:715
+#: src/scenes/messages.rb:903
 msgctxt "Messages"
 msgid "Message:"
 msgstr "Сообщение:"
 
-#: src/platforms/windows/invisibleinterface/service.rb:730 src/scenes/main.rb:732
+#: src/platforms/windows/invisibleinterface/service.rb:730
+#: src/scenes/main.rb:732
 msgctxt "Main"
 msgid "Publish to a feed"
 msgstr "Опубликовать в ленте"
 
-#: src/platforms/windows/invisibleinterface/service.rb:731 src/platforms/windows/invisibleinterface/service.rb:747
+#: src/platforms/windows/invisibleinterface/service.rb:731
+#: src/platforms/windows/invisibleinterface/service.rb:747
 msgctxt "Main"
 msgid "Message"
 msgstr "Сообщение"
 
-#: src/platforms/windows/invisibleinterface/service.rb:746 src/scenes/conference.rb:51
+#: src/platforms/windows/invisibleinterface/service.rb:746
+#: src/scenes/conference.rb:51
 msgctxt "Conference"
 msgid "Chat message"
 msgstr "Сообщение"
 
-#: src/platforms/windows/invisibleinterface/service.rb:783 src/platforms/windows/invisibleinterface/service.rb:789 src/platforms/windows/invisibleinterface/service.rb:792 src/scenes/messages.rb:721
+#: src/platforms/windows/invisibleinterface/service.rb:783
+#: src/platforms/windows/invisibleinterface/service.rb:789
+#: src/platforms/windows/invisibleinterface/service.rb:792
+#: src/scenes/messages.rb:721
 msgctxt "Messages"
 msgid "Failed to send message"
 msgstr "Не удалось отправить сообщение"
@@ -1945,7 +2131,8 @@ msgctxt "Account"
 msgid "Gender"
 msgstr "Пол"
 
-#: src/scenes/account.rb:161 src/scenes/welcome_wizard.rb:627 src/scenes/welcome_wizard.rb:1443
+#: src/scenes/account.rb:161 src/scenes/welcome_wizard.rb:627
+#: src/scenes/welcome_wizard.rb:1443
 msgid "Male"
 msgstr "Мужской"
 
@@ -2272,7 +2459,10 @@ msgctxt "Account"
 msgid "The old password is incorrect."
 msgstr "Ошибка при вводе старого пароля."
 
-#: src/scenes/account.rb:408 src/scenes/account.rb:443 src/scenes/account.rb:483 src/scenes/account.rb:594 src/scenes/account.rb:835 src/scenes/account.rb:919 src/scenes/account.rb:971 src/scenes/account.rb:988
+#: src/scenes/account.rb:408 src/scenes/account.rb:443
+#: src/scenes/account.rb:483 src/scenes/account.rb:594
+#: src/scenes/account.rb:835 src/scenes/account.rb:919
+#: src/scenes/account.rb:971 src/scenes/account.rb:988
 msgctxt "Account"
 msgid "Enter your password."
 msgstr "Введите ваш пароль."
@@ -2292,7 +2482,8 @@ msgctxt "Account"
 msgid "Error: you must disable email event reporting first."
 msgstr "Ошибка. Сначала вам необходимо отключить оповещения о действиях с учётной записью по электронной почте."
 
-#: src/scenes/account.rb:451 src/scenes/account.rb:493 src/scenes/account.rb:602
+#: src/scenes/account.rb:451 src/scenes/account.rb:493
+#: src/scenes/account.rb:602
 msgctxt "Account"
 msgid "An error occurred while verifying your account. You may have entered an incorrect password."
 msgstr "Произошла ошибка при аутентификации учётной записи. Возможно, вы указали неверный пароль. Попробуйте снова."
@@ -2322,8 +2513,22 @@ msgctxt "Account"
 msgid "Log out all sessions"
 msgstr "Выйти из Elten на всех устройствах"
 
-#: src/scenes/account.rb:468 src/scenes/account.rb:584 src/scenes/blog.rb:1295 src/scenes/calendar.rb:298 src/scenes/calendar.rb:581 src/scenes/calendar.rb:819 src/scenes/calendar.rb:902 src/scenes/callhistory.rb:53 src/scenes/conference.rb:1449 src/scenes/conference.rb:1498 src/scenes/conference.rb:1546 src/scenes/conference.rb:1633 src/scenes/conference.rb:2210 src/scenes/forum.rb:908 src/scenes/forum.rb:1156 src/scenes/forum.rb:1821 src/scenes/forum.rb:2374 src/scenes/forum.rb:3636 src/scenes/honors.rb:84 src/scenes/honors.rb:152 src/scenes/main.rb:375 src/scenes/messages.rb:308 src/scenes/messages.rb:511 src/scenes/messages.rb:825 src/scenes/notes.rb:70 src/scenes/notifications.rb:72 src/scenes/online.rb:42 src/scenes/polls.rb:129 src/scenes/premiumpackages.rb:135 src/scenes/sponsors.rb:35 src/scenes/tasks.rb:283 src/scenes/tasks.rb:536
-#: src/scenes/users.rb:54 src/scenes/users_recentlyactived.rb:39 src/scenes/users_recentlyregistered.rb:39 src/scenes/usersaddedmetocontacts.rb:58
+#: src/scenes/account.rb:468 src/scenes/account.rb:584 src/scenes/blog.rb:1295
+#: src/scenes/calendar.rb:298 src/scenes/calendar.rb:581
+#: src/scenes/calendar.rb:819 src/scenes/calendar.rb:902
+#: src/scenes/callhistory.rb:53 src/scenes/conference.rb:1449
+#: src/scenes/conference.rb:1498 src/scenes/conference.rb:1546
+#: src/scenes/conference.rb:1633 src/scenes/conference.rb:2210
+#: src/scenes/forum.rb:908 src/scenes/forum.rb:1156 src/scenes/forum.rb:1821
+#: src/scenes/forum.rb:2374 src/scenes/forum.rb:3636 src/scenes/honors.rb:84
+#: src/scenes/honors.rb:152 src/scenes/main.rb:375 src/scenes/messages.rb:308
+#: src/scenes/messages.rb:511 src/scenes/messages.rb:825 src/scenes/notes.rb:70
+#: src/scenes/notifications.rb:72 src/scenes/online.rb:42
+#: src/scenes/polls.rb:129 src/scenes/premiumpackages.rb:135
+#: src/scenes/sponsors.rb:35 src/scenes/tasks.rb:283 src/scenes/tasks.rb:536
+#: src/scenes/users.rb:54 src/scenes/users_recentlyactived.rb:39
+#: src/scenes/users_recentlyregistered.rb:39
+#: src/scenes/usersaddedmetocontacts.rb:58
 msgid "Refresh"
 msgstr "Обновить"
 
@@ -2367,7 +2572,13 @@ msgctxt "Account"
 msgid "The user cannot be found."
 msgstr "Пользователь не может быть найден."
 
-#: src/scenes/account.rb:567 src/scenes/blog.rb:207 src/scenes/blog.rb:450 src/scenes/calendar.rb:463 src/scenes/calendar.rb:897 src/scenes/conference.rb:2344 src/scenes/feedviewer.rb:140 src/scenes/main.rb:724 src/scenes/messages.rb:810 src/scenes/notes.rb:55 src/scenes/notes.rb:131 src/scenes/polls.rb:98 src/scenes/polls.rb:606 src/scenes/tasks.rb:530 src/scenes/tasks.rb:706 src/ui/controls/files_tree.rb:334 src/ui/controls/opus_record_button.rb:393
+#: src/scenes/account.rb:567 src/scenes/blog.rb:207 src/scenes/blog.rb:450
+#: src/scenes/calendar.rb:463 src/scenes/calendar.rb:897
+#: src/scenes/conference.rb:2344 src/scenes/feedviewer.rb:140
+#: src/scenes/main.rb:724 src/scenes/messages.rb:810 src/scenes/notes.rb:55
+#: src/scenes/notes.rb:131 src/scenes/polls.rb:98 src/scenes/polls.rb:606
+#: src/scenes/tasks.rb:530 src/scenes/tasks.rb:706
+#: src/ui/controls/files_tree.rb:334 src/ui/controls/opus_record_button.rb:393
 msgid "Delete"
 msgstr "Удалить"
 
@@ -2401,7 +2612,8 @@ msgctxt "AccountStatistics"
 msgid "Year"
 msgstr "Год"
 
-#: src/scenes/account.rb:652 src/scenes/account.rb:676 src/scenes/account.rb:738
+#: src/scenes/account.rb:652 src/scenes/account.rb:676
+#: src/scenes/account.rb:738
 msgctxt "AccountStatistics"
 msgid "Forum posts"
 msgstr "Публикации в группах"
@@ -2744,7 +2956,11 @@ msgctxt "Admins"
 msgid "Administrators and authors"
 msgstr "Администраторы и авторы"
 
-#: src/scenes/authentication.rb:10 src/scenes/calendar.rb:240 src/scenes/callhistory.rb:10 src/scenes/contacts.rb:13 src/scenes/messages.rb:35 src/scenes/notes.rb:10 src/scenes/notifications.rb:14 src/scenes/premiumpackages.rb:6 src/scenes/tasks.rb:448
+#: src/scenes/authentication.rb:10 src/scenes/calendar.rb:240
+#: src/scenes/callhistory.rb:10 src/scenes/contacts.rb:13
+#: src/scenes/messages.rb:35 src/scenes/notes.rb:10
+#: src/scenes/notifications.rb:14 src/scenes/premiumpackages.rb:6
+#: src/scenes/tasks.rb:448
 msgid "This section is unavailable for guests"
 msgstr "Этот раздел недоступен для гостей"
 
@@ -2771,7 +2987,8 @@ msgctxt "Authentication"
 msgid "Two-factor authentication is enabled on this account."
 msgstr "Двухфакторная аутентификация включена."
 
-#: src/scenes/authentication.rb:33 src/scenes/authentication.rb:93 src/scenes/authentication.rb:116
+#: src/scenes/authentication.rb:33 src/scenes/authentication.rb:93
+#: src/scenes/authentication.rb:116
 msgctxt "Authentication"
 msgid "Type your password"
 msgstr "Введите ваш пароль"
@@ -3111,7 +3328,8 @@ msgctxt "Blog"
 msgid "The blog has been created."
 msgstr "Поздравляем, блог успешно создан."
 
-#: src/scenes/blog.rb:294 src/scenes/blog.rb:917 src/scenes/blog.rb:1650 src/scenes/blog.rb:2266
+#: src/scenes/blog.rb:294 src/scenes/blog.rb:917 src/scenes/blog.rb:1650
+#: src/scenes/blog.rb:2266
 msgctxt "Blog"
 msgid "Comments"
 msgstr "Комментарие"
@@ -3201,7 +3419,8 @@ msgctxt "Blog"
 msgid "Posts sorted by blog."
 msgstr "Отсортировано по блогу."
 
-#: src/scenes/blog.rb:472 src/scenes/blog.rb:484 src/scenes/blog.rb:762 src/scenes/blog.rb:872
+#: src/scenes/blog.rb:472 src/scenes/blog.rb:484 src/scenes/blog.rb:762
+#: src/scenes/blog.rb:872
 msgctxt "Blog"
 msgid "Mention post"
 msgstr "Поделиться публикацией"
@@ -4422,7 +4641,8 @@ msgctxt "Calendar"
 msgid "End date and time"
 msgstr "Дата и время окончания"
 
-#: src/scenes/calendar.rb:79 src/scenes/calendar.rb:284 src/scenes/calendar.rb:470
+#: src/scenes/calendar.rb:79 src/scenes/calendar.rb:284
+#: src/scenes/calendar.rb:470
 msgctxt "Calendar"
 msgid "Add event"
 msgstr "Добавить событие"
@@ -4541,7 +4761,8 @@ msgctxt "Calendar"
 msgid "Show details"
 msgstr "Показать подробности"
 
-#: src/scenes/calendar.rb:460 src/scenes/calendar.rb:894 src/scenes/tasks.rb:274 src/scenes/tasks.rb:529 src/scenes/tasks.rb:702
+#: src/scenes/calendar.rb:460 src/scenes/calendar.rb:894
+#: src/scenes/tasks.rb:274 src/scenes/tasks.rb:529 src/scenes/tasks.rb:702
 msgid "Edit"
 msgstr "Изменить"
 
@@ -4808,7 +5029,7 @@ msgstr "Минута"
 #: src/scenes/conference.rb:19 src/scenes/conference.rb:339
 msgctxt "Conference"
 msgid "You are already connected to another channel."
-msgstr "Вы уже подключены к другому каналу."
+msgstr "Вы уже находитесь в другой комнате."
 
 #: src/scenes/conference.rb:28
 msgctxt "Conference"
@@ -5067,7 +5288,8 @@ msgctxt "EAPI_Speech"
 msgid "Restricted"
 msgstr "Ограниченый доступ"
 
-#: src/scenes/conference.rb:376 src/scenes/conference.rb:456 src/scenes/conference.rb:607
+#: src/scenes/conference.rb:376 src/scenes/conference.rb:456
+#: src/scenes/conference.rb:607
 msgctxt "Conference"
 msgid "Channels"
 msgstr "Комнаты"
@@ -5077,12 +5299,14 @@ msgctxt "Conference"
 msgid "Join"
 msgstr "Войти"
 
-#: src/scenes/conference.rb:404 src/scenes/conference.rb:525 src/scenes/conference.rb:788
+#: src/scenes/conference.rb:404 src/scenes/conference.rb:525
+#: src/scenes/conference.rb:788
 msgctxt "Conference"
 msgid "Channel password"
 msgstr "Пароль комнаты"
 
-#: src/scenes/conference.rb:410 src/scenes/conference.rb:529 src/scenes/conference.rb:793
+#: src/scenes/conference.rb:410 src/scenes/conference.rb:529
+#: src/scenes/conference.rb:793
 msgctxt "Conference"
 msgid "You cannot join this channel"
 msgstr "Вы не можете присоединиться к этой комнате"
@@ -5350,7 +5574,7 @@ msgstr "Отключено"
 #: src/scenes/conference.rb:614
 msgctxt "Conference"
 msgid "Channel creator's blacklist"
-msgstr "Чёрный список создателя канала"
+msgstr "Чёрный список создателя комнаты"
 
 #: src/scenes/conference.rb:615
 msgctxt "Conference"
@@ -5462,12 +5686,15 @@ msgctxt "Conference"
 msgid "Available objects"
 msgstr "Доступные объекты"
 
-#: src/scenes/conference.rb:868 src/scenes/conference.rb:1742 src/scenes/conference.rb:1774 src/scenes/conference.rb:1811
+#: src/scenes/conference.rb:868 src/scenes/conference.rb:1742
+#: src/scenes/conference.rb:1774 src/scenes/conference.rb:1811
 msgctxt "Conference"
 msgid "Here"
 msgstr "Здесь"
 
-#: src/scenes/conference.rb:868 src/scenes/conference.rb:1583 src/scenes/conference.rb:1655 src/scenes/conference.rb:1742 src/scenes/conference.rb:1774 src/scenes/conference.rb:1811
+#: src/scenes/conference.rb:868 src/scenes/conference.rb:1583
+#: src/scenes/conference.rb:1655 src/scenes/conference.rb:1742
+#: src/scenes/conference.rb:1774 src/scenes/conference.rb:1811
 msgctxt "Conference"
 msgid "Everywhere"
 msgstr "Везде"
@@ -5492,7 +5719,8 @@ msgctxt "Conference"
 msgid "This file is too large"
 msgstr "Размер файла слишком велик"
 
-#: src/scenes/conference.rb:900 src/scenes/conference.rb:1488 src/scenes/conference.rb:1537
+#: src/scenes/conference.rb:900 src/scenes/conference.rb:1488
+#: src/scenes/conference.rb:1537
 msgctxt "Conference"
 msgid "Delete"
 msgstr "Удалить"
@@ -5502,7 +5730,8 @@ msgctxt "Conference"
 msgid "Object deleted"
 msgstr "Объект удалён"
 
-#: src/scenes/conference.rb:933 src/scenes/conference.rb:961 src/scenes/conference.rb:2214
+#: src/scenes/conference.rb:933 src/scenes/conference.rb:961
+#: src/scenes/conference.rb:2214
 msgctxt "Conference"
 msgid "Destination"
 msgstr "Размещение"
@@ -5527,12 +5756,14 @@ msgctxt "Conference"
 msgid "Directory name"
 msgstr "Имя папки"
 
-#: src/scenes/conference.rb:994 src/scenes/conference.rb:996 src/scenes/conference.rb:998 src/scenes/conference.rb:1035
+#: src/scenes/conference.rb:994 src/scenes/conference.rb:996
+#: src/scenes/conference.rb:998 src/scenes/conference.rb:1035
 msgctxt "Conference"
 msgid "Left"
 msgstr "Слева"
 
-#: src/scenes/conference.rb:1000 src/scenes/conference.rb:1002 src/scenes/conference.rb:1004 src/scenes/conference.rb:1035
+#: src/scenes/conference.rb:1000 src/scenes/conference.rb:1002
+#: src/scenes/conference.rb:1004 src/scenes/conference.rb:1035
 msgctxt "Conference"
 msgid "Right"
 msgstr "Справа"
@@ -5587,7 +5818,8 @@ msgctxt "Conference"
 msgid "Master volume"
 msgstr "Громкость звука"
 
-#: src/scenes/conference.rb:1089 src/scenes/conference.rb:1611 src/scenes/conference.rb:1694
+#: src/scenes/conference.rb:1089 src/scenes/conference.rb:1611
+#: src/scenes/conference.rb:1694
 msgctxt "Conference"
 msgid "Stream volume"
 msgstr "Громкость стрима"
@@ -5607,12 +5839,14 @@ msgctxt "Conference"
 msgid "Stream from sound card"
 msgstr "Стримить со звуковой карты"
 
-#: src/scenes/conference.rb:1151 src/scenes/conference.rb:1809 src/scenes/conference.rb:1959
+#: src/scenes/conference.rb:1151 src/scenes/conference.rb:1809
+#: src/scenes/conference.rb:1959
 msgctxt "Conference"
 msgid "Select sound card to stream"
 msgstr "Выберите звуковую карту для стриминга"
 
-#: src/scenes/conference.rb:1151 src/scenes/conference.rb:1809 src/scenes/conference.rb:1959
+#: src/scenes/conference.rb:1151 src/scenes/conference.rb:1809
+#: src/scenes/conference.rb:1959
 msgctxt "Conference"
 msgid "Loopback device"
 msgstr "Устройство обратной связи"
@@ -5627,12 +5861,14 @@ msgctxt "Conference"
 msgid "Stream"
 msgstr "Начать стриминг"
 
-#: src/scenes/conference.rb:1192 src/scenes/conference.rb:1719 src/scenes/conference.rb:1896
+#: src/scenes/conference.rb:1192 src/scenes/conference.rb:1719
+#: src/scenes/conference.rb:1896
 msgctxt "Conference"
 msgid "Scroll backward"
 msgstr "Перемотать аудиострим назад"
 
-#: src/scenes/conference.rb:1193 src/scenes/conference.rb:1724 src/scenes/conference.rb:1899
+#: src/scenes/conference.rb:1193 src/scenes/conference.rb:1724
+#: src/scenes/conference.rb:1899
 msgctxt "Conference"
 msgid "Scroll forward"
 msgstr "Перемотать аудиострим вперёд"
@@ -5867,7 +6103,9 @@ msgctxt "Conference"
 msgid "User to add to channel whitelist"
 msgstr "Пользователь для добавления в белый список комнаты"
 
-#: src/scenes/conference.rb:1577 src/scenes/conference.rb:1650 src/scenes/conference.rb:1742 src/scenes/conference.rb:1774 src/scenes/conference.rb:1811
+#: src/scenes/conference.rb:1577 src/scenes/conference.rb:1650
+#: src/scenes/conference.rb:1742 src/scenes/conference.rb:1774
+#: src/scenes/conference.rb:1811
 msgctxt "Conference"
 msgid "Location"
 msgstr "Местоположение"
@@ -5877,7 +6115,9 @@ msgctxt "Conference"
 msgid "User"
 msgstr "Пользователь"
 
-#: src/scenes/conference.rb:1585 src/scenes/conference.rb:1657 src/scenes/conference.rb:1742 src/scenes/conference.rb:1774 src/scenes/conference.rb:1811
+#: src/scenes/conference.rb:1585 src/scenes/conference.rb:1657
+#: src/scenes/conference.rb:1742 src/scenes/conference.rb:1774
+#: src/scenes/conference.rb:1811
 msgctxt "Conference"
 msgid "Right next to me"
 msgstr "Прямо рядом со мной"
@@ -5902,7 +6142,8 @@ msgctxt "Conference"
 msgid "Stream muted"
 msgstr "Приглушение стрима включено"
 
-#: src/scenes/conference.rb:1607 src/scenes/conference.rb:1692 src/scenes/conference.rb:1872
+#: src/scenes/conference.rb:1607 src/scenes/conference.rb:1692
+#: src/scenes/conference.rb:1872
 msgctxt "Conference"
 msgid "Change volume"
 msgstr "Изменить громкость"
@@ -5957,12 +6198,15 @@ msgctxt "Conference"
 msgid "New file stream"
 msgstr "Стримить файл"
 
-#: src/scenes/conference.rb:1741 src/scenes/conference.rb:1913 src/scenes/conference.rb:1995
+#: src/scenes/conference.rb:1741 src/scenes/conference.rb:1913
+#: src/scenes/conference.rb:1995
 msgctxt "Conference"
 msgid "File"
 msgstr "Файл"
 
-#: src/scenes/conference.rb:1743 src/scenes/conference.rb:1775 src/scenes/conference.rb:1812 src/scenes/conference.rb:1914 src/scenes/conference.rb:1935 src/scenes/conference.rb:1960
+#: src/scenes/conference.rb:1743 src/scenes/conference.rb:1775
+#: src/scenes/conference.rb:1812 src/scenes/conference.rb:1914
+#: src/scenes/conference.rb:1935 src/scenes/conference.rb:1960
 msgctxt "Conference"
 msgid "Place"
 msgstr "Расположение"
@@ -6628,37 +6872,53 @@ msgctxt "Forum"
 msgid "My threads"
 msgstr "Мои темы"
 
-#: src/scenes/forum.rb:394 src/scenes/forum.rb:699 src/scenes/forum.rb:1422 src/scenes/forum.rb:1688
+#: src/scenes/forum.rb:394 src/scenes/forum.rb:699 src/scenes/forum.rb:1422
+#: src/scenes/forum.rb:1688
 msgctxt "Forum"
 msgid "Search"
 msgstr "Искать"
 
-#: src/scenes/forum.rb:402 src/scenes/forum.rb:427 src/scenes/forum.rb:448 src/scenes/forum.rb:470 src/scenes/forum.rb:490 src/scenes/forum.rb:510 src/scenes/forum.rb:531 src/scenes/forum.rb:547 src/scenes/forum.rb:565 src/scenes/forum.rb:1523 src/scenes/forum.rb:2385
+#: src/scenes/forum.rb:402 src/scenes/forum.rb:427 src/scenes/forum.rb:448
+#: src/scenes/forum.rb:470 src/scenes/forum.rb:490 src/scenes/forum.rb:510
+#: src/scenes/forum.rb:531 src/scenes/forum.rb:547 src/scenes/forum.rb:565
+#: src/scenes/forum.rb:1523 src/scenes/forum.rb:2385
 msgctxt "Forum"
 msgid "Threads"
 msgstr "Тем"
 
-#: src/scenes/forum.rb:402 src/scenes/forum.rb:427 src/scenes/forum.rb:448 src/scenes/forum.rb:470 src/scenes/forum.rb:490 src/scenes/forum.rb:510 src/scenes/forum.rb:531 src/scenes/forum.rb:547 src/scenes/forum.rb:565 src/scenes/forum.rb:1523 src/scenes/forum.rb:2041
+#: src/scenes/forum.rb:402 src/scenes/forum.rb:427 src/scenes/forum.rb:448
+#: src/scenes/forum.rb:470 src/scenes/forum.rb:490 src/scenes/forum.rb:510
+#: src/scenes/forum.rb:531 src/scenes/forum.rb:547 src/scenes/forum.rb:565
+#: src/scenes/forum.rb:1523 src/scenes/forum.rb:2041
 msgctxt "Forum"
 msgid "posts"
 msgstr "публикаций"
 
-#: src/scenes/forum.rb:402 src/scenes/forum.rb:427 src/scenes/forum.rb:448 src/scenes/forum.rb:470 src/scenes/forum.rb:490 src/scenes/forum.rb:510 src/scenes/forum.rb:531 src/scenes/forum.rb:547 src/scenes/forum.rb:565 src/scenes/forum.rb:1523 src/scenes/forum.rb:2041
+#: src/scenes/forum.rb:402 src/scenes/forum.rb:427 src/scenes/forum.rb:448
+#: src/scenes/forum.rb:470 src/scenes/forum.rb:490 src/scenes/forum.rb:510
+#: src/scenes/forum.rb:531 src/scenes/forum.rb:547 src/scenes/forum.rb:565
+#: src/scenes/forum.rb:1523 src/scenes/forum.rb:2041
 msgctxt "Forum"
 msgid "Unread"
 msgstr "Непрочитано"
 
-#: src/scenes/forum.rb:402 src/scenes/forum.rb:427 src/scenes/forum.rb:448 src/scenes/forum.rb:470 src/scenes/forum.rb:490 src/scenes/forum.rb:510 src/scenes/forum.rb:531 src/scenes/forum.rb:547 src/scenes/forum.rb:565
+#: src/scenes/forum.rb:402 src/scenes/forum.rb:427 src/scenes/forum.rb:448
+#: src/scenes/forum.rb:470 src/scenes/forum.rb:490 src/scenes/forum.rb:510
+#: src/scenes/forum.rb:531 src/scenes/forum.rb:547 src/scenes/forum.rb:565
 msgctxt "Forum"
 msgid "Forums"
 msgstr "Форумов"
 
-#: src/scenes/forum.rb:427 src/scenes/forum.rb:470 src/scenes/forum.rb:490 src/scenes/forum.rb:510 src/scenes/forum.rb:531 src/scenes/forum.rb:547 src/scenes/forum.rb:565 src/scenes/forum.rb:1190
+#: src/scenes/forum.rb:427 src/scenes/forum.rb:470 src/scenes/forum.rb:490
+#: src/scenes/forum.rb:510 src/scenes/forum.rb:531 src/scenes/forum.rb:547
+#: src/scenes/forum.rb:565 src/scenes/forum.rb:1190
 msgctxt "Forum"
 msgid "Administrator"
 msgstr "Администратор"
 
-#: src/scenes/forum.rb:573 src/scenes/forum.rb:576 src/scenes/forum.rb:1091 src/scenes/forum.rb:1530 src/scenes/forum.rb:1715 src/scenes/forum.rb:2049 src/scenes/forum.rb:2549 src/scenes/forum.rb:3130
+#: src/scenes/forum.rb:573 src/scenes/forum.rb:576 src/scenes/forum.rb:1091
+#: src/scenes/forum.rb:1530 src/scenes/forum.rb:1715 src/scenes/forum.rb:2049
+#: src/scenes/forum.rb:2549 src/scenes/forum.rb:3130
 msgctxt "Forum"
 msgid "Forum"
 msgstr "Группы"
@@ -6743,12 +7003,15 @@ msgctxt "Forum"
 msgid "closed (only invited users can join)"
 msgstr "закрытая: присоединиться могут только те, кого пригласит администратор"
 
-#: src/scenes/forum.rb:724 src/scenes/forum.rb:728 src/scenes/forum.rb:1385 src/scenes/forum.rb:1397 src/scenes/forum.rb:1399 src/scenes/forum.rb:4521 src/scenes/forum.rb:4523
+#: src/scenes/forum.rb:724 src/scenes/forum.rb:728 src/scenes/forum.rb:1385
+#: src/scenes/forum.rb:1397 src/scenes/forum.rb:1399 src/scenes/forum.rb:4521
+#: src/scenes/forum.rb:4523
 msgctxt "Forum"
 msgid "Moderated (everyone can request)"
 msgstr "Модерируемая: каждый может присоединиться, но администратор должен одобрить вступление"
 
-#: src/scenes/forum.rb:730 src/scenes/forum.rb:1385 src/scenes/forum.rb:1399 src/scenes/forum.rb:4523
+#: src/scenes/forum.rb:730 src/scenes/forum.rb:1385 src/scenes/forum.rb:1399
+#: src/scenes/forum.rb:4523
 msgctxt "Forum"
 msgid "open (everyone can join)"
 msgstr "открытая: каждый может присоединиться"
@@ -6798,7 +7061,8 @@ msgctxt "Forum"
 msgid "Audio posts"
 msgstr "Аудиопубликации"
 
-#: src/scenes/forum.rb:752 src/scenes/forum.rb:2683 src/scenes/forum.rb:2983 src/scenes/forum.rb:3073 src/scenes/forum.rb:3888
+#: src/scenes/forum.rb:752 src/scenes/forum.rb:2683 src/scenes/forum.rb:2983
+#: src/scenes/forum.rb:3073 src/scenes/forum.rb:3888
 msgctxt "Forum"
 msgid "Attachments"
 msgstr "Вложения"
@@ -7888,7 +8152,8 @@ msgctxt "Forum"
 msgid "Offer refused"
 msgstr "В предложении отказано"
 
-#: src/scenes/forum.rb:2386 src/scenes/forum.rb:2443 src/scenes/forum.rb:3688 src/scenes/forum.rb:3741
+#: src/scenes/forum.rb:2386 src/scenes/forum.rb:2443 src/scenes/forum.rb:3688
+#: src/scenes/forum.rb:3741
 msgctxt "Forum"
 msgid "Move"
 msgstr "Переместить"
@@ -7898,7 +8163,8 @@ msgctxt "Forum"
 msgid "Offer"
 msgstr "Предложить"
 
-#: src/scenes/forum.rb:2388 src/scenes/forum.rb:2446 src/scenes/forum.rb:3689 src/scenes/forum.rb:3744
+#: src/scenes/forum.rb:2388 src/scenes/forum.rb:2446 src/scenes/forum.rb:3689
+#: src/scenes/forum.rb:3744
 msgctxt "Forum"
 msgid "Delete"
 msgstr "Удалить"
@@ -7944,7 +8210,8 @@ msgctxt "Forum"
 msgid "Which group do you want to offer these threads to?"
 msgstr "Какой группе вы хотите предложить эти темы?"
 
-#: src/scenes/forum.rb:2520 src/scenes/forum.rb:2547 src/scenes/forum.rb:3095 src/scenes/forum.rb:3111 src/scenes/forum.rb:4134
+#: src/scenes/forum.rb:2520 src/scenes/forum.rb:2547 src/scenes/forum.rb:3095
+#: src/scenes/forum.rb:3111 src/scenes/forum.rb:4134
 msgctxt "Forum"
 msgid "Audio post"
 msgstr "Аудиопубликация"
@@ -7999,7 +8266,8 @@ msgctxt "Forum"
 msgid "The selected forum is closed. Are you sure you want to create a thread there?"
 msgstr "Выбранный форум закрыт. Вы уверены, что хотите создать тему на этом форуме?"
 
-#: src/scenes/forum.rb:2620 src/scenes/forum.rb:2628 src/scenes/forum.rb:3221 src/scenes/forum.rb:3253
+#: src/scenes/forum.rb:2620 src/scenes/forum.rb:2628 src/scenes/forum.rb:3221
+#: src/scenes/forum.rb:3253
 msgctxt "Forum"
 msgid "Send"
 msgstr "Отправить"
@@ -8074,17 +8342,20 @@ msgctxt "Forum"
 msgid "Are you sure you want to cancel creating this post?"
 msgstr "Вы точно хотите отменить создание публикации?"
 
-#: src/scenes/forum.rb:2954 src/scenes/messages.rb:653 src/scenes/polls.rb:24 src/scenes/polls.rb:91
+#: src/scenes/forum.rb:2954 src/scenes/messages.rb:653 src/scenes/polls.rb:24
+#: src/scenes/polls.rb:91
 msgctxt "Polls"
 msgid "Show results"
 msgstr "Посмотреть результаты"
 
-#: src/scenes/forum.rb:2954 src/scenes/messages.rb:653 src/scenes/polls.rb:24 src/scenes/polls.rb:94
+#: src/scenes/forum.rb:2954 src/scenes/messages.rb:653 src/scenes/polls.rb:24
+#: src/scenes/polls.rb:94
 msgctxt "Polls"
 msgid "Show report"
 msgstr "Посмотреть отчёт"
 
-#: src/scenes/forum.rb:2954 src/scenes/messages.rb:653 src/scenes/polls.rb:24 src/scenes/polls.rb:86 src/scenes/polls.rb:375
+#: src/scenes/forum.rb:2954 src/scenes/messages.rb:653 src/scenes/polls.rb:24
+#: src/scenes/polls.rb:86 src/scenes/polls.rb:375
 msgctxt "Polls"
 msgid "Vote"
 msgstr "Голосовать"
@@ -8856,7 +9127,8 @@ msgctxt "Log"
 msgid "Log"
 msgstr "Лог"
 
-#: src/scenes/log.rb:14 src/scenes/polls.rb:566 src/ui/controls/opus_record_button.rb:361
+#: src/scenes/log.rb:14 src/scenes/polls.rb:566
+#: src/ui/controls/opus_record_button.rb:361
 msgid "Close"
 msgstr "Закрыть"
 
@@ -9271,7 +9543,8 @@ msgctxt "Messages"
 msgid "Last message"
 msgstr "Последнее сообщение"
 
-#: src/scenes/messages.rb:159 src/scenes/messages.rb:466 src/scenes/messages.rb:601
+#: src/scenes/messages.rb:159 src/scenes/messages.rb:466
+#: src/scenes/messages.rb:601
 msgctxt "Messages"
 msgid "Show older"
 msgstr "Показать старые"
@@ -11110,7 +11383,8 @@ msgctxt "Programs"
 msgid "The list of programs could not be loaded."
 msgstr "Не удалось загрузить список приложений."
 
-#: src/scenes/programs.rb:419 src/scenes/programs.rb:439 src/scenes/programs.rb:494
+#: src/scenes/programs.rb:419 src/scenes/programs.rb:439
+#: src/scenes/programs.rb:494
 msgctxt "Programs"
 msgid "Installation cancelled."
 msgstr "Установка отменена."
@@ -11150,7 +11424,8 @@ msgctxt "Registration"
 msgid "Enter your username. It must contain between 3 and 32 characters, including at least one letter. You may use letters, numbers, dots, hyphens, and underscores."
 msgstr "Введите имя пользователя. Оно должно содержать от 3 до 32 символов, в том числе хотя бы одну букву. Можно использовать буквы, цифры, точки, дефисы и знаки подчёркивания."
 
-#: src/scenes/registration.rb:26 src/scenes/registration.rb:39 src/scenes/registration.rb:90
+#: src/scenes/registration.rb:26 src/scenes/registration.rb:39
+#: src/scenes/registration.rb:90
 msgctxt "Registration"
 msgid "This username is forbidden."
 msgstr "Это имя пользователя запрещено."
@@ -13015,12 +13290,12 @@ msgstr "Открыть сайт проекта"
 #: src/scenes/welcome_wizard.rb:153
 msgctxt "WelcomeWizard"
 msgid "Quick Actions"
-msgstr "Быстрые действия"
+msgstr "Рабочий стол"
 
 #: src/scenes/welcome_wizard.rb:154
 msgctxt "WelcomeWizard"
 msgid "The main window greets you with a list of Quick Actions: shortcuts that take you straight to the places and commands you use most, such as opening Messages, publishing to the feed or entering a conference channel. The default set covers the essentials, but all of it is yours to change: use a Quick Action's context menu to move, rename, hide or delete it, assign a hotkey to it, add further actions or restore the defaults."
-msgstr "В главном окне вас встречает список быстрых действий — ярлыков, которые сразу открывают часто используемые разделы и команды: например, сообщения, публикацию в ленте или вход в канал конференции. Набор по умолчанию содержит всё необходимое, но его можно полностью настроить: через контекстное меню быстрого действия его можно переместить, переименовать, скрыть или удалить, назначить ему горячую клавишу, добавить другие действия или восстановить настройки по умолчанию."
+msgstr "В главном окне вас встречает рабочий стол — список быстрых действий (ярлыков), которые сразу открывают часто используемые разделы и команды: например, сообщения, публикацию в ленте или вход в комнату голосового чата. Набор по умолчанию содержит всё необходимое, но его можно полностью настроить: через контекстное меню ярлыка его можно переместить, переименовать, скрыть или удалить, назначить ему горячую клавишу, добавить другие действия или восстановить настройки по умолчанию."
 
 #: src/scenes/welcome_wizard.rb:169 src/scenes/welcome_wizard.rb:171
 msgctxt "WelcomeWizard"
@@ -13030,7 +13305,7 @@ msgstr "Озвучивание элементов управления"
 #: src/scenes/welcome_wizard.rb:172
 msgctxt "WelcomeWizard"
 msgid "As you move around Elten, every control introduces itself: a button, a list, a text field. How it does so is up to you. Elten can name the type in speech, mark it with its sound alone, or do both at once. Voice and sound is the friendlier choice while you are still learning; sound only makes navigation quicker once the sounds feel familiar. The list below shows the current behaviour, and you can change it at any time under Tools, Program settings."
-msgstr "При перемещении по Elten каждый элемент управления сообщает свой тип: кнопка, список, текстовое поле. Способ сообщения выбираете вы. Elten может произносить тип элемента, обозначать его только звуком или делать и то и другое. Пока вы осваиваетесь, удобнее использовать речь и звуки; когда звуки станут знакомыми, режим только со звуками ускорит навигацию. Ниже показан текущий вариант. Его можно изменить в любое время в меню «Инструменты», «Настройки программы»."
+msgstr "При перемещении по Elten каждый элемент управления сообщает свой тип: кнопка, список, текстовое поле. Способ сообщения выбираете вы. Elten может произносить тип элемента, обозначать его только звуком или делать и то и другое. Пока вы осваиваетесь, удобнее использовать речь и звуки; когда звуки станут знакомыми, режим только со звуками ускорит навигацию. Ниже показан текущий вариант. Его можно изменить в любое время в меню «Утилиты», «Настройки клиента»."
 
 #: src/scenes/welcome_wizard.rb:177
 msgctxt "WelcomeWizard"
@@ -13075,12 +13350,12 @@ msgstr "Главное окно"
 #: src/scenes/welcome_wizard.rb:209
 msgctxt "WelcomeWizard"
 msgid "The main window is built of tabs: Notifications, the Feed and Quick Actions. Not everyone needs all three, so you can choose which of them are shown. The notifications tab has two habits of its own that you can adjust as well: by default it appears only while there are notifications to show, and you can decide whether, and when, it takes focus as you return to the main window. All of this can also be changed later under Tools, Program settings, Main window."
-msgstr "Главное окно состоит из вкладок «Уведомления», «Лента» и «Быстрые действия». Не всем нужны все три, поэтому можно выбрать, какие из них показывать. У вкладки уведомлений есть ещё два настраиваемых свойства: по умолчанию она появляется, только когда есть уведомления, а вы можете решить, должна ли она получать фокус при возвращении в главное окно и при каких условиях. Всё это можно позже изменить в меню «Инструменты», «Настройки программы», «Главное окно»."
+msgstr "Главное окно состоит из вкладок «Уведомления», «Лента» и «Рабочий стол». Не всем нужны все три, поэтому можно выбрать, какие из них показывать. У вкладки уведомлений есть ещё два настраиваемых свойства: по умолчанию она появляется, только когда есть уведомления, а вы можете решить, должна ли она получать фокус при возвращении в главное окно и при каких условиях. Всё это можно позже изменить в меню «Утилиты», «Настройки клиента», «Главное окно»."
 
 #: src/scenes/welcome_wizard.rb:211
 msgctxt "WelcomeWizard"
 msgid "In Elten 2.x, the main window had two tabs: Quick Actions and the feed. Elten 3.0 joins them with a third, Notifications, and leaves the whole arrangement to you: choose exactly the tabs you want to see. The notifications tab has two habits of its own that you can adjust as well: by default it appears only while there are notifications to show, and you can decide whether, and when, it takes focus as you return to the main window. All of this can also be changed later under Tools, Program settings, Main window."
-msgstr "В Elten 2.x в главном окне было две вкладки: «Быстрые действия» и «Лента». В Elten 3.0 к ним добавилась третья — «Уведомления», а расположение полностью зависит от вас: выберите именно те вкладки, которые хотите видеть. У вкладки уведомлений есть ещё два настраиваемых свойства: по умолчанию она появляется, только когда есть уведомления, а вы можете решить, должна ли она получать фокус при возвращении в главное окно и при каких условиях. Всё это можно позже изменить в меню «Инструменты», «Настройки программы», «Главное окно»."
+msgstr "В Elten 2.x в главном окне было две вкладки: «Рабочий стол» и «Лента». В Elten 3.0 к ним добавилась третья — «Уведомления», а расположение полностью зависит от вас: выберите именно те вкладки, которые хотите видеть. У вкладки уведомлений есть ещё два настраиваемых свойства: по умолчанию она появляется, только когда есть уведомления, а вы можете решить, должна ли она получать фокус при возвращении в главное окно и при каких условиях. Всё это можно позже изменить в меню «Утилиты», «Настройки клиента», «Главное окно»."
 
 #: src/scenes/welcome_wizard.rb:213
 msgctxt "WelcomeWizard"
@@ -13095,7 +13370,7 @@ msgstr "Лента"
 #: src/scenes/welcome_wizard.rb:216
 msgctxt "WelcomeWizard"
 msgid "Quick actions"
-msgstr "Быстрые действия"
+msgstr "Рабочий стол"
 
 #: src/scenes/welcome_wizard.rb:216
 msgctxt "WelcomeWizard"
@@ -13160,7 +13435,7 @@ msgstr "Автоматическое воспроизведение аудио"
 #: src/scenes/welcome_wizard.rb:288
 msgctxt "WelcomeWizard"
 msgid "When you reach audio content, such as a voice message or an audio post, Elten can start playing it by itself. Some people find that natural, others prefer to press play themselves, and readers of transcriptions may want audio only when there is no text to fall back on. The list below shows the current behaviour; choose the one that suits you. Like everything in this wizard, the change is applied when you choose Finish, and it can be adjusted at any time under Tools, Program settings."
-msgstr "Когда вы переходите к аудиоматериалу, например голосовому сообщению или аудиозаписи, Elten может начать воспроизводить его автоматически. Одним это удобно, другие предпочитают запускать воспроизведение вручную, а тем, кто читает расшифровки, аудио может быть нужно только при отсутствии текста. Ниже показано текущее поведение; выберите подходящий вариант. Как и другие изменения в этом мастере, оно применяется после нажатия кнопки «Готово», а позже его можно изменить в меню «Инструменты», «Настройки программы»."
+msgstr "Когда вы переходите к аудиоматериалу, например голосовому сообщению или аудиозаписи, Elten может начать воспроизводить его автоматически. Одним это удобно, другие предпочитают запускать воспроизведение вручную, а тем, кто читает расшифровки, аудио может быть нужно только при отсутствии текста. Ниже показано текущее поведение; выберите подходящий вариант. Как и другие изменения в этом мастере, оно применяется после нажатия кнопки «Готово», а позже его можно изменить в меню «Утилиты», «Настройки клиента»."
 
 #: src/scenes/welcome_wizard.rb:293
 msgctxt "WelcomeWizard"
@@ -13210,7 +13485,7 @@ msgstr "Воспроизведение аудио"
 #: src/scenes/welcome_wizard.rb:331
 msgctxt "WelcomeWizard"
 msgid "Nearly everything in Elten starts from one of two menus. Press Alt on most screens to open the main menu; it leads to the community areas, your account, programs, settings and help. The context menu is different: it lists the actions available for whatever currently has focus, such as a message, a forum post or a list entry."
-msgstr "Почти все действия в Elten начинаются в одном из двух меню. На большинстве экранов клавиша Alt открывает главное меню, откуда доступны разделы сообщества, учётная запись, программы, настройки и справка. Контекстное меню устроено иначе: в нём перечислены действия, доступные для объекта в фокусе, например сообщения, записи на форуме или пункта списка."
+msgstr "Почти все действия в Elten начинаются в одном из двух меню. На большинстве экранов клавиша Alt открывает главное меню, откуда доступны разделы сообщества, учётная запись, приложения, настройки и справка. Контекстное меню устроено иначе: в нём перечислены действия, доступные для объекта в фокусе, например сообщения, записи на форуме или пункта списка."
 
 #: src/scenes/welcome_wizard.rb:334
 msgctxt "WelcomeWizard"
@@ -13230,7 +13505,7 @@ msgstr "Откройте его сочетанием %{hotkey}, назначен
 #: src/scenes/welcome_wizard.rb:341
 msgctxt "WelcomeWizard"
 msgid "By default, the context menu is also placed as the first item of the main menu; you can turn that off in the program settings. Whenever an option seems to be missing, check the context menu first; that is usually where it lives."
-msgstr "По умолчанию контекстное меню также находится в первом пункте главного меню; это можно отключить в настройках программы. Если вам не удаётся найти нужную команду, сначала проверьте контекстное меню: обычно она находится там."
+msgstr "По умолчанию контекстное меню также находится в первом пункте главного меню; это можно отключить в настройках клиента. Если вам не удаётся найти нужную команду, сначала проверьте контекстное меню: обычно она находится там."
 
 #: src/scenes/welcome_wizard.rb:344
 msgctxt "WelcomeWizard"
@@ -13250,7 +13525,7 @@ msgstr "Невидимый интерфейс"
 #: src/scenes/welcome_wizard.rb:374
 msgctxt "WelcomeWizard"
 msgid "Elten does not stop being useful when you switch to another program. The Invisible Interface is a set of global hotkeys that work across the whole system while Elten is running, so you can check new messages, browse the feed or control a conference without leaving the application you are in. Its content is arranged into cards, such as Messages, Feed and Conference options: hold the Elten modifier keys and use the arrow keys to move between cards and their items, press Enter to activate one, or add a command key, for example M to write a message or F to publish to the feed. The complete list is available under Help, List of Invisible Interface hotkeys."
-msgstr "Elten остаётся полезным и после переключения в другую программу. Невидимый интерфейс — это набор глобальных горячих клавиш, которые работают во всей системе, пока запущен Elten. С их помощью можно проверять новые сообщения, просматривать ленту и управлять конференцией, не покидая текущее приложение. Команды объединены в карточки, например «Сообщения», «Лента» и «Параметры конференции»: удерживайте клавиши-модификаторы Elten и перемещайтесь между карточками и их пунктами стрелками, нажимайте Enter для активации либо добавляйте клавишу команды, например M для создания сообщения или F для публикации в ленте. Полный перечень доступен в меню «Справка», «Список горячих клавиш невидимого интерфейса»."
+msgstr "Elten остаётся полезным и после переключения в другую программу. Невидимый интерфейс — это набор глобальных горячих клавиш, которые работают во всей системе, пока запущен Elten. С их помощью можно проверять новые сообщения, просматривать ленту и управлять комнатой голосового чата, не покидая текущее приложение. Команды объединены в карточки, например «Сообщения», «Лента» и «Параметры голосового чата»: удерживайте клавиши-модификаторы Elten и перемещайтесь между карточками и их пунктами стрелками, нажимайте Enter для активации либо добавляйте клавишу команды, например M для создания сообщения или F для публикации в ленте. Полный перечень доступен в меню «Справка», «Список горячих клавиш»."
 
 #: src/scenes/welcome_wizard.rb:377
 msgctxt "WelcomeWizard"
@@ -13289,9 +13564,9 @@ msgid ""
 "\n"
 "If you would prefer Elten to sound different altogether, the community shares sound themes that replace the whole set. You can preview and install them under Soundthemes in the Tools menu."
 msgstr ""
-"Elten намеренно произносит не всё: о многих событиях сообщают короткие звуки, например о достижении края списка, получении нового сообщения или входе участника в конференцию. Большинство из них запомнится естественным образом по мере работы. Кнопка ниже открывает справочник звуков, где можно прослушать любой звук вместе с его описанием; справочник также всегда доступен в меню «Справка».\n"
+"Elten намеренно произносит не всё: о многих событиях сообщают короткие звуки, например о достижении края списка, получении нового сообщения или входе участника в комнату голосового чата. Большинство из них запомнится естественным образом по мере работы. Кнопка ниже открывает гид по звукам, где можно прослушать любой звук вместе с его описанием; он также всегда доступен в меню «Справка».\n"
 "\n"
-"Если вы хотите полностью изменить звучание Elten, участники сообщества делятся звуковыми темами, которые заменяют весь набор звуков. Их можно прослушать и установить в разделе «Звуковые темы» меню «Инструменты»."
+"Если вы хотите полностью изменить звучание Elten, участники сообщества делятся звуковыми схемами, которые заменяют весь набор звуков. Их можно прослушать и установить в разделе «Звуковые схемы» меню «Утилиты»."
 
 #: src/scenes/welcome_wizard.rb:430
 msgctxt "WelcomeWizard"
@@ -13311,12 +13586,12 @@ msgstr "Переработка не ограничилась клиентом: E
 #: src/scenes/welcome_wizard.rb:445
 msgctxt "WelcomeWizard"
 msgid "Programs from Elten 2.x"
-msgstr "Программы из Elten 2.x"
+msgstr "Приложения из Elten 2.x"
 
 #: src/scenes/welcome_wizard.rb:446
 msgctxt "WelcomeWizard"
 msgid "Programs written for Elten 2.x cannot run in Elten 3.0 and are not carried over during the upgrade. Compatible versions of the official programs are available from Programs management in the Programs menu, and later in this wizard you will be offered a few of the most useful ones. When an installed program has an update available, Elten 3.0 lets you know through a notification."
-msgstr "Программы, написанные для Elten 2.x, не работают в Elten 3.0 и не переносятся при обновлении. Совместимые версии официальных программ доступны в разделе «Управление программами» меню «Программы», а далее мастер предложит установить некоторые из самых полезных. Когда для установленной программы появится обновление, Elten 3.0 сообщит об этом уведомлением."
+msgstr "Приложения, написанные для Elten 2.x, не работают в Elten 3.0 и не переносятся при обновлении. Совместимые версии официальных приложений доступны в разделе «Управление приложениями» меню «Приложения», а далее мастер предложит установить некоторые из самых полезных. Когда для установленного приложения появится обновление, Elten 3.0 сообщит об этом уведомлением."
 
 #: src/scenes/welcome_wizard.rb:450
 msgctxt "WelcomeWizard"
@@ -13366,7 +13641,7 @@ msgstr "Статистика активности"
 #: src/scenes/welcome_wizard.rb:471
 msgctxt "WelcomeWizard"
 msgid "Until now, a summary of the past year's activity was sent out on the first day of each new year, and only some could read it: it reached Polish-speaking users who were active around that time, and it existed only in Polish. Elten 3.0 replaces that tradition with something better. Activity statistics are now available to everyone, for any year and at any time, under Manage my account. You can check how many forum posts, messages, blog posts and comments a year brought, how much time you spent in conferences and how often you signed in; each year can be compared with the one before, and rankings show, among other things, the forums you used most and the people you wrote with most often."
-msgstr "Раньше сводка активности за прошедший год рассылалась в первый день нового года, и прочитать её могли лишь некоторые: она отправлялась активным в то время польскоязычным пользователям и существовала только на польском языке. В Elten 3.0 эта традиция стала удобнее. Теперь статистика активности доступна всем, за любой год и в любое время, в разделе «Управление учётной записью». Вы можете узнать, сколько за год написали сообщений на форуме, личных сообщений, записей и комментариев в блогах, сколько времени провели в конференциях и как часто входили в систему. Каждый год можно сравнить с предыдущим, а рейтинги покажут, среди прочего, самые посещаемые вами форумы и пользователей, с которыми вы чаще всего переписывались."
+msgstr "Раньше сводка активности за прошедший год рассылалась в первый день нового года, и прочитать её могли лишь некоторые: она отправлялась активным в то время польскоязычным пользователям и существовала только на польском языке. В Elten 3.0 эта традиция стала удобнее. Теперь статистика активности доступна всем, за любой год и в любое время, в разделе «Управление учётной записью». Вы можете узнать, сколько за год написали сообщений на форуме, личных сообщений, записей и комментариев в блогах, сколько времени провели в комнатах голосового чата и как часто входили в систему. Каждый год можно сравнить с предыдущим, а рейтинги покажут, среди прочего, самые посещаемые вами форумы и пользователей, с которыми вы чаще всего переписывались."
 
 #: src/scenes/welcome_wizard.rb:475
 msgctxt "WelcomeWizard"
@@ -13406,7 +13681,7 @@ msgstr "Поведение клавиатуры в macOS"
 #: src/scenes/welcome_wizard.rb:498
 msgctxt "WelcomeWizard"
 msgid "Elten on macOS can follow either the native macOS conventions or the Ctrl-based Windows layout that older Elten versions used. The keyboard style decides which modifier keys Elten shortcuts expect: Command and Option, or Ctrl. Character navigation separately decides whether the Left and Right Arrow keys review text the macOS way or the Windows way. The lists below show the current settings; both can also be adjusted at any time under Tools, Program settings."
-msgstr "В macOS Elten может следовать либо привычным правилам macOS, либо основанной на Ctrl раскладке Windows, которая использовалась в прежних версиях Elten. Стиль клавиатуры определяет, какие клавиши-модификаторы используются в сочетаниях Elten: Command и Option или Ctrl. Отдельный параметр навигации по символам определяет, будут ли стрелки влево и вправо перемещаться по тексту как в macOS или как в Windows. В списках ниже показаны текущие параметры; оба можно в любое время изменить в меню «Инструменты», «Настройки программы»."
+msgstr "В macOS Elten может следовать либо привычным правилам macOS, либо основанной на Ctrl раскладке Windows, которая использовалась в прежних версиях Elten. Стиль клавиатуры определяет, какие клавиши-модификаторы используются в сочетаниях Elten: Command и Option или Ctrl. Отдельный параметр навигации по символам определяет, будут ли стрелки влево и вправо перемещаться по тексту как в macOS или как в Windows. В списках ниже показаны текущие параметры; оба можно в любое время изменить в меню «Утилиты», «Настройки клиента»."
 
 #: src/scenes/welcome_wizard.rb:503 src/scenes/welcome_wizard.rb:510
 msgctxt "WelcomeWizard"
@@ -13538,7 +13813,8 @@ msgctxt "WelcomeWizard"
 msgid "Full name or preferred public name"
 msgstr "Полное имя или предпочитаемое публичное имя"
 
-#: src/scenes/welcome_wizard.rb:615 src/scenes/welcome_wizard.rb:624 src/scenes/welcome_wizard.rb:630
+#: src/scenes/welcome_wizard.rb:615 src/scenes/welcome_wizard.rb:624
+#: src/scenes/welcome_wizard.rb:630
 msgctxt "WelcomeWizard"
 msgid "Gender"
 msgstr "Пол"
@@ -13716,7 +13992,7 @@ msgstr "Личные сообщения"
 #: src/scenes/welcome_wizard.rb:761
 msgctxt "WelcomeWizard"
 msgid "Private messages are direct conversations between you and one or more other users; nobody outside a conversation can read it. A conversation can be a simple exchange with one person or a named group with several members. Messages can carry attachments and be recorded as audio messages, which may include a transcription. If a conversation becomes too lively, you can mute it for a while, and the ones you care about most can be added to Quick Actions."
-msgstr "Личные сообщения — это непосредственные беседы между вами и одним или несколькими пользователями; никто за пределами беседы не может их прочитать. Беседа может быть простой перепиской с одним человеком или именованной группой из нескольких участников. К сообщениям можно прикреплять файлы, а также записывать их как голосовые сообщения с возможной расшифровкой. Слишком активную беседу можно на время отключить, а самые важные — добавить в быстрые действия."
+msgstr "Личные сообщения — это непосредственные беседы между вами и одним или несколькими пользователями; никто за пределами беседы не может их прочитать. Беседа может быть простой перепиской с одним человеком или именованной группой из нескольких участников. К сообщениям можно прикреплять файлы, а также записывать их как голосовые сообщения с возможной расшифровкой. Слишком активную беседу можно на время отключить, а самые важные — добавить на рабочий стол."
 
 #: src/scenes/welcome_wizard.rb:765
 msgctxt "WelcomeWizard"
@@ -13752,13 +14028,12 @@ msgstr "Лента — место Elten для небольших публика
 #: src/scenes/welcome_wizard.rb:789
 msgctxt "WelcomeWizard"
 msgid "Conferences"
-msgstr "Конференции"
+msgstr "Голосовой чат"
 
 #: src/scenes/welcome_wizard.rb:790
 msgctxt "WelcomeWizard"
-msgid ""
-"Conferences are live audio channels where you can talk with others, listen or stream sound, and every channel also has its own text chat. Sound in a channel is positional: each participant occupies a place in the channel space, you move around it with the arrow keys, and you can whisper something to a single person standing nearby. You can also stream an audio file or your whole sound card to a channel, which makes listening to music or watching a film together easy. Channels come in many forms; some are open to everyone, while others are protected by a password or a waiting room. And when you would rather talk to one particular person, simply call them: the invitation can be accepted or declined, and missed calls are kept in the call history. Creating your own channel takes a moment, and a channel you like can be followed or added to Quick Actions."
-msgstr "Конференции — это аудиоканалы в реальном времени, где можно разговаривать, слушать или транслировать звук; в каждом канале также есть текстовый чат. Звук в канале позиционный: каждый участник занимает определённое место в пространстве канала, по которому можно перемещаться стрелками, и вы можете шепнуть что-нибудь одному стоящему рядом человеку. В канал также можно транслировать аудиофайл или весь звук звуковой карты, что удобно для совместного прослушивания музыки или просмотра фильма. Каналы бывают разными: одни открыты для всех, другие защищены паролем или комнатой ожидания. А если вы хотите поговорить с конкретным человеком, просто позвоните ему: приглашение можно принять или отклонить, а пропущенные вызовы сохраняются в журнале. Создать свой канал можно за несколько мгновений, а понравившийся канал — добавить в подписки или быстрые действия."
+msgid "Conferences are live audio channels where you can talk with others, listen or stream sound, and every channel also has its own text chat. Sound in a channel is positional: each participant occupies a place in the channel space, you move around it with the arrow keys, and you can whisper something to a single person standing nearby. You can also stream an audio file or your whole sound card to a channel, which makes listening to music or watching a film together easy. Channels come in many forms; some are open to everyone, while others are protected by a password or a waiting room. And when you would rather talk to one particular person, simply call them: the invitation can be accepted or declined, and missed calls are kept in the call history. Creating your own channel takes a moment, and a channel you like can be followed or added to Quick Actions."
+msgstr "Голосовой чат — это комнаты в реальном времени, где можно разговаривать, слушать или транслировать звук; в каждой комнате также есть текстовый чат. Звук в комнате позиционный: каждый участник занимает определённое место в пространстве комнаты, по которому можно перемещаться стрелками, и вы можете сказать что-нибудь лично одному стоящему рядом человеку. В комнату также можно транслировать аудиофайл или весь звук звуковой карты, что удобно для совместного прослушивания музыки или просмотра фильма. Комнаты бывают разными: одни открыты для всех, другие защищены паролем или комнатой ожидания. А если вы хотите поговорить с конкретным человеком, просто позвоните ему: приглашение можно принять или отклонить, а пропущенные вызовы сохраняются в журнале. Создать свою комнату можно за несколько мгновений, а понравившуюся комнату — добавить в подписки или на рабочий стол."
 
 #: src/scenes/welcome_wizard.rb:794
 msgctxt "WelcomeWizard"
@@ -13810,7 +14085,8 @@ msgctxt "WelcomeWizard"
 msgid "No matching recommended group is available. You can browse all public and open groups from the Forum later."
 msgstr "Подходящих рекомендуемых групп нет. Позже вы сможете просмотреть все общедоступные и открытые группы на форуме."
 
-#: src/scenes/welcome_wizard.rb:824 src/scenes/welcome_wizard.rb:891 src/scenes/welcome_wizard.rb:924
+#: src/scenes/welcome_wizard.rb:824 src/scenes/welcome_wizard.rb:891
+#: src/scenes/welcome_wizard.rb:924
 msgctxt "WelcomeWizard"
 msgid "Availability"
 msgstr "Доступность"
@@ -13820,7 +14096,8 @@ msgctxt "WelcomeWizard"
 msgid "Recommended groups"
 msgstr "Рекомендуемые группы"
 
-#: src/scenes/welcome_wizard.rb:843 src/scenes/welcome_wizard.rb:846 src/scenes/welcome_wizard.rb:852 src/scenes/welcome_wizard.rb:860
+#: src/scenes/welcome_wizard.rb:843 src/scenes/welcome_wizard.rb:846
+#: src/scenes/welcome_wizard.rb:852 src/scenes/welcome_wizard.rb:860
 msgctxt "WelcomeWizard"
 msgid "Post an introduction"
 msgstr "Опубликовать приветствие"
@@ -13988,7 +14265,7 @@ msgstr "Диспетчер файлов"
 #: src/scenes/welcome_wizard.rb:1016
 msgctxt "WelcomeWizard"
 msgid "File Manager adds a file browser to the Programs menu, driven with the familiar Elten controls. It can open and preview supported files, play audio, make recordings, rename and copy items, and create or extract ZIP archives. Install it if you would like to manage local files without leaving Elten."
-msgstr "Диспетчер файлов добавляет в меню «Программы» файловый браузер с привычными элементами управления Elten. Он умеет открывать и предварительно просматривать поддерживаемые файлы, воспроизводить аудио, делать записи, переименовывать и копировать элементы, а также создавать и распаковывать ZIP-архивы. Установите его, если хотите управлять локальными файлами, не покидая Elten."
+msgstr "Диспетчер файлов добавляет в меню «Приложения» файловый браузер с привычными элементами управления Elten. Он умеет открывать и предварительно просматривать поддерживаемые файлы, воспроизводить аудио, делать записи, переименовывать и копировать элементы, а также создавать и распаковывать ZIP-архивы. Установите его, если хотите управлять локальными файлами, не покидая Elten."
 
 #: src/scenes/welcome_wizard.rb:1020
 msgctxt "WelcomeWizard"
@@ -14338,7 +14615,8 @@ msgctxt "WelcomeWizard"
 msgid "Enable feed notifications"
 msgstr "Включить уведомления ленты"
 
-#: src/scenes/welcome_wizard.rb:1578 src/scenes/welcome_wizard.rb:1736 src/scenes/welcome_wizard.rb:1739
+#: src/scenes/welcome_wizard.rb:1578 src/scenes/welcome_wizard.rb:1736
+#: src/scenes/welcome_wizard.rb:1739
 msgctxt "WelcomeWizard"
 msgid "Install %{program}"
 msgstr "Установить %{program}"
@@ -14401,12 +14679,12 @@ msgstr "реквизиты перевода пожертвований"
 #: src/scenes/welcome_wizard.rb:1595
 msgctxt "WelcomeWizard"
 msgid "programs available on the server"
-msgstr "программы, доступные на сервере"
+msgstr "приложения, доступные на сервере"
 
 #: src/scenes/welcome_wizard.rb:1596
 msgctxt "WelcomeWizard"
 msgid "installed program status"
-msgstr "состояние установленной программы"
+msgstr "состояние установленного приложения"
 
 #: src/scenes/welcome_wizard.rb:1617
 msgctxt "WelcomeWizard"
@@ -14563,7 +14841,8 @@ msgctxt "EAPI_Form"
 msgid "unchecked"
 msgstr "не отмечено"
 
-#: src/ui/controls/check_box.rb:38 src/ui/controls/list_box.rb:562 src/ui/controls/list_box.rb:830
+#: src/ui/controls/check_box.rb:38 src/ui/controls/list_box.rb:562
+#: src/ui/controls/list_box.rb:830
 msgctxt "EAPI_Form"
 msgid "Checked"
 msgstr "Отмечено"
@@ -14643,7 +14922,15 @@ msgctxt "EAPI_Form"
 msgid "December"
 msgstr "Декабрь"
 
-#: src/ui/controls/date_button.rb:27 src/ui/controls/date_button.rb:28 src/ui/controls/date_button.rb:29 src/ui/controls/date_button.rb:30 src/ui/controls/date_button.rb:31 src/ui/controls/date_button.rb:32 src/ui/controls/date_button.rb:74 src/ui/controls/date_button.rb:76 src/ui/controls/date_button.rb:83 src/ui/controls/date_button.rb:94 src/ui/controls/date_button.rb:101 src/ui/controls/date_button.rb:103 src/ui/controls/date_button.rb:110 src/ui/controls/date_button.rb:112 src/ui/controls/date_button.rb:119 src/ui/controls/date_button.rb:121 src/ui/controls/date_button.rb:130
+#: src/ui/controls/date_button.rb:27 src/ui/controls/date_button.rb:28
+#: src/ui/controls/date_button.rb:29 src/ui/controls/date_button.rb:30
+#: src/ui/controls/date_button.rb:31 src/ui/controls/date_button.rb:32
+#: src/ui/controls/date_button.rb:74 src/ui/controls/date_button.rb:76
+#: src/ui/controls/date_button.rb:83 src/ui/controls/date_button.rb:94
+#: src/ui/controls/date_button.rb:101 src/ui/controls/date_button.rb:103
+#: src/ui/controls/date_button.rb:110 src/ui/controls/date_button.rb:112
+#: src/ui/controls/date_button.rb:119 src/ui/controls/date_button.rb:121
+#: src/ui/controls/date_button.rb:130
 msgctxt "EAPI_Form"
 msgid "Not selected"
 msgstr "Не выбрано"
@@ -14688,7 +14975,9 @@ msgctxt "EAPI_Form"
 msgid "Opening a link..."
 msgstr "Открытие ссылки..."
 
-#: src/ui/controls/edit_box.rb:265 src/ui/controls/edit_box.rb:272 src/ui/controls/edit_box.rb:290 src/ui/controls/edit_box.rb:894 src/ui/controls/edit_box.rb:980 src/ui/controls/edit_box.rb:995
+#: src/ui/controls/edit_box.rb:265 src/ui/controls/edit_box.rb:272
+#: src/ui/controls/edit_box.rb:290 src/ui/controls/edit_box.rb:894
+#: src/ui/controls/edit_box.rb:980 src/ui/controls/edit_box.rb:995
 msgctxt "EAPI_Form"
 msgid "End of line"
 msgstr "Конец строки"
@@ -15099,7 +15388,9 @@ msgctxt "EAPI_Form"
 msgid "record"
 msgstr "записать"
 
-#: src/ui/controls/opus_record_button.rb:33 src/ui/controls/opus_record_button.rb:93 src/ui/controls/opus_record_button.rb:123
+#: src/ui/controls/opus_record_button.rb:33
+#: src/ui/controls/opus_record_button.rb:93
+#: src/ui/controls/opus_record_button.rb:123
 msgctxt "EAPI_Form"
 msgid "Pause recording"
 msgstr "Пауза"
@@ -15139,7 +15430,8 @@ msgctxt "EAPI_Form"
 msgid "Delete recording"
 msgstr "Удалить запись"
 
-#: src/ui/controls/opus_record_button.rb:50 src/ui/controls/opus_record_button.rb:98
+#: src/ui/controls/opus_record_button.rb:50
+#: src/ui/controls/opus_record_button.rb:98
 msgctxt "EAPI_Form"
 msgid "Are you sure you want to delete the previous recording and create a new one?"
 msgstr "Вы хотите перезаписать файл?"
@@ -15289,7 +15581,8 @@ msgctxt "EAPI_Form"
 msgid "Copyright"
 msgstr "Авторское право"
 
-#: src/ui/controls/opus_record_button.rb:328 src/ui/controls/opus_record_button.rb:369
+#: src/ui/controls/opus_record_button.rb:328
+#: src/ui/controls/opus_record_button.rb:369
 msgctxt "EAPI_Form"
 msgid "Chapter name"
 msgstr "Название главы"
