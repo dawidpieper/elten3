@@ -297,7 +297,8 @@ end
       break if $scene!=self
       if (key_pressed?(:key_enter) or key_pressed?(:key_right) and !key_held?(0x10))
         groupopen(@grpsel.index, type, false)
-break
+        break if $scene != self
+        @grpsel.focus
       end
       break if $scene!=self
     end
@@ -1459,6 +1460,11 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
   def forumsmain(group = -1)
     group = @group if group == -1
     group = 0 if group == -1
+    if group.nil?
+      forum = @forums.find { |f| f.id == @frmsetid } if @frmsetid != nil && @forums != nil
+      return groupsmain if forum.nil?
+      group = forum.group.id
+    end
     @group = group
     forumsload(group)
     loop do
