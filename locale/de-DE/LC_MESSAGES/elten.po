@@ -964,7 +964,7 @@ msgstr "Ka&lender"
 #: src/eapi/mainmenu.rb:69
 msgctxt "MainMenu"
 msgid "Tas&ks"
-msgstr "&Aufgaben"
+msgstr "Auf&gaben"
 
 #: src/eapi/mainmenu.rb:70
 msgctxt "MainMenu"
