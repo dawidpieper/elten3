@@ -8,7 +8,7 @@ msgstr ""
 "Project-Id-Version: Elten 3.0\n"
 "Report-Msgid-Bugs-To: dawidpieper@o2.pl\n"
 "POT-Creation-Date: 2026-08-13 12:31+0200\n"
-"PO-Revision-Date: 2026-08-16 10:26+0500\n"
+"PO-Revision-Date: 2026-08-16 19:20+0500\n"
 "Last-Translator: Danil Kostenkov <danilkostenkov38@gmail.com>\n"
 "Language-Team: monstricek, russiandan2019\n"
 "Language: ru\n"
@@ -12163,7 +12163,7 @@ msgstr "Обозначение медиафайла"
 #: src/scenes/sounds.rb:50
 msgctxt "Sounds"
 msgid "Marker for a text field in a form"
-msgstr "Обозначение редактора"
+msgstr "Обозначение текстового поля"
 
 #: src/scenes/sounds.rb:51
 msgctxt "Sounds"
@@ -12278,7 +12278,7 @@ msgstr "Уведомление о новой публикации на избр�
 #: src/scenes/sounds.rb:73
 msgctxt "Sounds"
 msgid "Notification: new comment to a followed blog post"
-msgstr "Уведомление о новом комментарий к избранной публикации в блоге"
+msgstr "Уведомление о новом комментарии к избранной публикации в блоге"
 
 #: src/scenes/sounds.rb:74
 msgctxt "Sounds"
@@ -15110,7 +15110,7 @@ msgstr "Текстовое поле"
 #: src/ui/controls/edit_box.rb:617 src/ui/controls/files_tree.rb:364
 msgctxt "EAPI_Form"
 msgid "Edit"
-msgstr "Редактировать"
+msgstr "Правка"
 
 #: src/ui/controls/edit_box.rb:637
 msgctxt "EAPI_Form"
