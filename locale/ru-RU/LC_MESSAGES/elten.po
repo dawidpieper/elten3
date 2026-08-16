@@ -8,7 +8,7 @@ msgstr ""
 "Project-Id-Version: Elten 3.0\n"
 "Report-Msgid-Bugs-To: dawidpieper@o2.pl\n"
 "POT-Creation-Date: 2026-08-13 12:31+0200\n"
-"PO-Revision-Date: 2026-08-16 19:20+0500\n"
+"PO-Revision-Date: 2026-08-16 19:57+0500\n"
 "Last-Translator: Danil Kostenkov <danilkostenkov38@gmail.com>\n"
 "Language-Team: monstricek, russiandan2019\n"
 "Language: ru\n"
@@ -73,7 +73,7 @@ msgstr "Скрыть программу в трей"
 #: src/scenes/authentication.rb:24 src/scenes/authentication.rb:26
 #: src/scenes/forgotpassword.rb:30 src/scenes/loading.rb:322
 msgid "Exit"
-msgstr "Закрыть программу"
+msgstr "Закрыть"
 
 #: src/eapi/common/console.rb:98
 msgctxt "EAPI_Common"
@@ -130,12 +130,12 @@ msgstr "Включить автоочистку вывода"
 #: src/eapi/common/console.rb:139
 msgctxt "EAPI_Common"
 msgid "Enable source in output"
-msgstr "Включить источник в выходных данных"
+msgstr "Включить вывод источника"
 
 #: src/eapi/common/console.rb:141
 msgctxt "EAPI_Common"
 msgid "Disable source in output"
-msgstr "Отключить источник в выходных данных"
+msgstr "Отключить вывод источника"
 
 #: src/eapi/common/console.rb:153
 msgctxt "EAPI_Common"
@@ -10986,7 +10986,7 @@ msgstr "Название"
 #: src/scenes/programs.rb:39
 msgctxt "Programs"
 msgid "Install from file"
-msgstr "Установить из файлва"
+msgstr "Установить из файла"
 
 #: src/scenes/programs.rb:42
 msgctxt "Programs"
@@ -11006,32 +11006,32 @@ msgstr "Сведения"
 #: src/scenes/programs.rb:54
 msgctxt "Programs"
 msgid "Unload"
-msgstr "Отменить загрузку"
+msgstr "Отключить"
 
 #: src/scenes/programs.rb:55
 msgctxt "Programs"
 msgid "Unload for this session only"
-msgstr "Отменить загрузку только для этого сеанса"
+msgstr "Отключить только для этого сеанса"
 
 #: src/scenes/programs.rb:55
 msgctxt "Programs"
 msgid "Unload and do not load automatically"
-msgstr "Отменить загрузку и не загружать автоматически"
+msgstr "Отключить и не включать автоматически"
 
 #: src/scenes/programs.rb:55
 msgctxt "Programs"
 msgid "Unload program %{name}"
-msgstr "Отменить загрузку приложения %{name}"
+msgstr "Отключить приложение %{name}"
 
 #: src/scenes/programs.rb:63
 msgctxt "Programs"
 msgid "Load"
-msgstr "Загрузить"
+msgstr "Включить"
 
 #: src/scenes/programs.rb:67
 msgctxt "Programs"
 msgid "Unload always"
-msgstr "Не загружать"
+msgstr "Отключить навсегда"
 
 #: src/scenes/programs.rb:68
 msgctxt "Programs"
