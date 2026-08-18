@@ -143,6 +143,7 @@ end
     @form.fields[0].flags=EditBox::Flags::MultiLine
     @form.index=0
     @form.fields[0].focus
+    EltenWindow.take_character(true) if defined?(EltenWindow) && EltenWindow.respond_to?(:take_character)
     @form.fields[1]=Button.new(_("Save"))
   else
     text=@form.fields[0].text
