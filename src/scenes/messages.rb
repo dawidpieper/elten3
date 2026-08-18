@@ -1033,7 +1033,7 @@ def audiolimit
                        end
                      end
                      if (key_pressed?(:key_escape) or ((key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form.index == 7)) && (@form.fields[3]==nil || @form.fields[3].delete_audio)
-                       if (@form.fields[2]==nil || @form.fields[2].text=="") || confirm(p_("Messages", "Are you sure you want to cancel creating this message?"))
+                       if ((@form.fields[2]==nil || @form.fields[2].text=="") && (@form.fields[1]==nil || @form.fields[1].text==@subject.to_s)) || confirm(p_("Messages", "Are you sure you want to cancel creating this message?"))
                                                               if @scene != false and @scene != true and @scene.is_a?(Integer)==false and @scene.is_a?(Array)==false
            $scene = @scene
          else

@@ -90,12 +90,14 @@ module CalendarSceneHelpers
     apply_event_range_visibility(form, lst_range.index, hour_fields, custom_fields)
     accepted = false
     times = nil
+    init_name = edt_name.text.to_s
+    init_desc = edt_description.text.to_s
     dialog_open
     loop do
       loop_update
       form.update
       if key_pressed?(:key_escape) || ((key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 11)
-        break
+        break if (edt_name.text.to_s == init_name && edt_description.text.to_s == init_desc) || confirm(p_("Calendar", "Are you sure you want to close without saving?"))
       end
       if (key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 10
         if edt_name.text.to_s.strip == ""
@@ -641,11 +643,14 @@ class Scene_Calendar_Management
     ]
     form = Form.new(fields)
     accepted = false
+    init_name = edt_name.text.to_s
     dialog_open
     loop do
       loop_update
       form.update
-      break if key_pressed?(:key_escape) || ((key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 4)
+      if key_pressed?(:key_escape) || ((key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 4)
+        break if edt_name.text.to_s == init_name || confirm(p_("Calendar", "Are you sure you want to close without saving?"))
+      end
       if (key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 3
         if edt_name.text.to_s.strip == ""
           alert(p_("Calendar", "Enter a calendar name"))

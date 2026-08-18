@@ -2725,7 +2725,7 @@ form.wait
         end
       end
       if key_pressed?(:key_escape) or form.fields[-1].pressed?
-        if (!form.fields[1].is_a?(EditBox) && form.fields[1].delete_audio) or (form.fields[1].is_a?(EditBox) && (form.fields[1].text=="" || confirm(p_("Forum", "Are you sure you want to cancel creating this thread?"))))
+        if (!form.fields[1].is_a?(EditBox) && (form.fields[0].text=="" || confirm(p_("Forum", "Are you sure you want to cancel creating this thread?"))) && form.fields[1].delete_audio) or (form.fields[1].is_a?(EditBox) && ((form.fields[0].text=="" && form.fields[1].text=="") || confirm(p_("Forum", "Are you sure you want to cancel creating this thread?"))))
         loop_update
         return
         break

@@ -240,7 +240,9 @@ class Scene_Notes_New
         @form.fields[2]=btn
         end
       @form.update
-      break if key_pressed?(:key_escape) or ((key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form.index==3)
+      if key_pressed?(:key_escape) or ((key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form.index==3)
+        break if (@form.fields[0].text=="" and @form.fields[1].text=="") or confirm(p_("Notes", "Are you sure you want to close this note without saving?"))
+      end
       if ((key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form.index==2)
         name=@form.fields[0].text
         text=@form.fields[1].text

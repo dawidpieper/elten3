@@ -2068,8 +2068,12 @@ end
 }
 }
 changed=false
+edt_title.on(:delete) {changed=true}
+edt_title.on(:insert) {changed=true}
 edt_post.on(:delete) {changed=true}
 edt_post.on(:insert) {changed=true}
+edt_excerpt.on(:delete) {changed=true}
+edt_excerpt.on(:insert) {changed=true}
 for i in 0...@categories.size
   lst_categories.selected[i] = true if @categories[i].id == @category
 end
