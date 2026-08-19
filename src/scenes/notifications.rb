@@ -44,7 +44,7 @@ class Scene_Notifications
     append_virtual_notification_groups(groups, collect_virtual_notification_groups, include_revoked: true)
     @groups = limit_visible_notification_groups(sort_notification_groups(groups))
     @index = [[index.to_i, 0].max, [@groups.size - 1, 0].max].min
-    @list = TableBox.new(notification_columns, notification_rows(@groups), index: @index, header: p_("Notifications", "Notifications"), quiet: false)
+    @list = TableBox.new(notification_columns, notification_rows(@groups), index: @index, header: p_("MainMenu", "Notification hi&story").delete("&"), quiet: false)
     apply_notification_group_states(@list, @groups)
     @list.bind_context { |menu| context(menu) }
   end
