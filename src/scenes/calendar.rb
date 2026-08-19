@@ -806,9 +806,9 @@ class Scene_Calendar_Public
     calendar = current_calendar
     if calendar != nil
       if @subscribed_ids.include?(calendar.id)
-        menu.option(p_("Calendar", "Unsubscribe"), nil, "s") { unsubscribe(calendar) }
+        menu.option(p_("Calendar", "Unsubscribe"), nil, "l") { unsubscribe(calendar) }
       elsif !calendar.owned_by?(Session.name) && !calendar.moderator?
-        menu.option(p_("Calendar", "Subscribe"), nil, "s") { subscribe(calendar) }
+        menu.option(p_("Calendar", "Subscribe"), nil, "l") { subscribe(calendar) }
       end
     end
     if Session.languages.to_s != ""
