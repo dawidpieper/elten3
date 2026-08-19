@@ -175,7 +175,9 @@ end
         loop_update_window
         sleep(loop_update_tick_seconds)
       update_window_tray_visibility if loop_update_due?(:window_tray_visibility, PERIODIC_FAST_SECONDS, loop_now)
-      raise SystemExit if EltenWindow.consume_close_request
+      if EltenWindow.consume_close_request
+        raise SystemExit unless elten_window_close_cancelled?
+      end
       key_update
       EltenTray.restore_hotkey_pressed? if tray_supported? && defined?(EltenTray) && loop_update_due?(:tray_restore_hotkey, PERIODIC_FAST_SECONDS, loop_now)
       if raw_key_held?(:key_shift) && modifier_held?(:control)
@@ -339,6 +341,56 @@ if $activecontrols!=nil
     end
     return tips
     end
+
+  # Decides what happens when the OS asks Elten to close the window
+  # (Task View / taskbar "Close window", the X button, Alt+F4, system menu Close).
+  # Default behaviour: return false -> the caller exits Elten immediately, with no
+  # in-app quit menu (that menu can't be focused when the request comes from Task View).
+  # Exception: if a live, editable edit box holds unsaved text, bring the window to the
+  # foreground and show a native Yes/No confirmation. Returns true (cancel the close)
+  # unless the user explicitly confirms.
+  def elten_window_close_cancelled?
+    edit = elten_close_unsaved_editbox
+    return false if edit == nil
+    begin
+      EltenWindow.restore_from_tray if EltenWindow.respond_to?(:restore_from_tray)
+    rescue Exception
+    end
+    msg = p_("EAPI_Common", "You have unsaved text in an edit field. Do you want to close Elten anyway?")
+    caption = p_("EAPI_Common", "Close Elten")
+    # MB_YESNO(0x4) | MB_ICONQUESTION(0x20) | MB_DEFBUTTON2(0x100) | MB_SETFOREGROUND(0x10000) | MB_TOPMOST(0x40000)
+    flags = 0x4 | 0x20 | 0x100 | 0x10000 | 0x40000
+    result = EltenWindow.message_box(msg, caption, flags)
+    return result != 6 # IDYES(6) -> close; anything else -> keep Elten open
+  rescue Exception => e
+    Log.warning("Elten close confirmation failed: #{e}") if defined?(Log)
+    false
+  end
+
+  # Returns the first live editable EditBox whose current text differs from the text it
+  # started with (i.e. unsaved user input), or nil when there is nothing worth confirming.
+  def elten_close_unsaved_editbox
+    return nil unless defined?(EltenAPI::Controls::EditBox)
+    seen = {}
+    [$activecontrols, $lastactivecontrols].each do |list|
+      next unless list.is_a?(Array)
+      list.each do |c|
+        next if c == nil || seen[c.object_id]
+        seen[c.object_id] = true
+        next unless c.is_a?(EltenAPI::Controls::EditBox)
+        next if (c.flags.to_i & EltenAPI::Controls::EditBox::Flags::ReadOnly) != 0
+        current = c.text.to_s.gsub("
+\n", "\n")
+        next if current == ""
+        original = c.origtext.to_s.gsub("
+\n", "\n")
+        return c if current != original
+      end
+    end
+    nil
+  rescue Exception
+    nil
+  end
 
   end
 end

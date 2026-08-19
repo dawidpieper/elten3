@@ -91,10 +91,14 @@ key_update
 rescue SystemExit
   if $immediateexit!=true
   loop_update
-  quit if key_held?(0x73) || mac_quit_shortcut_request
-          play_sound("listbox_focus") if $exit==nil
-  $toscene = true
-    retry if $exit == nil
+  # A window close was requested (Alt+F4, Task View / taskbar "Close window", window X
+  # button, system menu Close). loop.rb has already decided this should proceed - either
+  # immediately, or after the user confirmed discarding unsaved edits via a native dialog.
+  # So shut Elten down cleanly through the ensure block below; do NOT open the in-app quit
+  # menu, which cannot be focused when the close originates from Task View.
+  # mac_quit_shortcut_request is called for its side effect: consume a pending macOS Cmd+Q.
+  mac_quit_shortcut_request
+  $exit = true
   end
 rescue Exception => error
   if defined?(Programs) && Programs.handle_execution_error(error, $scene)
