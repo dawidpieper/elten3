@@ -80,7 +80,7 @@ class Scene_Main
         had_notifications = notifications_visible?
         active = main_window_active?
         minimized = main_window_minimized?
-        notifications_load(false)
+        notifications_load(false, focus_policy: Configuration.mainnotificationfocus)
         @focus_notifications_when_active = true if !had_notifications && notifications_visible? && !active
         if focused_notifications
           if @skip_next_notifications_change_say == true
