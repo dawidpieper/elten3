@@ -1429,6 +1429,10 @@ ZstdApi LoadZstd(const Options &options) {
     candidates.push_back(Slash(RuntimePackageRoot(options) / "libzstd.dll"));
     candidates.push_back("libzstd.dll");
   } else if (IsLinux(options)) {
+    // The bundled copy is stored under its soname, so that everything in the
+    // process resolves to the same library; the flat name stays as a fallback
+    // for packages assembled before that change.
+    candidates.push_back(Slash(RuntimePackageRoot(options) / "libzstd.so.1"));
     candidates.push_back(Slash(RuntimePackageRoot(options) / "libzstd.so"));
     candidates.push_back("libzstd.so.1");
     candidates.push_back("libzstd.so");
@@ -2064,10 +2068,16 @@ std::vector<std::string> ZstdCandidates() {
   std::string executable_dir = ExecutableDirectory();
   if (!executable_dir.empty()) {
     std::filesystem::path dir(executable_dir);
+    // The bundled copy is stored under its soname, so that everything loaded
+    // into the process resolves to one library rather than to a mixture of ours
+    // and the distribution's. The flat name stays behind it, for packages
+    // assembled before that change.
+    candidates.push_back((dir / "bin" / ")CPP" + runtimeDirName + R"CPP(" / "libzstd.so.1").lexically_normal().generic_string());
     candidates.push_back((dir / "bin" / ")CPP" + runtimeDirName + R"CPP(" / "libzstd.so").lexically_normal().generic_string());
   }
   candidates.push_back("libzstd.so.1");
   candidates.push_back("libzstd.so");
+  candidates.push_back("./bin/)CPP" + runtimeDirName + R"CPP(/libzstd.so.1");
   candidates.push_back("./bin/)CPP" + runtimeDirName + R"CPP(/libzstd.so");
   return candidates;
 }
