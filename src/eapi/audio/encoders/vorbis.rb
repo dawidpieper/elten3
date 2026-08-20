@@ -15,11 +15,6 @@ module VorbisNative
       require_relative "../../conferencenative" unless defined?(::ELTEN_INTPTR)
       OggNative.load!
       @vorbis = EltenRuntimePaths.dlopen("libvorbis")
-      # Upstream keeps the encoder setup calls in a separate library, libvorbisenc.
-      # The Windows build ships them merged into libvorbis, so use that handle when
-      # it carries them and open the split library everywhere else. Vorbis itself is
-      # already open at this point, so libvorbisenc resolves its dependency on it
-      # from memory rather than pulling a second copy out of the system.
       @vorbisenc = begin
         @vorbis["vorbis_encode_init"]
         @vorbis
