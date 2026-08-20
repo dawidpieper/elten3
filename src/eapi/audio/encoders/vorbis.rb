@@ -15,14 +15,25 @@ module VorbisNative
       require_relative "../../conferencenative" unless defined?(::ELTEN_INTPTR)
       OggNative.load!
       @vorbis = EltenRuntimePaths.dlopen("libvorbis")
+      # Upstream keeps the encoder setup calls in a separate library, libvorbisenc.
+      # The Windows build ships them merged into libvorbis, so use that handle when
+      # it carries them and open the split library everywhere else. Vorbis itself is
+      # already open at this point, so libvorbisenc resolves its dependency on it
+      # from memory rather than pulling a second copy out of the system.
+      @vorbisenc = begin
+        @vorbis["vorbis_encode_init"]
+        @vorbis
+      rescue Fiddle::DLError
+        EltenRuntimePaths.dlopen("libvorbisenc")
+      end
       cstring = defined?(Fiddle::TYPE_CONST_STRING) ? Fiddle::TYPE_CONST_STRING : Fiddle::TYPE_VOIDP
       @info_init = Fiddle::Function.new(@vorbis["vorbis_info_init"], [Fiddle::TYPE_VOIDP], Fiddle::TYPE_INT)
       @info_clear = Fiddle::Function.new(@vorbis["vorbis_info_clear"], [Fiddle::TYPE_VOIDP], Fiddle::TYPE_INT)
       @comment_init = Fiddle::Function.new(@vorbis["vorbis_comment_init"], [Fiddle::TYPE_VOIDP], Fiddle::TYPE_INT)
       @comment_add_tag = Fiddle::Function.new(@vorbis["vorbis_comment_add_tag"], [Fiddle::TYPE_VOIDP, cstring, cstring], Fiddle::TYPE_INT)
       @comment_clear = Fiddle::Function.new(@vorbis["vorbis_comment_clear"], [Fiddle::TYPE_VOIDP], Fiddle::TYPE_INT)
-      @encode_init = Fiddle::Function.new(@vorbis["vorbis_encode_init"], [Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT, Fiddle::TYPE_LONG, Fiddle::TYPE_LONG, Fiddle::TYPE_LONG, Fiddle::TYPE_LONG], Fiddle::TYPE_INT)
-      @encode_init_vbr = Fiddle::Function.new(@vorbis["vorbis_encode_init_vbr"], [Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT, Fiddle::TYPE_LONG, Fiddle::TYPE_FLOAT], Fiddle::TYPE_INT) rescue nil
+      @encode_init = Fiddle::Function.new(@vorbisenc["vorbis_encode_init"], [Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT, Fiddle::TYPE_LONG, Fiddle::TYPE_LONG, Fiddle::TYPE_LONG, Fiddle::TYPE_LONG], Fiddle::TYPE_INT)
+      @encode_init_vbr = Fiddle::Function.new(@vorbisenc["vorbis_encode_init_vbr"], [Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT, Fiddle::TYPE_LONG, Fiddle::TYPE_FLOAT], Fiddle::TYPE_INT) rescue nil
       @analysis_init = Fiddle::Function.new(@vorbis["vorbis_analysis_init"], [Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP], Fiddle::TYPE_INT)
       @analysis_headerout = Fiddle::Function.new(@vorbis["vorbis_analysis_headerout"], [Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP], Fiddle::TYPE_INT)
       @analysis_buffer = Fiddle::Function.new(@vorbis["vorbis_analysis_buffer"], [Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT], ELTEN_INTPTR)
