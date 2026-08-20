@@ -646,6 +646,20 @@ module EltenWindow
       end
     end
 
+    # Mirrors the macOS runtime: reports (and clears) whether the last close request
+    # came from a user-initiated window close, so main.rb can open the in-app quit menu
+    # instead of exiting silently. Matches EltenWindow.consume_quit_shortcut_request on
+    # the other platforms.
+    def consume_quit_shortcut_request
+      window_state_monitor.synchronize do
+        requested = @quit_shortcut_requested == true
+        @quit_shortcut_requested = false
+        requested
+      end
+    rescue Exception
+      false
+    end
+
     def consume_minimize_request
       window_state_monitor.synchronize do
         if minimize_request_suppressed?
@@ -1131,20 +1145,24 @@ module EltenWindow
     end
 
     def close_message?(message, wparam, lparam = 0)
+      # A user-initiated window close (the X button, Alt+F4, the system menu Close,
+      # or Task View / taskbar "Close window") should behave like macOS Cmd+Q: mark it
+      # as a quit-shortcut request too, so main.rb opens the in-app quit menu instead of
+      # exiting silently.
       if message == WM_CLOSE
-        window_state_monitor.synchronize { @close_requested = true }
+        window_state_monitor.synchronize { @close_requested = true; @quit_shortcut_requested = true }
         return true
       end
       if message == WM_SYSKEYDOWN && wparam.to_i == VK_F4
         return true if repeated_key_message?(lparam)
         return true if activation_input_blocked?
-        window_state_monitor.synchronize { @close_requested = true }
+        window_state_monitor.synchronize { @close_requested = true; @quit_shortcut_requested = true }
         return true
       end
       return false unless message == WM_SYSCOMMAND
       command = wparam.to_i & 0xfff0
       if command == SC_CLOSE
-        window_state_monitor.synchronize { @close_requested = true }
+        window_state_monitor.synchronize { @close_requested = true; @quit_shortcut_requested = true }
         return true
       end
       false

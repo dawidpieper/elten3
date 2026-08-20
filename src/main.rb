@@ -8,7 +8,7 @@ class Object
   include EltenAPI
   end
 
-def mac_quit_shortcut_request
+def window_quit_shortcut_request
   EltenWindow.consume_quit_shortcut_request
 rescue Exception
   false
@@ -90,8 +90,26 @@ key_update
   retry
 rescue SystemExit
   if $immediateexit!=true
+  # Capture whether the focused control is an edit box holding text BEFORE loop_update,
+  # which blurs it and clears the handle. EditBox.focused_with_text? is a clean type-aware
+  # check, not a scan of the transient $activecontrols stack.
+  edit_text = defined?(EltenAPI::Controls::EditBox) && EltenAPI::Controls::EditBox.focused_with_text?
   loop_update
-  quit if key_held?(0x73) || mac_quit_shortcut_request
+  if key_held?(0x73) || window_quit_shortcut_request
+    # A window close was requested (the X button, Alt+F4, the system menu Close, or Task
+    # View / taskbar "Close window").
+    if edit_text
+      # Text in the focused edit field: bring the window to the front (so the menu can be
+      # focused when the close came from outside the app) and open Elten's existing quit
+      # menu - the same path macOS uses for Cmd+Q.
+      EltenWindow.restore_from_tray if defined?(EltenWindow) && EltenWindow.respond_to?(:restore_from_tray)
+      quit
+    else
+      # Empty field (or not editing text): close straight away, the same way choosing
+      # "Exit" in the quit menu does (clear the scene and let the main loop shut down).
+      $scene = nil
+    end
+  end
           play_sound("listbox_focus") if $exit==nil
   $toscene = true
     retry if $exit == nil
