@@ -52,7 +52,7 @@ module EltenAPI
         attr_accessor :listtype, :usepan, :soundcard, :microphone, :controlspresentation, :contextmenubar, :soundthemeactivation, :typingecho, :linewrapping, :hidewindow, :synctime, :registeractivity, :voice, :language, :voicerate, :voicevolume, :soundtheme, :volume, :usefx, :bgsounds, :voicepitch, :usedenoising, :autologin, :roundupforms, :checkupdates, :enablebraille, :useechocancellation, :usevoicedictionary, :disablefeednotifications, :maintabs, :showemptynotifications, :mainnotificationfocus, :iimodifiers, :iicards, :usebilinearhrtf, :sessiontime, :disablehttp2, :tcpconferences, :udppacketsize, :conferencesaudiobuffer , :conferencesaudiobuffercutoff, :disableconferencemiconrecord, :enableaudiobuffering, :saytimeperiod, :saytimetype, :autoplay, :branch, :keyboardscheme, :macoscharacternavigation, :requestresponsecachemode
         def to_h
           h={}
-          for v in instance_variables
+          instance_variables.each do |v|
             h[v[1..-1]]=instance_variable_get(v)
             end
           return h
