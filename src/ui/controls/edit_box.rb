@@ -12,15 +12,8 @@ module EltenAPI
     READ_TEXT_BREAK_PATTERN = /\n|[!?\.,] /.freeze
     @@customactions=[]
     @@lastedits=[]
-    # The single edit box that currently holds focus (nil when the focused control is
-    # not an edit box). Maintained through the focus/blur lifecycle that loop_update
-    # already drives centrally (ui/loop.rb checkControls) - a clean type-aware handle,
-    # not a scan of the transient $activecontrols stack.
     @@focused=nil
     def self.focused; @@focused; end
-    # True when the focused control is an editable edit box that currently contains text.
-    # Used to decide whether closing the window should confirm (text present, protect it)
-    # or exit straight away (empty field).
     def self.focused_with_text?
       e=@@focused
       return false unless e.is_a?(EditBox)

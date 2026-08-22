@@ -646,10 +646,6 @@ module EltenWindow
       end
     end
 
-    # Mirrors the macOS runtime: reports (and clears) whether the last close request
-    # came from a user-initiated window close, so main.rb can open the in-app quit menu
-    # instead of exiting silently. Matches EltenWindow.consume_quit_shortcut_request on
-    # the other platforms.
     def consume_quit_shortcut_request
       window_state_monitor.synchronize do
         requested = @quit_shortcut_requested == true
@@ -1145,10 +1141,6 @@ module EltenWindow
     end
 
     def close_message?(message, wparam, lparam = 0)
-      # A user-initiated window close (the X button, Alt+F4, the system menu Close,
-      # or Task View / taskbar "Close window") should behave like macOS Cmd+Q: mark it
-      # as a quit-shortcut request too, so main.rb opens the in-app quit menu instead of
-      # exiting silently.
       if message == WM_CLOSE
         window_state_monitor.synchronize { @close_requested = true; @quit_shortcut_requested = true }
         return true
