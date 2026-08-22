@@ -13,10 +13,28 @@ class CallWindow
         @id, @caller, @channel, @password = id, caller, channel, password
         @handled = false
         @form = Form.new([
-        @st_caller = Static.new(p_("EAPI_UI", "%{user} is calling you")%{:user=>@caller}),
+        @st_caller = Static.new(call_description),
         @btn_answer = Button.new(p_("EAPI_UI", "Answer")),
         @btn_reject = Button.new(p_("EAPI_UI", "Reject"))
         ])
+      end
+      def call_description
+        description = p_("EAPI_UI", "%{user} is calling you")%{:user=>@caller}
+        Conference.update_channels
+        call_channel = Conference.channels.find { |item| item.id == @channel.to_i }
+        if call_channel != nil && !call_channel.name.start_with?("VoiceCall_")
+          description += ". " + p_("Conference", "Channel") + ": " + call_channel.name
+        end
+        if call_channel != nil
+          users = call_channel.users.map { |user| user.name.to_s }.reject { |name| name.empty? }
+          if users.size > 0
+            description += ". " + p_("Conference", "Channel users") + " (#{users.size}): " + users.join(", ")
+          end
+        end
+        description
+      rescue Exception => e
+        Log.warning("Incoming call channel lookup failed: #{e.class}: #{e.message}")
+        description
       end
       def update
         @form.update
