@@ -84,7 +84,7 @@ class Array
   end    
   def to_s
     r="["
-    for i in 0...self.size
+    (0...self.size).each do |i|
       r+=", " if i>0
       r+=self[i].to_s
       end
@@ -94,7 +94,7 @@ class Array
     def shuffle
 t=self+[]      
 res=[]
-for o in t
+t.each do |o|
   v=-1
   while v==-1 or res[v]!=nil
   v=rand(t.size)
@@ -105,7 +105,7 @@ for o in t
   end
   def shuffle!
     n=shuffle
-    for i in 0..n.size-1
+    (0..n.size-1).each do |i|
       self[i]=n[i]
       end
     return self
@@ -125,7 +125,7 @@ polsorter(a,b)
   end
   def polsort!
     a=self.polsort
-    for i in 0...self.size
+    (0...self.size).each do |i|
       self[i]=a[i]
       end
     end
@@ -154,13 +154,13 @@ class String
     self.gsub!(EltenLink::LEGACY_LINE,"\r\n") if defined?(EltenLink)
     str = ""
 foundlines = 1
-    for i in 0..self.size - 1
+    (0..self.size - 1).each do |i|
       str += self[i..i]
       foundlines += 1 if self[i..i] == "\n"
     end
     fl = 0
     ret = ""
-    for i in 0..str.size - 1
+    (0..str.size - 1).each do |i|
       fl += 1 if str[i..i] == "\r" or (str[i..i] == "\n" and str[i-1..i-1] != "\r")
       if foundlines - lines > fl
         ret += str[i..i]
@@ -171,14 +171,14 @@ foundlines = 1
     def rdelete!(i)
     b = i[0]
   x = 0
-  for i in 1..self.size
+  (1..self.size).each do |i|
     if self[self.size - i] == b
       x += 1
     else
       break
     end
        end
-  for i in 0..x-1
+  (0..x-1).each do |i|
     chop!
     end
   end
@@ -228,7 +228,7 @@ string=r
     string = self+""
     from=["ą","ć","ę","ł","ń","ó","ś","ź","ż","Ą","Ć","Ę","Ń","Ó","Ł","Ś","Ź","Ż","-"]
     to=["a","c","e","l","n","o","s","z","z","A","C","E","L","N","O","S","Z","Z","_"]
-    for i in 0..to.size-1
+    (0..to.size-1).each do |i|
       string.gsub!(from[i],to[i])
       end
     r = string.gsub(/([^ a-zA-Z0-9_.-]+)/) do |m|
