@@ -1237,9 +1237,19 @@ rfr.call
                           btn_resolve.on(:press) {
                           status=statuses[lst_status.index][0]
                           use_suggestion=status==1 && chk_suggestion!=nil && chk_suggestion.checked
-                          resolved=forum_attempt(nil) {
+                          resolved=false
+                          begin
                             EltenLink::Forum.resolve_report(elten_link, group_id: group.id, report_id: report.id, status: status, reason: edt_reason.text, use_suggestion: use_suggestion)
-                          }
+                            resolved=true
+                          rescue EltenLink::Error => e
+                            log_forum_error(e)
+                            if e.code.to_s=="forum.report_already_resolved"
+                              alert(p_("Forum", "This report has already been resolved."))
+                              form.resume
+                            else
+                              alert(_("Error"))
+                            end
+                          end
                           if resolved
                             getcache if use_suggestion
                             alert(p_("Forum", "Report resolved"))
