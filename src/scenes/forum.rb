@@ -2567,7 +2567,7 @@ if forum_attempt(nil) {
     mthreads = @sthreads.select{|m|(Session.moderator == 1 && m.forum.group.recommended) || m.forum.group.role == 2}
     index = mthreads.find_index(@sthreads[@thrsel.index]) || 0
     form = Form.new([
-      lst_threads = ListBox.new(mthreads.map(&:name), header: p_("Forum", "Threads"), index: index, flags: ListBox::Flags::MultiSelection),
+      lst_threads = ListBox.new(mthreads.map { |thread| thread_row_title(thread) }, header: p_("Forum", "Threads"), index: index, flags: ListBox::Flags::MultiSelection),
       btn_move = Button.new(p_("Forum", "Move")),
       btn_offer = Button.new(p_("Forum", "Offer")),
       btn_open = Button.new(p_("Forum", "Open threads")),
@@ -2624,7 +2624,7 @@ label=p_("Forum", "Offer")
         label=p_("Forum", "Close threads")
         end
 form = Form.new([
-lst_threads = ListBox.new(threads.map{|t|t.name}, header: header),
+lst_threads = ListBox.new(threads.map { |thread| thread_row_title(thread) }, header: header),
 btn_proceed = Button.new(label),
 btn_cancel = Button.new(_("Cancel"))
 ])
