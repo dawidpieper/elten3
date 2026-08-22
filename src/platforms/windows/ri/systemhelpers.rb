@@ -382,7 +382,7 @@ module EltenSystemHelpers
     end
 
     def autostart_command(path)
-      "\"#{path}\" /hidden"
+      "\"#{path.to_s.tr("/", "\\")}\""
     end
 
     def sync_autostart(enabled, command)
