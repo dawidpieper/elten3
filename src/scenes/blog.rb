@@ -706,17 +706,24 @@ def update
     end
   end
 if (key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form.index == @form.fields.size - 2
+  return if !confirm_comment_discard
   @form.fields[0]
   txt = @form.fields[0].text
     $scene = Scene_Blog_PostEditor.new(@post.owner,@post.id,@category,@categoryselindex,@postselindex)
     end
   if key_pressed?(:key_escape) or ((key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form.index == @form.fields.size - 1)
+  if confirm_comment_discard
 if @scene == nil
     $scene = Scene_Blog_Posts.new(@post.owner,@category,@categoryselindex,@postselindex, @search, @page)
   else
     $scene = @scene
     end
+    end
   end
+end
+def confirm_comment_discard
+  comment_field = @form.fields[@form.fields.size - 4]
+  comment_field==nil || comment_field.text=="" || comment_field.text=="\r\n" || confirm(p_("Blog", "Are you sure you want to cancel writing this comment?"))
 end
 def format(post)
    date=Time.now
