@@ -205,6 +205,7 @@ url=nil
   if e!=nil
     @index=e.from
     espeech(text_range(e.from,e.to))
+    EltenWindow.take_character(true) if defined?(EltenWindow) && EltenWindow.respond_to?(:take_character)
     elsif (character=getkeychar)!=""
     play_sound("border") unless audio? && character==" "
     end
