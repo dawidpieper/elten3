@@ -227,12 +227,12 @@ end
 
 def self.start_keyboard_state
   return if @@keyboard_thread!=nil && @@keyboard_thread.alive?
-  $conference_key_state ||= Array.new(256, false)
+  $conference_pushtotalk_held = false
   @@keyboard_thread=Thread.new {
     Thread.current.report_on_exception=false
     loop {
-      keys = EltenKeyboard.active_pressed_keys
-      $conference_key_state=keys
+      keys = @@pushtotalk_keys.dup
+      $conference_pushtotalk_held = EltenAPI::Keyboard.global_chord_held?(keys)
       sleep 0.02
     }
   }

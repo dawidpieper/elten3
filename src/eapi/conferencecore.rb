@@ -2867,15 +2867,7 @@ return true if $disableconferencemiconrecord==1 && $recording==true
 return false if @whisper!=0
 if @pushtotalk==true
 return true if @pushtotalk_keys.size==0
-suc=true
-$neededkeys = @pushtotalk_keys
-for k in @pushtotalk_keys
-if $conference_key_state[k]==false
-suc=false
-break
-end
-end
-return !suc
+return $conference_pushtotalk_held != true
 end
 return false
 end

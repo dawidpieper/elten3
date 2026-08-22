@@ -166,6 +166,10 @@ module EltenKeyboard
       false
     end
 
+    def global_key_down?(key)
+      async_key_down?(key)
+    end
+
     private
 
     def keyboard_monitor

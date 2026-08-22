@@ -1576,6 +1576,10 @@ module EltenKeyboard
       key_source_down?(CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE, key)
     end
 
+    def global_key_down?(key)
+      physical_key_down?(key) == true
+    end
+
     def session_key_down?(key)
       key_source_down?(CG_EVENT_SOURCE_STATE_COMBINED_SESSION_STATE, key)
     end

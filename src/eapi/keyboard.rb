@@ -181,6 +181,26 @@ module EltenAPI
     end
   end
 
+  module Keyboard
+    class << self
+      def global_chord_held?(keys)
+        codes = Array(keys).map { |key| KeyboardScheme.key_code(key) }
+        return false if codes.empty? || codes.any?(&:nil?)
+
+        if defined?(EltenKeyboard) && EltenKeyboard.respond_to?(:global_key_down?)
+          codes.all? { |code| EltenKeyboard.global_key_down?(code) == true }
+        elsif defined?(EltenKeyboard) && EltenKeyboard.respond_to?(:active_pressed_keys)
+          state = EltenKeyboard.active_pressed_keys
+          codes.all? { |code| state[code] == true }
+        else
+          false
+        end
+      rescue Exception
+        false
+      end
+    end
+  end
+
   module KeyboardState
     Result = Struct.new(:pressed, :repeat_pressed, :held, :released, :first_pressed, :repeated, :state, :press_states, keyword_init: true)
 
