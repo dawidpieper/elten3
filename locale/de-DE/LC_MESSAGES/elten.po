@@ -12578,7 +12578,7 @@ msgstr "Nach zeit"
 #: src/scenes/settings.rb:299
 msgctxt "Settings"
 msgid "Notification type order"
-msgstr "Benachrichtigungsverlauf sortieren"
+msgstr "Typ-Reihenfolge"
 
 #: src/scenes/settings.rb:305
 msgctxt "Settings"
