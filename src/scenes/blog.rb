@@ -711,10 +711,13 @@ if (key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form.index == @fo
     $scene = Scene_Blog_PostEditor.new(@post.owner,@post.id,@category,@categoryselindex,@postselindex)
     end
   if key_pressed?(:key_escape) or ((key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form.index == @form.fields.size - 1)
+    cf = @form.fields[@form.fields.size - 4]
+    if cf == nil or cf.text == "" or cf.text == "\r\n" or confirm(p_("Blog", "Are you sure you want to cancel creating this comment?"))
 if @scene == nil
     $scene = Scene_Blog_Posts.new(@post.owner,@category,@categoryselindex,@postselindex, @search, @page)
   else
     $scene = @scene
+    end
     end
   end
 end
