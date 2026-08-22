@@ -916,11 +916,14 @@ if (((@sgroups[@grpsel.index - @grpheadindex].role==1 || (@sgroups[@grpsel.index
       @grpsel.focus
       }
         end
-      if @sgroups[@grpsel.index - @grpheadindex].forums == 0 and @sgroups[@grpsel.index - @grpheadindex].founder == Session.name
+      if @sgroups[@grpsel.index - @grpheadindex].founder == Session.name
         menu.option(p_("Forum", "Delete group")) {
-          confirm(p_("Forum", "Are you sure you want to delete %{groupname}?")%{ :groupname => @sgroups[@grpsel.index - @grpheadindex].name }) {
+          delgroup = @sgroups[@grpsel.index - @grpheadindex]
+          delmsg = p_("Forum", "Are you sure you want to delete %{groupname}?")%{ :groupname => delgroup.name }
+          delmsg += "\r\n" + p_("Forum", "This group still contains forums with all their threads and posts. Deleting the group will permanently delete all of them.") if delgroup.forums > 0
+          confirm(delmsg) {
           if forum_attempt(nil) {
-            EltenLink::Forum.delete_group(elten_link, group_id: @sgroups[@grpsel.index - @grpheadindex].id)
+            EltenLink::Forum.delete_group(elten_link, group_id: delgroup.id)
           }
               alert(p_("Forum", "Group has been deleted"))
             end
