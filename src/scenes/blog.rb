@@ -551,7 +551,7 @@ end
 end
   
 class Scene_Blog_Read
-  def initialize(post,category,categoryselindex=0,postselindex=0,scene=nil,page=0,search=nil)
+  def initialize(post,category,categoryselindex=0,postselindex=0,scene=nil,page=0,search=nil,first_unread: false)
     @post=post
     @category = category
         @categoryselindex = categoryselindex
@@ -559,6 +559,7 @@ class Scene_Blog_Read
     @scene=scene
 @page=page
 @search=search
+@first_unread=first_unread
     @isowner=(blogowners(post.owner)||"").include?(Session.name)
           end
   def main
@@ -659,7 +660,8 @@ else
   @fields.push(nil)
   end
 @fields.push(Button.new(p_("Blog", "Return")))
-@form = Form.new(@fields)
+@postcur=@knownposts+2 if @first_unread && @knownposts<@posts.size
+@form = Form.new(@fields,index: @postcur)
 if @comments==0
   @form.fields[-3]=nil
   @form.fields[-4]=nil
