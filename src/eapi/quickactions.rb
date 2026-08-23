@@ -66,7 +66,7 @@ module EltenAPI
             scene == nil ? alert(p_("Notifications", "There is nothing new."), false) : insert_scene(scene)
           end
         when :context
-                   $opencontextmenu=true
+                   $opencontextmenu=true if !GlobalMenu.opened?
         when :lastspeech
           speak($speech_lasttext)
           when :copylastspeech
