@@ -36,17 +36,14 @@ end
          $scene=Scene_Main.new if $scene==self
      end
      def context(menu)
-       menu.option(p_("Programs", "Install from file")) {
-         install_from_file
-       }
-       menu.option(p_("Programs", "Install from server")) {
-         install_from_server
-       }
        menu.option(p_("Programs", "Check for updates")) {
          check_updates
        }
        program=@all[@sel.index]
-       return if program==nil
+       if program==nil
+         add_install_options(menu)
+         return
+       end
        menu.option(p_("Programs", "Details")) {
          show_program_details(program)
        }
@@ -86,6 +83,16 @@ when 1
              @refresh=true
            }
          end
+       }
+       add_install_options(menu)
+     end
+
+     def add_install_options(menu)
+       menu.option(p_("Programs", "Install new program from server"), nil, "i") {
+         install_from_server
+       }
+       menu.option(p_("Programs", "Install new program from file"), nil, "I") {
+         install_from_file
        }
      end
 
