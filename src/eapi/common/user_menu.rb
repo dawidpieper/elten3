@@ -9,7 +9,7 @@ module EltenAPI
     private
 
     # @return [String] returns ALT if menu was closed using an alt menu
-    def usermenu(user, submenu = false, left = false)
+    def usermenu(user, submenu = false, left = false, close_parent: nil)
       user_info = userinfo(user, true)
       return if user_info == -1
 
@@ -38,6 +38,7 @@ module EltenAPI
           if action
             play_sound("menu_close")
             Menu.menubg_close
+            close_parent.call if action[:close_all] && close_parent.respond_to?(:call)
             action[:handler].call
             if action[:close_all]
               loop_update

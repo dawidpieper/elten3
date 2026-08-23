@@ -606,7 +606,7 @@ end
 def self.togglestream(stream=nil, source=nil)
   safe {
     st=source_for(stream, source)
-    st.toggle if st!=nil && st.toggleable?
+    @@core.toggle_source(st) if st!=nil && st.toggleable?
   }
   delay(0.05)
 end

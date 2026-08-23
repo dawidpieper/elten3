@@ -23,6 +23,12 @@ module EltenLink
   end
 
   ForumThreadPage = Struct.new(:time, :count, :read_posts, :followed, :posts, keyword_init: true)
+  ForumTrashThread = Struct.new(
+    :id, :name, :forum_fullname, :forum_id, :last_update, :trashed, :thread_trashed, :forum_trashed,
+    :contains_trashed_posts,
+    keyword_init: true
+  )
+  ForumTrashPage = Struct.new(:posts, :trashed, :thread_trashed, :forum_trashed, keyword_init: true)
   ForumUserPost = Struct.new(:post_id, :thread_id, :text, :transcription, :audio_url, :date, :format, keyword_init: true)
   ForumUserPostsPage = Struct.new(:posts, :more, :next_before, keyword_init: true)
   ForumThreadStats = Struct.new(:followers, :mentions, :authors, :readers, :readers_below_half, :readers_above_90, :readers_all, keyword_init: true)
@@ -82,6 +88,33 @@ module EltenLink
           read_posts: data["read_posts"].to_i,
           followed: truthy?(data["followed"]),
           posts: data["posts"].to_a.map { |row| build_post(row) }
+        )
+      end
+
+      def trash_threads(client, group_id:)
+        data = client.api_data("GET", "/api/v1/forum/group/#{group_id.to_i}/trash")
+        data["threads"].to_a.map do |row|
+          ForumTrashThread.new(
+            id: row["id"].to_i,
+            name: row["name"].to_s,
+            forum_fullname: row["fullname"].to_s,
+            forum_id: row["forumid"].to_i,
+            last_update: row["last_update"].to_i,
+            trashed: truthy?(row["trashed"]),
+            thread_trashed: truthy?(row["thread_trashed"]),
+            forum_trashed: truthy?(row["forum_trashed"]),
+            contains_trashed_posts: truthy?(row["contains_trashed_posts"])
+          )
+        end
+      end
+
+      def trash_thread(client, thread_id:)
+        data = client.api_data("GET", "/api/v1/forum/#{thread_id.to_i}/trash")
+        ForumTrashPage.new(
+          posts: data["posts"].to_a.map { |row| build_post(row) },
+          trashed: truthy?(data["trashed"]),
+          thread_trashed: truthy?(data["thread_trashed"]),
+          forum_trashed: truthy?(data["forum_trashed"])
         )
       end
 
@@ -212,8 +245,17 @@ module EltenLink
         true
       end
 
-      def delete_thread(client, thread_id:)
-        client.api_data("DELETE", "/api/v1/forum/#{thread_id.to_i}", {})
+      def delete_thread(client, thread_id:, permanent: false)
+        params = permanent ? { "delete_from_trash" => 1 } : {}
+        client.api_data("DELETE", "/api/v1/forum/#{thread_id.to_i}", params)
+        true
+      end
+
+      def restore_thread(client, thread_id:, forum_id: nil)
+        client.api_data("PATCH", "/api/v1/forum/#{thread_id.to_i}/untrash", clean_hash(
+          "recursive" => 1,
+          "forum" => forum_id.nil? ? nil : forum_id.to_i
+        ))
         true
       end
 
@@ -313,8 +355,16 @@ module EltenLink
         true
       end
 
-      def delete_post(client, post_id:)
-        client.api_data("DELETE", "/api/v1/forum/post/#{post_id.to_i}", {})
+      def delete_post(client, post_id:, permanent: false)
+        params = permanent ? { "delete_from_trash" => 1 } : {}
+        client.api_data("DELETE", "/api/v1/forum/post/#{post_id.to_i}", params)
+        true
+      end
+
+      def restore_post(client, post_id:, thread_id: nil)
+        client.api_data("PATCH", "/api/v1/forum/post/#{post_id.to_i}/untrash", clean_hash(
+          "destination_thread" => thread_id.nil? ? nil : thread_id.to_i
+        ))
         true
       end
 
@@ -379,8 +429,13 @@ module EltenLink
         data["original"].to_s
       end
 
-      def report_post(client, post_id:, comment:)
-        client.api_data("POST", "/api/v1/forum/post/#{post_id.to_i}/reports", { "comment" => comment })
+      def report_post(client, post_id:, comment:, suggestion: nil, suggestion_flags: nil, suggestion_range: nil)
+        client.api_data("POST", "/api/v1/forum/post/#{post_id.to_i}/reports", clean_hash(
+          "comment" => comment,
+          "suggestion" => suggestion,
+          "suggestion_flags" => suggestion_flags,
+          "suggestion_range" => suggestion_range
+        ))
         true
       end
 
@@ -537,10 +592,11 @@ module EltenLink
         data["reports"].to_a.map { |row| build_report(row) }
       end
 
-      def resolve_report(client, group_id:, report_id:, status:, reason: nil)
+      def resolve_report(client, group_id:, report_id:, status:, reason: nil, use_suggestion: false)
         client.api_data("PATCH", "/api/v1/forum/group/#{group_id.to_i}/reports/#{report_id.to_i}", clean_hash(
           "status" => status,
-          "reason" => reason
+          "reason" => reason,
+          "use_suggestion" => use_suggestion ? 1 : nil
         ))
         true
       end
@@ -676,6 +732,7 @@ module EltenLink
           group.preventpolls = truthy?(row["preventpolls"])
           group.preventattachments = truthy?(row["preventattachments"])
           group.allowpostreporting = truthy?(row["allowpostreporting"])
+          group.reportreasons = row["reportreasons"].to_a.map(&:to_s)
           group.audiolimit = row["audiolimit"].to_i
           group.blog = row["blog"].to_s
           group.showpostreports = row["showpostreports"].to_i
@@ -758,6 +815,7 @@ module EltenLink
         post.transcription = row["transcription"].to_s
         post.banned = truthy?(row["banned"])
         post.archived = truthy?(row["archived"])
+        post.trashed = truthy?(row["trashed"]) if post.respond_to?(:trashed=)
         post
       end
 
@@ -809,6 +867,12 @@ module EltenLink
         report.status = row["status"].to_i
         report.reason = row["reason"].to_s
         report.solutiontime = Time.at(row["solution_time"].to_i) if row["solution_time"].to_i.positive?
+        report.suggestion = row["suggestion"].to_s
+        report.suggestion = nil if report.suggestion.empty?
+        report.suggestion_flags = row["suggestion_flags"].to_h.transform_keys(&:to_s)
+        report.suggestion_range = row["suggestion_range"].to_s
+        report.suggestion_range = nil if report.suggestion_range.empty?
+        report.suggestion_used = truthy?(row["suggestion_used"])
         report
       end
 

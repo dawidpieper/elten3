@@ -16,6 +16,7 @@ attr_reader :grayed
 attr_reader :item_states
 attr_reader :item_audio_urls
 attr_reader :selected
+attr_reader :required_multiselection_indices
 attr_accessor :silent
 attr_accessor :header
 attr_accessor :autosayoption
@@ -99,6 +100,7 @@ def initialize(options, header: "", index: 0, flags: 0, quiet: true)
 @late_state_focus_played={}
 @selected_now=false
 @requested_select=false
+@required_multiselection_indices=[]
   options=options.deep_dup
         index = 0 if index == nil
            index = 0 if index >= options.size
@@ -117,6 +119,7 @@ self.options=(options)
                                         end
 
             def options=(opts)
+              @required_multiselection_indices.clear if @required_multiselection_indices!=nil
               if @options==nil
                 @options=[]
                 else
@@ -154,6 +157,7 @@ end
 end
 
 def clear_options
+  @required_multiselection_indices&.clear
   @options.clear
   @grayed.clear
   @selected.clear if @selected!=nil
@@ -542,8 +546,13 @@ def select_multiselection_indices(indices)
   :changed
 end
 
+def require_multiselection_indices(indices)
+  @required_multiselection_indices=indices.uniq.select { |index| index>=0 && index<@options.size }
+  select_multiselection_indices(@required_multiselection_indices)
+end
+
 def deselect_multiselection_indices(indices)
-  indices=indices.uniq.select{|i| i>=0 && i<@options.size && @selected[i]==true}
+  indices=indices.uniq.select{|i| i>=0 && i<@options.size && @selected[i]==true && !@required_multiselection_indices.to_a.include?(i)}
   return :unchanged if indices.empty?
   trigger(:multiselection_beforechanged)
   indices.each do |i|
@@ -830,9 +839,12 @@ elsif oldindex == self.index and @run == true and (k.chrsize<=1 or (@options[sel
       alert(p_("EAPI_Form", "Checked") ,false)
       end
     else
-      deselect_multiselection_indices([@index])
-      play_sound("listbox_stateunchecked", volume: 100, pitch: 100, pan: self.index.to_f/(options.size-1).to_f*100.0)
-      alert(p_("EAPI_Form", "Unchecked"), false)
+      if deselect_multiselection_indices([@index])==:changed
+        play_sound("listbox_stateunchecked", volume: 100, pitch: 100, pan: self.index.to_f/(options.size-1).to_f*100.0)
+        alert(p_("EAPI_Form", "Unchecked"), false)
+      else
+        play_sound("border")
+      end
       end
     end
   end

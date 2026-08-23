@@ -163,7 +163,7 @@ class Menu
       opt=acs[sel.index]
       if opt[1]==:user
         play_sound("listbox_treeexpand", volume: 100, pitch: 100, pan: sel.lpos)
-                u=usermenu(opt[2], true, true)
+                u=usermenu(opt[2], true, true, close_parent: proc { close })
         if u=="ALT"
           close
         else

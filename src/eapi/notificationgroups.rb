@@ -7,6 +7,9 @@ module NotificationGroups
     followedthread
     followedforum
     mention
+    forumthreadoffer
+    forumpostreport
+    forumpostreportresolved
     friend
     birthday
     followedblog
@@ -438,6 +441,12 @@ module NotificationGroups
       end
     when "followedthread", "followedforum", "followedforumpost"
       ["forum", payload["threadid"].to_i].join(":")
+    when "forumthreadoffer"
+      thread_id = payload["threadid"].to_i
+      thread_id > 0 ? [cat, thread_id].join(":") : [cat, notification.id.to_i].join(":")
+    when "forumpostreport", "forumpostreportresolved"
+      report_id = payload["reportid"].to_i
+      report_id > 0 ? [cat, report_id].join(":") : [cat, notification.id.to_i].join(":")
     when "followedblog", "blogcomment", "followedblogpost"
       ["blog", payload["blog"], payload["postid"].to_i].join(":")
     when "blogfollower"
@@ -475,6 +484,12 @@ module NotificationGroups
       p_("Notifications", "Followed forums")
     when "mention"
       p_("Notifications", "Forum mentions")
+    when "forumthreadoffer"
+      p_("Notifications", "Thread transfer offers")
+    when "forumpostreport"
+      p_("Notifications", "Forum post reports")
+    when "forumpostreportresolved"
+      p_("Notifications", "Forum post report results")
     when "friend"
       p_("Notifications", "Contacts")
     when "birthday"
@@ -516,6 +531,12 @@ module NotificationGroups
       followed_forum_post_title(payload, count: count, payloads: payloads)
     when "mention"
       forum_mention_title(payload, payloads: payloads)
+    when "forumthreadoffer"
+      forum_thread_offer_title(payload, payloads: payloads)
+    when "forumpostreport"
+      forum_post_report_title(payload, payloads: payloads)
+    when "forumpostreportresolved"
+      forum_post_report_result_title(payload, payloads: payloads)
     when "followedblog"
       followed_blog_title(payload, payloads: payloads)
     when "blogcomment"
@@ -622,6 +643,61 @@ module NotificationGroups
     end
     return p_("Notifications", "%{author} sent you a forum mention") % { author: author } if message.empty?
     p_("Notifications", "%{author} sent you a forum mention: %{message}") % { author: author, message: message }
+  end
+
+  def forum_thread_offer_title(payload, payloads: nil)
+    payloads = notification_payloads(payload, payloads)
+    thread = first_payload_value(payload, payloads, "threadname")
+    return "" if thread.empty?
+
+    group = first_payload_value(payload, payloads, "groupname")
+    forum = first_payload_value(payload, payloads, "forumname")
+    if !forum.empty? && !group.empty?
+      return p_("Notifications", "%{thread} from %{forum} has been offered to the group %{group}") % { thread: thread, forum: forum, group: group }
+    elsif !group.empty?
+      return p_("Notifications", "%{thread} has been offered to the group %{group}") % { thread: thread, group: group }
+    end
+    p_("Notifications", "%{thread} has been offered to one of your groups") % { thread: thread }
+  end
+
+  def forum_post_report_title(payload, payloads: nil)
+    payloads = notification_payloads(payload, payloads)
+    reporter = first_payload_value(payload, payloads, "reporter")
+    thread = first_payload_value(payload, payloads, "threadname")
+    comment = first_payload_value(payload, payloads, "comment")
+    return "" if reporter.empty? && thread.empty?
+
+    title = if !reporter.empty? && !thread.empty?
+      p_("Notifications", "%{reporter} reported a post in %{thread}") % { reporter: reporter, thread: thread }
+    elsif !reporter.empty?
+      p_("Notifications", "%{reporter} reported a forum post") % { reporter: reporter }
+    else
+      p_("Notifications", "A post in %{thread} was reported") % { thread: thread }
+    end
+    comment.empty? ? title : p_("Notifications", "%{title}: %{comment}") % { title: title, comment: comment }
+  end
+
+  def forum_post_report_result_title(payload, payloads: nil)
+    payloads = notification_payloads(payload, payloads)
+    moderator = first_payload_value(payload, payloads, "moderator")
+    thread = first_payload_value(payload, payloads, "threadname")
+    response = first_payload_value(payload, payloads, "response")
+    approved = notification_payload_truthy?(payload["approved"]) || payload["status"].to_s == "approved"
+    title = if !moderator.empty? && !thread.empty?
+      approved ? p_("Notifications", "%{moderator} accepted your report in %{thread}") % { moderator: moderator, thread: thread } : p_("Notifications", "%{moderator} rejected your report in %{thread}") % { moderator: moderator, thread: thread }
+    elsif !thread.empty?
+      approved ? p_("Notifications", "Your report in %{thread} was accepted") % { thread: thread } : p_("Notifications", "Your report in %{thread} was rejected") % { thread: thread }
+    else
+      approved ? p_("Notifications", "Your forum post report was accepted") : p_("Notifications", "Your forum post report was rejected")
+    end
+    if notification_payload_truthy?(payload["suggestion_used"])
+      title = p_("Notifications", "%{title}. The suggested action was applied") % { title: title }
+    end
+    response.empty? ? title : p_("Notifications", "%{title}. Response: %{response}") % { title: title, response: response }
+  end
+
+  def notification_payload_truthy?(value)
+    value == true || value.to_s == "1" || value.to_s.downcase == "true"
   end
 
   def followed_blog_title(payload, payloads: nil)
@@ -815,6 +891,12 @@ module NotificationGroups
       Proc.new { open_message(payload) }
     when "followedthread", "followedforum", "followedforumpost", "mention"
       Proc.new { open_forum_thread(payload, cat.to_s) }
+    when "forumthreadoffer"
+      Proc.new { open_forum_thread_offer(payload) }
+    when "forumpostreport"
+      Proc.new { open_forum_post_report(payload) }
+    when "forumpostreportresolved"
+      Proc.new { open_forum_post_report_result(payload) }
     when "followedblog", "blogcomment", "followedblogpost", "blogmention"
       Proc.new { open_blog_post(payload, cat.to_s) }
     when "blogfollower"
@@ -869,6 +951,28 @@ module NotificationGroups
       insert_scene(Scene_Forum_Thread.new(thread_id, -13, 0, query, mention, Scene_Main.new), true, return_to_main: true)
     else
       insert_scene(Scene_Forum.new, true, return_to_main: true)
+    end
+  end
+
+  def open_forum_thread_offer(payload)
+    thread_id = payload["threadid"].to_i
+    target = thread_id > 0 ? -12 : nil
+    insert_scene(Scene_Forum.new(thread_id > 0 ? thread_id : nil, target), true, return_to_main: true)
+  end
+
+  def open_forum_post_report(payload)
+    target = Scene_Forum.group_reports_target(payload["groupid"], payload["reportid"])
+    insert_scene(Scene_Forum.new(nil, target), true, return_to_main: true)
+  end
+
+  def open_forum_post_report_result(payload)
+    moderator = single_line_notification_text(payload["moderator"])
+    if moderator.empty?
+      alert(p_("Notifications", "The moderator is not available."))
+      return
+    end
+    confirm(p_("Notifications", "Would you like to write a private message to %{moderator}?") % { moderator: moderator }) do
+      insert_scene(Scene_Messages_New.new(moderator, "", "", Scene_Main.new), true, return_to_main: true)
     end
   end
 
