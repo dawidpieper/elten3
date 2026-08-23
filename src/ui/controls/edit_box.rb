@@ -12,6 +12,16 @@ module EltenAPI
     READ_TEXT_BREAK_PATTERN = /\n|[!?\.,] /.freeze
     @@customactions=[]
     @@lastedits=[]
+    @@focused=nil
+    def self.focused; @@focused; end
+    def self.focused_with_text?
+      e=@@focused
+      return false unless e.is_a?(EditBox)
+      return false if (e.flags.to_i & Flags::ReadOnly)!=0
+      e.text.to_s!=""
+    rescue Exception
+      false
+    end
     attr_accessor :index
         attr_accessor :flags
     attr_reader :origtext
@@ -1474,6 +1484,7 @@ def value
   text
   end
   def focus(index=nil,count=nil,spk=true)
+    @@focused=self
     pos=50
     pos=index.to_f/(count-1).to_f*100.0 if index!=nil and count!=nil && count!=0
     if !audio?
@@ -1510,6 +1521,7 @@ def value
                               return @audiotext!=nil || @audiostream!=nil || @audioplayer!=nil
                               end
                       def blur
+                        @@focused=nil if @@focused.equal?(self)
                                                 if @audioplayer!=nil && !@audioplayer.paused?
                         @audioplayer.stop
                         end

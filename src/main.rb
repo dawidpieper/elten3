@@ -8,7 +8,7 @@ class Object
   include EltenAPI
   end
 
-def mac_quit_shortcut_request
+def window_quit_shortcut_request
   EltenWindow.consume_quit_shortcut_request
 rescue Exception
   false
@@ -90,8 +90,16 @@ key_update
   retry
 rescue SystemExit
   if $immediateexit!=true
+  edit_text = defined?(EltenAPI::Controls::EditBox) && EltenAPI::Controls::EditBox.focused_with_text?
   loop_update
-  quit if key_held?(0x73) || mac_quit_shortcut_request
+  if key_held?(0x73) || window_quit_shortcut_request
+    if edit_text
+      EltenWindow.restore_from_tray if defined?(EltenWindow) && EltenWindow.respond_to?(:restore_from_tray)
+      quit
+    else
+      $scene = nil
+    end
+  end
           play_sound("listbox_focus") if $exit==nil
   $toscene = true
     retry if $exit == nil
