@@ -59,7 +59,7 @@ module EltenRecorderStructs
     def bass_channel_info_values(buffer)
       filename_offset = POINTER_SIZE == 8 ? 32 : 28
       values = []
-      for i in 0...7
+      (0...7).each do |i|
         values.push(dword_value(buffer, i * 4))
       end
       values.push(pointer_value(buffer, filename_offset))
@@ -247,7 +247,7 @@ module EltenRecorderRuntime
       tags = {}
       ai = AudioInfo.new(channel)
       chapters = ai.chapters
-      for i in 0...chapters.size
+      (0...chapters.size).each do |i|
         chapter = chapters[i]
         key = sprintf("CHAPTER%03d", i)
         time = chapter.time.to_f

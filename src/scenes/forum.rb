@@ -1237,9 +1237,19 @@ rfr.call
                           btn_resolve.on(:press) {
                           status=statuses[lst_status.index][0]
                           use_suggestion=status==1 && chk_suggestion!=nil && chk_suggestion.checked
-                          resolved=forum_attempt(nil) {
+                          resolved=false
+                          begin
                             EltenLink::Forum.resolve_report(elten_link, group_id: group.id, report_id: report.id, status: status, reason: edt_reason.text, use_suggestion: use_suggestion)
-                          }
+                            resolved=true
+                          rescue EltenLink::Error => e
+                            log_forum_error(e)
+                            if e.code.to_s=="forum.report_already_resolved"
+                              alert(p_("Forum", "This report has already been resolved."))
+                              form.resume
+                            else
+                              alert(_("Error"))
+                            end
+                          end
                           if resolved
                             getcache if use_suggestion
                             alert(p_("Forum", "Report resolved"))
@@ -2567,7 +2577,7 @@ if forum_attempt(nil) {
     mthreads = @sthreads.select{|m|(Session.moderator == 1 && m.forum.group.recommended) || m.forum.group.role == 2}
     index = mthreads.find_index(@sthreads[@thrsel.index]) || 0
     form = Form.new([
-      lst_threads = ListBox.new(mthreads.map(&:name), header: p_("Forum", "Threads"), index: index, flags: ListBox::Flags::MultiSelection),
+      lst_threads = ListBox.new(mthreads.map { |thread| thread_row_title(thread) }, header: p_("Forum", "Threads"), index: index, flags: ListBox::Flags::MultiSelection),
       btn_move = Button.new(p_("Forum", "Move")),
       btn_offer = Button.new(p_("Forum", "Offer")),
       btn_open = Button.new(p_("Forum", "Open threads")),
@@ -2624,7 +2634,7 @@ label=p_("Forum", "Offer")
         label=p_("Forum", "Close threads")
         end
 form = Form.new([
-lst_threads = ListBox.new(threads.map{|t|t.name}, header: header),
+lst_threads = ListBox.new(threads.map { |thread| thread_row_title(thread) }, header: header),
 btn_proceed = Button.new(label),
 btn_cancel = Button.new(_("Cancel"))
 ])
@@ -3843,7 +3853,7 @@ if post.edited && !post.locked
       return
     end
     if !users.include?(to)
-      insert_scene(Scene_Messages_New.new(to, subj, text, Scene_Main.new))
+      insert_scene(Scene_Messages_New.new(to, subj, text, Scene_Main.new, cursor_at_start: true))
       return
     end
     reply_type=LocalConfig["MentionReplyType", "", type: :string]
@@ -3854,7 +3864,7 @@ if post.edited && !post.locked
       LocalConfig["MentionReplyType"]=reply_type
     end
     if reply_type=="message"
-      insert_scene(Scene_Messages_New.new(to, subj, text, Scene_Main.new))
+      insert_scene(Scene_Messages_New.new(to, subj, text, Scene_Main.new, cursor_at_start: true))
       return
     end
     message=input_text(p_("Forum", "Message: "), flags: 0, text: "", escapable: true)

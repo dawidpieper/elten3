@@ -138,7 +138,7 @@ show(package)
     }
   end
   def select_currency
-    c = selector([p_("PremiumPackages", "Polish zloty")+" (PLN)", p_("PremiumPackages", "Euro")+" (EUR)", p_("PremiumPackages", "US dollar")+" (USD)", p_("PremiumPackages", "British pound")+" (GBP)"], header: p_("PremiumPackages", "Select your currency."))
+    c = selector([p_("PremiumPackages", "Polish zloty")+" (PLN)", p_("PremiumPackages", "Euro")+" (EUR)", p_("PremiumPackages", "US dollar")+" (USD)", p_("PremiumPackages", "British pound")+" (GBP)"], header: p_("PremiumPackages", "Select your currency."), cancel_index: -1)
     return if c < 0 || c >= CURRENCIES.size
     @currency = CURRENCIES[c]
     LocalConfig['PremiumPackagesCurrency'] = @currency

@@ -551,7 +551,7 @@ end
 end
   
 class Scene_Blog_Read
-  def initialize(post,category,categoryselindex=0,postselindex=0,scene=nil,page=0,search=nil)
+  def initialize(post,category,categoryselindex=0,postselindex=0,scene=nil,page=0,search=nil,first_unread: false)
     @post=post
     @category = category
         @categoryselindex = categoryselindex
@@ -559,6 +559,7 @@ class Scene_Blog_Read
     @scene=scene
 @page=page
 @search=search
+@first_unread=first_unread
     @isowner=(blogowners(post.owner)||"").include?(Session.name)
           end
   def main
@@ -659,7 +660,8 @@ else
   @fields.push(nil)
   end
 @fields.push(Button.new(p_("Blog", "Return")))
-@form = Form.new(@fields)
+@postcur=@knownposts+2 if @first_unread && @knownposts<@posts.size
+@form = Form.new(@fields,index: @postcur)
 if @comments==0
   @form.fields[-3]=nil
   @form.fields[-4]=nil
@@ -723,7 +725,7 @@ if @scene == nil
 end
 def confirm_comment_discard
   comment_field = @form.fields[@form.fields.size - 4]
-  comment_field==nil || comment_field.text=="" || comment_field.text=="\r\n" || confirm(p_("Blog", "Are you sure you want to cancel writing this comment?"))
+  comment_field==nil || comment_field.text=="" || comment_field.text=="\r\n" || confirm(p_("Blog", "Are you sure you want to cancel creating this comment?"))
 end
 def format(post)
    date=Time.now
@@ -835,7 +837,7 @@ def context(menu)
       return
     end
     if !users.include?(to)
-      insert_scene(Scene_Messages_New.new(to, subj, text, Scene_Main.new))
+      insert_scene(Scene_Messages_New.new(to, subj, text, Scene_Main.new, cursor_at_start: true))
       return
     end
     reply_type=LocalConfig["MentionReplyType", "", type: :string]
@@ -846,7 +848,7 @@ def context(menu)
       LocalConfig["MentionReplyType"]=reply_type
     end
     if reply_type=="message"
-      insert_scene(Scene_Messages_New.new(to, subj, text, Scene_Main.new))
+      insert_scene(Scene_Messages_New.new(to, subj, text, Scene_Main.new, cursor_at_start: true))
       return
     end
     message=input_text(p_("Blog", "Message"), flags: 0, text: "", escapable: true)
