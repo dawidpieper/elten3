@@ -828,7 +828,7 @@ def context(menu)
       return
     end
     if !users.include?(to)
-      insert_scene(Scene_Messages_New.new(to, subj, text, Scene_Main.new))
+      insert_scene(Scene_Messages_New.new(to, subj, text, Scene_Main.new, cursor_at_start: true))
       return
     end
     reply_type=LocalConfig["MentionReplyType", "", type: :string]
@@ -839,7 +839,7 @@ def context(menu)
       LocalConfig["MentionReplyType"]=reply_type
     end
     if reply_type=="message"
-      insert_scene(Scene_Messages_New.new(to, subj, text, Scene_Main.new))
+      insert_scene(Scene_Messages_New.new(to, subj, text, Scene_Main.new, cursor_at_start: true))
       return
     end
     message=input_text(p_("Blog", "Message"), flags: 0, text: "", escapable: true)

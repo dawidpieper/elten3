@@ -885,11 +885,12 @@ def audiolimit
     end
      
      class Scene_Messages_New
-       def initialize(receiver="",subject="",text="",scene=false)
+       def initialize(receiver="",subject="",text="",scene=false,cursor_at_start: false)
          @receiver = receiver
          @subject = subject
          @text = text
          @scene = scene
+         @cursor_at_start = cursor_at_start
          end
        def main
          receiver=@receiver
@@ -900,7 +901,7 @@ def audiolimit
            @fields[0] = EditBox.new(p_("Messages", "Recipient"),type: 0,text: receiver,quiet: true)
            @fields[0]=nil if receiver[0..0]=="["
 @fields[1] = EditBox.new(p_("Messages", "Subject:"),type: 0,text: subject,quiet: true)
-           @fields[2] = ((@text.is_a?(EditBox))?@text:EditBox.new(p_("Messages", "Message:"),type: EditBox::Flags::MultiLine,text: text,quiet: true))
+           @fields[2] = ((@text.is_a?(EditBox))?@text:EditBox.new(p_("Messages", "Message:"),type: EditBox::Flags::MultiLine,text: (@cursor_at_start ? "" : text),quiet: true))
            @fields[3] = OpusRecordButton.new(p_("Messages", "Audio message"), EltenPath.join(Dirs.temp, "audiomessage.opus"), max_bitrate: bitratelimit, bitrate: 48, time_limit: audiolimit)
            @fields[4]=nil
            @fields[5]=ListBox.new([],header: p_("Messages", "Attachments"))
@@ -982,6 +983,7 @@ def audiolimit
            ind=1 if receiver!=""
            ind=2 if receiver!="" and subject!=""
            @form = Form.new(@fields,index: ind)
+           @fields[2].set_text(text) if @cursor_at_start
 @attachments=[]
 @polls=[]
                                  loop do                     
