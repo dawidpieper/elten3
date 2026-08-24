@@ -1993,7 +1993,7 @@ msgstr "Zastosuj"
 #: src/scenes/account.rb:134
 msgctxt "Account"
 msgid "Show in what's new"
-msgstr "Pokaż w „Co nowego”"
+msgstr "Pokaż w „Powiadomieniach”"
 
 #: src/scenes/account.rb:135
 msgctxt "Account"
@@ -3431,7 +3431,7 @@ msgstr "Dodaj do śledzonych blogów"
 #: src/scenes/blog.rb:1156
 msgctxt "Blog"
 msgid "You are now following this blog. Do you want to mark all of its existing posts as read so that they do not appear in What's New?"
-msgstr "Ten blog został dodany do śledzonych blogów. Czy chcesz oznaczyć wszystkie dotychczas opublikowane na nim wpisy jako przeczytane, aby nie pokazywały się w \"Co nowego\"?"
+msgstr "Ten blog został dodany do śledzonych blogów. Czy chcesz oznaczyć wszystkie dotychczas opublikowane na nim wpisy jako przeczytane, aby nie pokazywały się w powiadomieniach?"
 
 #: src/scenes/blog.rb:1162 src/scenes/blog.rb:1211
 msgctxt "Blog"
@@ -9279,7 +9279,6 @@ msgstr "Ostatnia"
 
 #: src/scenes/messages.rb:159 src/scenes/messages.rb:466
 #: src/scenes/messages.rb:601
-#, fuzzy
 msgctxt "Messages"
 msgid "Show older"
 msgstr "Pokaż starsze (Shift+Enter dla załadowania większej liczby elementów)"
@@ -9557,7 +9556,7 @@ msgstr "Wyniki wyszukiwania"
 #: src/scenes/messages.rb:612
 msgctxt "Messages"
 msgid "Compose"
-msgstr "Załącz plik lub ankietę"
+msgstr "Otwórz pełny edytor"
 
 #: src/scenes/messages.rb:612
 msgctxt "Messages"
@@ -9791,7 +9790,7 @@ msgstr "Od teraz współdzielisz tę notatkę z %{user}"
 #: src/scenes/notes.rb:136
 msgctxt "Notes"
 msgid "Are you sure you want to close this note without saving?"
-msgstr "Czy na pewno chcesz zamknąć tę notatkę bez usuwania?"
+msgstr "Czy na pewno chcesz zamknąć tę notatkę bez zapisywania?"
 
 #: src/scenes/notes.rb:155
 msgctxt "Notes"
@@ -16884,7 +16883,7 @@ msgstr "Nie ma nic nowego."
 #: src/eapi/quickactions.rb:305
 msgctxt "EAPI_QuickActions"
 msgid "What's new"
-msgstr "Co nowego"
+msgstr "Powiadomienia"
 
 #: src/scenes/blog.rb:728
 msgctxt "Blog"
