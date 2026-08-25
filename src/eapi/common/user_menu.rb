@@ -9,7 +9,7 @@ module EltenAPI
     private
 
     # @return [String] returns ALT if menu was closed using an alt menu
-    def usermenu(user, submenu = false, left = false)
+    def usermenu(user, submenu = false, left = false, close_parent: nil)
       user_info = userinfo(user, true)
       return if user_info == -1
 
@@ -38,6 +38,7 @@ module EltenAPI
           if action
             play_sound("menu_close")
             Menu.menubg_close
+            close_parent.call if action[:close_all] && close_parent.respond_to?(:call)
             action[:handler].call
             if action[:close_all]
               loop_update
@@ -198,7 +199,7 @@ module EltenAPI
       end
 
       if Session.moderator > 0
-        moderation_label = banned ? p_("EAPI_Common", "Unban") : p_("EAPI_Common", "Ban")
+        moderation_label = banned ? p_("EAPI_Common", "Unban globally") : p_("EAPI_Common", "Ban globally")
         actions << user_menu_action(moderation_label) do
           scene = banned ? Scene_Ban_Unban.new(user, Scene_Main.new) : Scene_Ban_Ban.new(user, Scene_Main.new)
           insert_scene(scene, true)

@@ -54,7 +54,7 @@ module EltenAPI
         close_http2(true)
       end
 
-      def ejrequest(method, path, params, data=nil, encrypted: nil, headers: nil, transport_session_retry: true, &block)
+      def ejrequest(method, path, params, data=nil, encrypted: nil, headers: nil, transport_session_retry: true, cancellation_token: nil, &block)
         params = {} unless params.is_a?(Hash)
         headers = headers.is_a?(Hash) ? headers : {}
         Thread.new do
@@ -64,6 +64,7 @@ module EltenAPI
           request_generation = nil
           begin
             attempts += 1
+            raise_if_cancelled!(cancellation_token, data)
             pending_token = nil
             request_generation = nil
             raise "HTTP/2 unavailable" unless ensure_http2_connection
@@ -80,9 +81,13 @@ module EltenAPI
                 raise "HTTP/2 connection changed" unless connection_current?(request_generation, ssl, http)
 
                 stream = http.new_stream
-                pending_token = register_pending_request(request_generation) do
+                pending_token = register_pending_request(request_generation, stream, cancellation_token) do
                   safe_call(block, :error, data)
                 end
+              end
+              if cancelled?(data, cancellation_token)
+                fail_pending_request(pending_token)
+                next
               end
               head = {
                 ":scheme" => "https",
@@ -116,7 +121,7 @@ module EltenAPI
                   if transport_session_retry && decrypt_context.is_a?(Hash) && decrypt_context[:mode] == :session
                     log_warning("Encrypted session request failed, retrying with RSA: #{format_exception(e)}")
                     clear_transport_session(decrypt_context[:session_id])
-                    ejrequest(method, path, params, data, encrypted: true, headers: headers, transport_session_retry: false, &block)
+                    ejrequest(method, path, params, data, encrypted: true, headers: headers, transport_session_retry: false, cancellation_token: cancellation_token, &block)
                     next
                   end
                   log_error("JSON body error: #{format_exception(e)}")
@@ -130,6 +135,14 @@ module EltenAPI
               end
             end
           rescue Exception => e
+            if cancelled?(data, cancellation_token)
+              if pending_token != nil
+                fail_pending_request(pending_token)
+              else
+                safe_call(block, :error, data)
+              end
+              next
+            end
             log_error("JSON request error: #{format_exception(e)}")
             close_http2(false, request_generation) if request_generation != nil
             if pending_token != nil
@@ -143,27 +156,27 @@ module EltenAPI
         end
       end
 
-      def downloadfile(source, destination, data=nil, redirects=0, &block)
+      def downloadfile(source, destination, data=nil, redirects=0, cancellation_token: nil, &block)
         Thread.new do
           Thread.current.report_on_exception = false
           begin
-            result = downloadfile_sync(source, destination, data, redirects, &block)
+            result = downloadfile_sync(source, destination, data, redirects, cancellation_token: cancellation_token, &block)
             safe_call(block, result, data) if result.is_a?(Integer)
           rescue Exception => e
-            log_error("downloadfile worker error: #{format_exception(e)}")
+            log_error("downloadfile worker error: #{format_exception(e)}") unless cancelled?(data, cancellation_token)
             safe_call(block, :error, data)
           end
         end
       end
 
-      def readurl(url, method="get", body="", headers={}, data=nil, redirects=0, &block)
+      def readurl(url, method="get", body="", headers={}, data=nil, redirects=0, cancellation_token: nil, &block)
         Thread.new do
           Thread.current.report_on_exception = false
           begin
-            response = readurl_sync(url, method, body, headers, data, redirects)
+            response = readurl_sync(url, method, body, headers, data, redirects, cancellation_token: cancellation_token)
             safe_call(block, response[:body], data, response[:headers])
           rescue Exception => e
-            log_error("readurl worker error: #{format_exception(e)}")
+            log_error("readurl worker error: #{format_exception(e)}") unless cancelled?(data, cancellation_token)
             safe_call(block, :error, data, {})
           end
         end
@@ -304,8 +317,11 @@ module EltenAPI
         last_activity = @last_activity
         return false if last_activity == nil
 
-        threshold = active_connection_requests?(@connection_generation) ? ACTIVE_STALE_AFTER : STALE_AFTER
-        last_activity < monotonic_time - threshold
+        now = monotonic_time
+        pending_started_at = oldest_pending_request_started_at(@connection_generation)
+        return pending_started_at < now - ACTIVE_STALE_AFTER if pending_started_at != nil
+
+        last_activity < now - STALE_AFTER
       end
 
       def disable_http2?
@@ -428,28 +444,41 @@ module EltenAPI
         @last_activity = monotonic_time if @connection_generation == generation
       end
 
-      def register_pending_request(generation, &failure)
+      def register_pending_request(generation, stream, cancellation_token=nil, &failure)
         token = Object.new
+        entry = {
+          generation: generation,
+          started_at: monotonic_time,
+          failure: failure,
+          stream: stream,
+          cancellation_registration: nil
+        }
         pending_mutex.synchronize do
           @pending_requests ||= {}
-          @pending_requests[token] = {
-            generation: generation,
-            failure: failure
-          }
+          @pending_requests[token] = entry
+        end
+        registration = register_cancellation(cancellation_token) { cancel_pending_request(token) }
+        if registration != nil
+          attached = pending_mutex.synchronize do
+            current = @pending_requests == nil ? nil : @pending_requests[token]
+            current[:cancellation_registration] = registration if current.equal?(entry)
+            current.equal?(entry)
+          end
+          registration.unregister unless attached
         end
         token
       end
 
       def take_pending_request(token)
-        pending_mutex.synchronize do
-          @pending_requests != nil && @pending_requests.delete(token) != nil
-        end
-      end
-
-      def fail_pending_request(token)
         entry = pending_mutex.synchronize do
           @pending_requests == nil ? nil : @pending_requests.delete(token)
         end
+        dispose_cancellation(entry)
+        entry
+      end
+
+      def fail_pending_request(token)
+        entry = detach_pending_request(token)
         return false if entry == nil
 
         entry[:failure].call if entry[:failure] != nil
@@ -468,6 +497,7 @@ module EltenAPI
           selected.values
         end
         entries.each do |entry|
+          dispose_cancellation(entry)
           begin
             entry[:failure].call if entry[:failure] != nil
           rescue Exception
@@ -475,11 +505,48 @@ module EltenAPI
         end
       end
 
-      def active_connection_requests?(generation)
-        return false if generation == nil
+      def cancel_pending_request(token)
+        entry = detach_pending_request(token)
+        return false if entry == nil
+
+        cancel_http2_stream(entry[:stream])
+        entry[:failure].call if entry[:failure] != nil
+        true
+      rescue Exception
+        false
+      end
+
+      def detach_pending_request(token)
+        entry = pending_mutex.synchronize do
+          @pending_requests == nil ? nil : @pending_requests.delete(token)
+        end
+        dispose_cancellation(entry)
+        entry
+      end
+
+      def dispose_cancellation(entry)
+        registration = entry.is_a?(Hash) ? entry[:cancellation_registration] : nil
+        registration.unregister if registration != nil
+      rescue Exception
+      end
+
+      def cancel_http2_stream(stream)
+        return if stream == nil
+        http_mutex.synchronize do
+          stream.cancel unless stream.respond_to?(:closed?) && stream.closed?
+        end
+      rescue Exception
+      end
+
+      def oldest_pending_request_started_at(generation)
+        return nil if generation == nil
 
         pending_mutex.synchronize do
-          (@pending_requests || {}).any? { |_token, entry| entry[:generation] == generation }
+          (@pending_requests || {}).values
+            .select { |entry| entry[:generation] == generation }
+            .map { |entry| entry[:started_at] }
+            .compact
+            .min
         end
       end
 
@@ -833,11 +900,17 @@ module EltenAPI
         nil
       end
 
-      def downloadfile_sync(source, destination, data=nil, redirects=0, &block)
+      def downloadfile_sync(source, destination, data=nil, redirects=0, cancellation_token: nil, &block)
         raise "Too many redirects" if redirects > MAX_REDIRECTS
+        raise_if_cancelled!(cancellation_token)
         uri = URI.parse(source)
         socket = connect_socket(uri.host, uri.port || (uri.scheme == "https" ? 443 : 80))
         io = socket
+        cancellation_registration = register_cancellation(cancellation_token) do
+          close_io(io)
+          close_io(socket)
+        end
+        raise_if_cancelled!(cancellation_token)
         if uri.scheme == "https"
           ctx = OpenSSL::SSL::SSLContext.new
           ssl = OpenSSL::SSL::SSLSocket.new(socket, ctx)
@@ -853,19 +926,21 @@ module EltenAPI
         }, nil)
         response = read_http1_head(io)
         location = header_value(response[:headers], "Location")
-        return downloadfile_sync(uri.merge(location).to_s, destination, data, redirects + 1, &block) if location != nil
+        return downloadfile_sync(uri.merge(location).to_s, destination, data, redirects + 1, cancellation_token: cancellation_token, &block) if location != nil
         status = response[:status].to_i
         return :error if status < 200 || status >= 300
         File.open(destination, "wb") do |file|
-          stream_http_body(io, response[:headers], file, data, block)
+          stream_http_body(io, response[:headers], file, data, block, cancellation_token)
         end
       ensure
+        cancellation_registration.unregister if defined?(cancellation_registration) && cancellation_registration != nil
         close_io(io) if defined?(io)
         close_io(socket) if defined?(socket)
       end
 
-      def readurl_sync(url, method="get", body="", headers={}, data=nil, redirects=0)
+      def readurl_sync(url, method="get", body="", headers={}, data=nil, redirects=0, cancellation_token: nil)
         raise "Too many redirects" if redirects > MAX_REDIRECTS
+        raise_if_cancelled!(cancellation_token)
         uri = URI.parse(url)
         body_data = body.nil? ? nil : body.to_s.b
         request_headers = {
@@ -874,18 +949,24 @@ module EltenAPI
           "Accept-Encoding" => "identity, chunked, *;q=0"
         }.merge(normalize_headers(headers))
         request_headers["Content-Length"] = body_data.bytesize.to_s if body_data != nil
-        response = http1_request_uri(uri, method.to_s.upcase, body_data, request_headers, data)
+        response = http1_request_uri(uri, method.to_s.upcase, body_data, request_headers, data, cancellation_token)
         if response[:redirect] != nil
-          return readurl_sync(uri.merge(response[:redirect]).to_s, method, body, headers, data, redirects + 1)
+          return readurl_sync(uri.merge(response[:redirect]).to_s, method, body, headers, data, redirects + 1, cancellation_token: cancellation_token)
         end
         status = response[:status].to_i
         return { body: :error, headers: response[:headers] } if status < 200 || status >= 300
         { body: decode_body(response[:body], response[:headers]), headers: response[:headers] }
       end
 
-      def http1_request_uri(uri, method, body, headers, data=nil)
+      def http1_request_uri(uri, method, body, headers, data=nil, cancellation_token=nil)
+        raise_if_cancelled!(cancellation_token)
         socket = connect_socket(uri.host, uri.port || (uri.scheme == "https" ? 443 : 80))
         io = socket
+        cancellation_registration = register_cancellation(cancellation_token) do
+          close_io(io)
+          close_io(socket)
+        end
+        raise_if_cancelled!(cancellation_token)
         if uri.scheme == "https"
           ctx = OpenSSL::SSL::SSLContext.new
           ssl = OpenSSL::SSL::SSLSocket.new(socket, ctx)
@@ -900,18 +981,19 @@ module EltenAPI
         response[:redirect] = location if location != nil
         response
       ensure
+        cancellation_registration.unregister if defined?(cancellation_registration) && cancellation_registration != nil
         close_io(io) if defined?(io)
         close_io(socket) if defined?(socket)
       end
 
-      def stream_http_body(io, headers, file, data=nil, block=nil)
+      def stream_http_body(io, headers, file, data=nil, block=nil, cancellation_token=nil)
         transfer = header_value(headers, "Transfer-Encoding").to_s.downcase
         total = header_value(headers, "Content-Length").to_i
         downloaded = 0
         last_progress = Time.now.to_f
         if transfer.include?("chunked")
           loop do
-            raise "cancelled" if cancelled?(data)
+            raise_if_cancelled!(cancellation_token, data)
             size = read_line(io).split(";", 2)[0].to_i(16)
             break if size == 0
             chunk = read_exact_body(io, size)
@@ -925,7 +1007,7 @@ module EltenAPI
           end
         elsif total > 0
           while downloaded < total
-            raise "cancelled" if cancelled?(data)
+            raise_if_cancelled!(cancellation_token, data)
             chunk = read_partial(io, [16_384, total - downloaded].min)
             break if chunk == nil || chunk.empty?
             file.write(chunk)
@@ -937,7 +1019,7 @@ module EltenAPI
           end
         else
           loop do
-            raise "cancelled" if cancelled?(data)
+            raise_if_cancelled!(cancellation_token, data)
             chunk = read_partial(io, 16_384)
             break if chunk == nil || chunk.empty?
             file.write(chunk)
@@ -947,8 +1029,19 @@ module EltenAPI
         downloaded
       end
 
-      def cancelled?(data)
-        data.is_a?(Hash) && data[:cancelled] == true
+      def cancelled?(data=nil, cancellation_token=nil)
+        (data.is_a?(Hash) && data[:cancelled] == true) ||
+          (cancellation_token != nil && cancellation_token.respond_to?(:cancelled?) && cancellation_token.cancelled?)
+      end
+
+      def raise_if_cancelled!(cancellation_token=nil, data=nil)
+        cancellation_token.raise_if_cancelled! if cancellation_token != nil && cancellation_token.respond_to?(:raise_if_cancelled!)
+        raise "cancelled" if data.is_a?(Hash) && data[:cancelled] == true
+      end
+
+      def register_cancellation(cancellation_token, &callback)
+        return nil if cancellation_token == nil || !cancellation_token.respond_to?(:on_cancel)
+        cancellation_token.on_cancel(&callback)
       end
 
       def server_rsa
@@ -990,16 +1083,16 @@ module EltenAPI
   module HTTP
     private
 
-    def ejrequest(method, path, params, data=nil, headers: nil, &block)
-      elten_link.e_json_request(method, path, params, data, headers: headers, &block)
+    def ejrequest(method, path, params, data=nil, headers: nil, cancellation_token: nil, &block)
+      elten_link.e_json_request(method, path, params, data, headers: headers, cancellation_token: cancellation_token, &block)
     end
 
-    def readurl(url, method="get", body="", headers={}, data=nil, &block)
-      elten_link.e_read_url(url, method, body, headers, data, &block)
+    def readurl(url, method="get", body="", headers={}, data=nil, cancellation_token: nil, &block)
+      elten_link.e_read_url(url, method, body, headers, data, cancellation_token: cancellation_token, &block)
     end
 
-    def downloadfile(source, destination, data=nil, &block)
-      elten_link.e_download_file(source, destination, data, &block)
+    def downloadfile(source, destination, data=nil, cancellation_token: nil, &block)
+      elten_link.e_download_file(source, destination, data, cancellation_token: cancellation_token, &block)
     end
 
     def srvverify

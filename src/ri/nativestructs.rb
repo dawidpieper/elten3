@@ -1,3 +1,9 @@
+# A part of Elten - EltenLink / Elten Network desktop client.
+# Copyright (C) 2014-2026 Dawid Pieper
+# Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
+# Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
+# You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
+
 module EltenNativeStructs
   POINTER_SIZE = [nil].pack("p").size
   POINTER_PACK = POINTER_SIZE == 8 ? "Q" : "L"
@@ -31,7 +37,7 @@ module EltenNativeStructs
 
     def pointer_array_values(buffer, count)
       values = []
-      for i in 0...count.to_i
+      (0...count.to_i).each do |i|
         values.push(pointer_value(buffer, i * POINTER_SIZE))
       end
       values
@@ -75,7 +81,7 @@ module EltenNativeStructs
     def bass_channel_info_values(buffer)
       filename_offset = POINTER_SIZE == 8 ? 32 : 28
       values = []
-      for i in 0...7
+      (0...7).each do |i|
         values.push(dword_value(buffer, i * 4))
       end
       values.push(pointer_value(buffer, filename_offset))

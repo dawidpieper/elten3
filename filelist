@@ -76,6 +76,7 @@ src/scenes/install.rb
 src/scenes/conference.rb
 src/eapi/conference.rb
 src/scenes/account.rb
+src/scenes/keyboardshortcuts.rb
 src/scenes/settings.rb
 src/scenes/clock.rb
 src/scenes/programs.rb
@@ -103,6 +104,7 @@ src/platforms/linux/eapi/clipboard.rb :linux
 src/scenes/authentication.rb
 src/eapi/audio/bass.rb
 src/eapi/audio/sound.rb
+src/eapi/audio/soundpool.rb
 src/eapi/audio/fx/audio3d.rb
 src/scenes/debug.rb
 src/scenes/users_recentlyregistered.rb
@@ -140,9 +142,10 @@ src/scenes/registration.rb
 src/scenes/welcome_wizard.rb
 src/scenes/loading.rb
 src/eapi/documents.rb
+src/platforms/windows/eapi/childprocess.rb :windows
+src/platforms/windows/eapi/sapi_bridge.rb :windows
 src/platforms/windows/eapi/sapi.rb :windows
 src/platforms/windows/eapi/spellcheck.rb :windows
-src/platforms/windows/eapi/childprocess.rb :windows
 src/platforms/osx/eapi/spellcheck.rb :osx
 src/platforms/linux/eapi/spellcheck.rb :linux
 src/platforms/osx/eapi/childprocess.rb :osx
@@ -209,6 +212,7 @@ src/ui/controls/map.rb
 src/ui/controls/opus_record_button.rb
 src/ui/controls/date_button.rb
 src/ui/controls/__controls.rb
+src/eapi/tasks.rb
 src/eapi/dictionary.rb
 src/eapi/notifications.rb
 src/platforms/windows/invisibleinterface/nativedialogs.rb :windows
@@ -221,6 +225,7 @@ src/eapi/speechtofile.rb
 src/eapi/audio/mediaextractors.rb
 src/eapi/programsigning.rb
 src/eapi/runner.rb
+src/eapi/unsigned_package_builder.rb
 src/eapi/program.rb
 src/eapi/extensions.rb
 src/eapi/program_settings.rb

@@ -23,7 +23,8 @@ module EltenLink
       @last_error = nil
     end
 
-    def json(method, path, params = nil, timeout: DEFAULT_TIMEOUT, headers: nil)
+    def json(method, path, params = nil, timeout: DEFAULT_TIMEOUT, headers: nil, cancellation_token: nil)
+      raise_if_cancelled!(cancellation_token)
       Log.debug("Server JSON request to #{self.class.redacted_path(path)}")
       call_context(:play, "signal") if $netsignal
       method = method.to_s.upcase
@@ -52,7 +53,7 @@ module EltenLink
       timeout_error = nil
       @last_error = nil
       safe_request_path = self.class.redacted_path(request_path)
-      submit_json_request(method, request_path, request_params, headers: headers) do |resp, _data|
+      submit_json_request(method, request_path, request_params, headers: headers, cancellation_token: cancellation_token) do |resp, _data|
         state_mutex.synchronize do
           next unless accept_response
 
@@ -65,6 +66,10 @@ module EltenLink
       started = Time.now.to_f
       waiting_visible = false
       while state_mutex.synchronize { done == false }
+        if cancellation_token != nil && cancellation_token.respond_to?(:cancelled?) && cancellation_token.cancelled?
+          state_mutex.synchronize { accept_response = false }
+          break
+        end
         if @context != nil
           call_context(:loop_update, false)
         else
@@ -111,6 +116,7 @@ module EltenLink
       end
       state_mutex.synchronize { accept_response = false }
       call_context(:waiting_end) if waiting_visible
+      raise_if_cancelled!(cancellation_token)
       if timed_out && request_id != nil
         recovered = recover_cached_response(request_id)
         if recovered != nil
@@ -122,8 +128,8 @@ module EltenLink
       response
     end
 
-    def api_payload(method, path, params = nil, timeout: DEFAULT_TIMEOUT, headers: nil)
-      raw = json(method, path, params, timeout: timeout, headers: headers)
+    def api_payload(method, path, params = nil, timeout: DEFAULT_TIMEOUT, headers: nil, cancellation_token: nil)
+      raw = json(method, path, params, timeout: timeout, headers: headers, cancellation_token: cancellation_token)
       return nil if raw == nil
       JSON.parse(raw.to_s)
     rescue JSON::ParserError
@@ -132,8 +138,8 @@ module EltenLink
       nil
     end
 
-    def api_data(method, path, params = nil, timeout: DEFAULT_TIMEOUT, headers: nil)
-      payload = api_payload(method, path, params, timeout: timeout, headers: headers)
+    def api_data(method, path, params = nil, timeout: DEFAULT_TIMEOUT, headers: nil, cancellation_token: nil)
+      payload = api_payload(method, path, params, timeout: timeout, headers: headers, cancellation_token: cancellation_token)
       raise @last_error if payload == nil && @last_error != nil
       unless payload.is_a?(Hash) && self.class.truthy?(payload["success"])
         @last_error = api_error(payload, path)
@@ -142,12 +148,13 @@ module EltenLink
       payload["data"] || {}
     end
 
-    def api_success?(method, path, params = nil, timeout: DEFAULT_TIMEOUT, headers: nil)
-      payload = api_payload(method, path, params, timeout: timeout, headers: headers)
+    def api_success?(method, path, params = nil, timeout: DEFAULT_TIMEOUT, headers: nil, cancellation_token: nil)
+      payload = api_payload(method, path, params, timeout: timeout, headers: headers, cancellation_token: cancellation_token)
       payload.is_a?(Hash) && self.class.truthy?(payload["success"])
     end
 
-    def api_binary_payload(method, path, body, headers = {}, params = nil, timeout: DEFAULT_TIMEOUT)
+    def api_binary_payload(method, path, body, headers = {}, params = nil, timeout: DEFAULT_TIMEOUT, cancellation_token: nil)
+      raise_if_cancelled!(cancellation_token)
       params = params.is_a?(Hash) ? params.dup : {}
       self.class.session_auth_params.each { |key, value| params[key] = value if params[key] == nil }
       request_path = self.class.append_query(path, params)
@@ -155,7 +162,7 @@ module EltenLink
       response = nil
       done = false
       @last_error = nil
-      e_read_url(self.class.absolute_api_url(request_path), method.to_s.upcase, body.to_s.b, headers, nil) do |resp, _data|
+      e_read_url(self.class.absolute_api_url(request_path), method.to_s.upcase, body.to_s.b, headers, nil, cancellation_token: cancellation_token) do |resp, _data|
         response = resp == :error ? nil : resp
         @last_error = Error.network(module_name: safe_request_path) if resp == :error
         done = true
@@ -163,12 +170,14 @@ module EltenLink
 
       started = Time.now.to_f
       while done == false
+        raise_if_cancelled!(cancellation_token)
         @context == nil ? sleep(0.01) : call_context(:loop_update, false)
         if timeout != nil && Time.now.to_f - started > timeout.to_f
           @last_error = Error.timeout(module_name: safe_request_path)
           break
         end
       end
+      raise_if_cancelled!(cancellation_token)
       return nil if response == nil
       JSON.parse(response.to_s)
     rescue JSON::ParserError
@@ -177,8 +186,8 @@ module EltenLink
       nil
     end
 
-    def api_binary_data(method, path, body, headers = {}, params = nil, timeout: DEFAULT_TIMEOUT)
-      payload = api_binary_payload(method, path, body, headers, params, timeout: timeout)
+    def api_binary_data(method, path, body, headers = {}, params = nil, timeout: DEFAULT_TIMEOUT, cancellation_token: nil)
+      payload = api_binary_payload(method, path, body, headers, params, timeout: timeout, cancellation_token: cancellation_token)
       raise @last_error if payload == nil && @last_error != nil
       unless payload.is_a?(Hash) && self.class.truthy?(payload["success"])
         @last_error = api_error(payload, path)
@@ -187,16 +196,16 @@ module EltenLink
       payload["data"] || {}
     end
 
-    def e_json_request(method, path, params, data=nil, headers: nil, &block)
-      ::EltenAPI::HTTPClient.ejrequest(method, path, params, data, headers: headers, &block)
+    def e_json_request(method, path, params, data=nil, headers: nil, cancellation_token: nil, &block)
+      ::EltenAPI::HTTPClient.ejrequest(method, path, params, data, headers: headers, cancellation_token: cancellation_token, &block)
     end
 
-    def e_read_url(url, method="get", body="", headers={}, data=nil, &block)
-      ::EltenAPI::HTTPClient.readurl(url, method, body, headers, data, &block)
+    def e_read_url(url, method="get", body="", headers={}, data=nil, cancellation_token: nil, &block)
+      ::EltenAPI::HTTPClient.readurl(url, method, body, headers, data, cancellation_token: cancellation_token, &block)
     end
 
-    def e_download_file(source, destination, data=nil, &block)
-      ::EltenAPI::HTTPClient.downloadfile(source, destination, data, &block)
+    def e_download_file(source, destination, data=nil, cancellation_token: nil, &block)
+      ::EltenAPI::HTTPClient.downloadfile(source, destination, data, cancellation_token: cancellation_token, &block)
     end
 
     def e_server_verify
@@ -380,8 +389,12 @@ module EltenLink
       Error.new(message, code: code || "api_error", module_name: safe_path, response: payload)
     end
 
-    def submit_json_request(method, path, params, headers: nil, &block)
-      e_json_request(method, path, params, nil, headers: headers, &block)
+    def submit_json_request(method, path, params, headers: nil, cancellation_token: nil, &block)
+      e_json_request(method, path, params, nil, headers: headers, cancellation_token: cancellation_token, &block)
+    end
+
+    def raise_if_cancelled!(cancellation_token)
+      cancellation_token.raise_if_cancelled! if cancellation_token != nil && cancellation_token.respond_to?(:raise_if_cancelled!)
     end
 
     def call_context(name, *args)

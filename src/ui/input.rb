@@ -56,7 +56,7 @@ if pitch != 100
 if Configuration.usepan==true
   Bass::BASS_ChannelSetAttribute.call(stream, 3, pan.to_f/50.0-1.0)
                                                   end
-                                                                                                                                                                                                      Bass::BASS_ChannelPlay.call(stream, 0)
+                                                                                                                                                                                                      Bass.play_stream(stream, 0)
                         end
                         end
                       end
@@ -109,12 +109,12 @@ Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f/100.0)
       return context_menu_pressed? if [:key_context_menu, :context_menu, :context_menu_key].include?(key)
       return enter_pressed? if [:key_enter, :enter].include?(key)
       return main_modifier_pressed? if main_modifier_key?(key)
-      raw_key_pressed?(key)
+      raw_key_pressed?(key, repeat: repeat)
     end
 
     def arrow_pressed?(code, repeat=false)
       return false if modifier_held?(:command)
-      raw_key_pressed?(code)
+      raw_key_pressed?(code, repeat: repeat)
     end
 
     def key_held?(key)
@@ -189,8 +189,8 @@ Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f/100.0)
       parts.join("+")
     end
 
-    def raw_key_pressed?(key)
-      raw_key_state?(key, :pressed)
+    def raw_key_pressed?(key, repeat: false)
+      raw_key_state?(key, :pressed, repeat: repeat)
     end
 
     def raw_key_held?(key)
@@ -225,6 +225,11 @@ Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f/100.0)
     return l
     end
 
+    def cancel_pending_alt_menu
+      @@altdown=false
+      @@altdowntime=0
+    end
+
     def context_menu_pressed?
       return false if raw_key_held?(:key_alt) || raw_key_released?(:key_alt) || raw_key_first_pressed?(:key_alt)
       return false if modifier_held?(:control) || modifier_held?(:command) || raw_key_held?(:key_shift)
@@ -232,7 +237,7 @@ Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f/100.0)
     end
 
     def enter_pressed?
-    raw_key_pressed?(:key_enter)
+    raw_key_first_pressed?(:key_enter)
     end
 
     def main_modifier_pressed?
@@ -305,20 +310,23 @@ Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f/100.0)
       ""
     end
 
-    def raw_key_state?(key, state)
+    def raw_key_state?(key, state, repeat: false)
       ensure_keyboard_state
       code = EltenAPI::KeyboardScheme.key_code(key)
       code, shift = keyboard_code(key) if code == nil
       return false if code == nil || code == 0
       return false if shift && !EltenAPI::KeyboardState.held?(EltenAPI::KeyboardScheme.key_code(:shift))
       return true if state == :held && EltenWindow.keyboard_key_held?(code)
+      return EltenAPI::KeyboardState.pressed?(code, repeat: repeat) if state == :pressed
       EltenAPI::KeyboardState.public_send("#{state}?", code)
     rescue Exception
       false
     end
 
     def ensure_keyboard_state
-      key_update if @keyboard_state_initialized != true
+      if $keyboard_state_frame_serial != $input_frame_serial || $keyboard_state_frame_thread != Thread.current
+        key_update
+      end
     end
 
     def keyboard_input_idle?
@@ -377,7 +385,8 @@ Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f/100.0)
   # Updates the keyboard state
        def key_update
          $key_update_serial=($key_update_serial||0)+1
-         @keyboard_state_initialized = true
+         $keyboard_state_frame_serial = $input_frame_serial
+         $keyboard_state_frame_thread = Thread.current
       if !EltenWindow.keyboard_active?
         @@altdown=false
         @@altdowntime=0
@@ -498,12 +507,24 @@ if $setkeys.is_a?(Array)
             return ([0, false])
           end
 
-                    def clear_keyboard_input_state
+                    def prepare_keyboard_scene_transition
+                      if EltenWindow.respond_to?(:keyboard_scene_transition_guard?) && EltenWindow.keyboard_scene_transition_guard?
+                        EltenAPI::KeyboardState.suppress_held_until_release
+                      end
+                      EltenAPI::KeyboardState.clear_current_frame
+                    end
+
+                    def clear_keyboard_input_state(preserve_activation_guard: false)
                       EltenAPI::KeyboardState.reset
-                      @keyboard_state_initialized = false
+                      $keyboard_state_frame_serial = nil
+                      $keyboard_state_frame_thread = nil
                       $getkeychar_cache_serial = nil
                       $getkeychar_cache = nil
-                      EltenWindow.clear_input_state
+                      if preserve_activation_guard && EltenWindow.respond_to?(:clear_input_state_preserving_activation_guard)
+                        EltenWindow.clear_input_state_preserving_activation_guard
+                      else
+                        EltenWindow.clear_input_state
+                      end
                     end
 
                     def run_window_action(wait=false, &block)

@@ -10,7 +10,8 @@ module EltenAPI
   module Network
     private
 # The Network related functions
-def read_url(url, method: :get, body: nil, headers: nil)
+def read_url(url, method: :get, body: nil, headers: nil, cancellation_token: nil)
+          cancellation_token.raise_if_cancelled! if cancellation_token != nil && cancellation_token.respond_to?(:raise_if_cancelled!)
           Log.debug("Read URL #{url}")
                               play_sound("signal") if $netsignal
                       headers={} if headers==nil
@@ -33,7 +34,7 @@ body=txt
 response = nil
 done = false
 response_headers = {}
-elten_link.e_read_url(url, method.to_s, body, headers, nil) do |resp, _data, h|
+elten_link.e_read_url(url, method.to_s, body, headers, nil, cancellation_token: cancellation_token) do |resp, _data, h|
 response = resp == :error ? nil : resp
 response_headers = h if h.is_a?(Hash)
 done = true
@@ -41,6 +42,7 @@ end
             t=Time.now.to_f
             w=false
                 while done==false
+            break if cancellation_token != nil && cancellation_token.respond_to?(:cancelled?) && cancellation_token.cancelled?
             loop_update(false)
       if Time.now.to_f-t>2 and w==false
         waiting
@@ -58,6 +60,7 @@ return nil
       end
       end
       waiting_end if w
+      cancellation_token.raise_if_cancelled! if cancellation_token != nil && cancellation_token.respond_to?(:raise_if_cancelled!)
 if headers!=nil
 headers.clear
 for k,v in response_headers
@@ -67,14 +70,15 @@ end
 return response
 end
 
-def download_file(source, destination, use_waiting: true, can_cancel: true, override: false)
+def download_file(source, destination, use_waiting: true, can_cancel: true, override: false, cancellation_token: nil)
+  cancellation_token.raise_if_cancelled! if cancellation_token != nil && cancellation_token.respond_to?(:raise_if_cancelled!)
   return if override==false and FileTest.exists?(destination) and !confirm(p_("EAPI_Network", "The file already exists. Do you want to overwrite it?"))
           Log.debug("Downloading file #{source}")
                               play_sound("signal") if $netsignal
           result = nil
           progress = nil
           data = {:cancelled=>false}
-          elten_link.e_download_file(source, destination, data) do |resp, _data|
+          elten_link.e_download_file(source, destination, data, cancellation_token: cancellation_token) do |resp, _data|
             if resp.is_a?(ERDownloadProgress)
               progress = resp.percent
             elsif resp == :error
@@ -88,6 +92,7 @@ def download_file(source, destination, use_waiting: true, can_cancel: true, over
                                     t=Time.now.to_f
             w=false
                 while result==nil
+            break if cancellation_token != nil && cancellation_token.respond_to?(:cancelled?) && cancellation_token.cancelled?
             loop_update(false)
             if progress.is_a?(Integer) && use_waiting
               speak(progress.to_s+"%")
@@ -101,11 +106,16 @@ def download_file(source, destination, use_waiting: true, can_cancel: true, over
         play_sound("cancel")
         Log.debug("Download of #{source} cancelled by user")
         waiting_end if use_waiting
-        data[:cancelled]=true
+        if cancellation_token != nil && cancellation_token.respond_to?(:cancel)
+          cancellation_token.cancel
+        else
+          data[:cancelled]=true
+        end
 return false
       end
       end
       waiting_end if w && use_waiting
+      cancellation_token.raise_if_cancelled! if cancellation_token != nil && cancellation_token.respond_to?(:raise_if_cancelled!)
       return result == true
   end
 

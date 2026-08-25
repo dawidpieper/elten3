@@ -1,5 +1,5 @@
 # A part of Elten - EltenLink / Elten Network desktop client.
-# Copyright (C) 2014-2021 Dawid Pieper
+# Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
@@ -70,10 +70,12 @@ def initialize
 @status_hooks=[]
 @ping_hooks=[]
 @params_queue=Queue.new
+@params_stop=Object.new
 @params_thread=Thread.new do
 Thread.current.report_on_exception=false
 loop do
 params=@params_queue.pop
+break if params.equal?(@params_stop)
 @params_hooks.dup.each do |hook|
 begin
 hook.call(params)
@@ -123,16 +125,16 @@ resp=command("login", {'login'=>username, 'token'=>token, 'publickey'=>Base64.st
 if resp!=false
 @uid=resp['id']
 @secret=Base64.strict_decode64(resp['secret'])
-@tcpthread.exit if @tcpthread!=nil
+stop_transport_thread(@tcpthread)
 @tcpthread=Thread.new {
-loop {
+until @closing
 if @tcp_requested==false
 sleep(0.5)
 else
 sleep(0.1)
 end
 update
-}
+end
 }
 connect_udp
 @connected=true
@@ -210,14 +212,10 @@ end
 }
 end
 def close_transport
-if @udpthread!=nil
-@udpthread.exit
+udpthread=@udpthread
+tcpthread=@tcpthread
 @udpthread=nil
-end
-if @tcpthread!=nil
-@tcpthread.exit
 @tcpthread=nil
-end
 tcp=@tcp
 udp=@udp
 @cipher_mutex.synchronize {
@@ -234,8 +232,16 @@ begin
 udp.close if udp!=nil && udp.respond_to?(:close) && !udp.closed?
 rescue Exception
 end
+stop_transport_thread(udpthread)
+stop_transport_thread(tcpthread)
 @connected=false
 end
+def stop_transport_thread(thread)
+return if thread==nil || thread==Thread.current
+thread.exit
+thread.join
+end
+private :stop_transport_thread
 def disconnect
 log(0, "Conference: disconnecting from server")
 @closing=true
@@ -243,13 +249,18 @@ executecommand("close") if @tcp!=nil
 close_transport
 end
 def free
+@closing=true
+if @reconnect_thread!=nil
+stop_transport_thread(@reconnect_thread)
+@reconnect_thread=nil
+end
 if @params_thread!=nil
-@params_thread.exit
-@params_thread.join
+@params_hooks.clear
+@params_queue << @params_stop
+@params_thread.join if @params_thread!=Thread.current
 @params_thread=nil
 end
 disconnect
-@reconnect_thread.exit if @reconnect_thread!=nil
 end
 def reconnect
 @reconnecting=true
@@ -564,7 +575,7 @@ end
 private
 def connect_udp
 log(0, "Conference: connecting to server")
-@udpthread.exit if @udpthread!=nil
+stop_transport_thread(@udpthread)
 @udp=UDPSocket.new()
 @udp.setsockopt(Socket::SOL_SOCKET, Socket::SO_RCVBUF, 16777216)
 @udp.setsockopt(Socket::SOL_SOCKET, Socket::SO_SNDBUF, 16777216)
@@ -572,25 +583,25 @@ log(0, "Conference: connecting to server")
 @udp.send(@secret, 0, "conferencing.elten.link", 8133)
 lasttime = Time.now.to_f
 @udpthread = Thread.new {
-loop {
+until @closing
 begin
 data, addr = @udp.recvfrom_nonblock(1500)
 lasttime=Time.now.to_f
 @receivedbytes+=data.bytesize
 receive(data)
 rescue IO::EWOULDBLOCKWaitReadable
-@reconnect_thread = Thread.new{reconnect} if @reconnecting==false && (Time.now.to_f-lasttime>15 && @tcp_requested==false)
+@reconnect_thread = Thread.new{reconnect} if !@closing && @reconnecting==false && (Time.now.to_f-lasttime>15 && @tcp_requested==false)
 IO.select([@udp], nil, nil, 0.1)
 retry
 rescue IO::EWOULDBLOCKWaitWritable
-@reconnect_thread = Thread.new{reconnect} if @reconnecting==false && (Time.now.to_f-lasttime>15 && @tcp_requested==false)
+@reconnect_thread = Thread.new{reconnect} if !@closing && @reconnecting==false && (Time.now.to_f-lasttime>15 && @tcp_requested==false)
 IO.select(nil, [@udp], nil, 0.1)
 retry
 rescue Exception
-@reconnect_thread = Thread.new{reconnect} if @reconnecting==false && (Time.now.to_f-lasttime>15 && @tcp_requested==false)
-log(2, "VoIP UDP: "+$!.to_s+" "+$@.to_s)
+@reconnect_thread = Thread.new{reconnect} if !@closing && @reconnecting==false && (Time.now.to_f-lasttime>15 && @tcp_requested==false)
+log(2, "VoIP UDP: "+$!.to_s+" "+$@.to_s) if !@closing
 end
-}
+end
 }
 end
 def extract(data)

@@ -1,5 +1,5 @@
 # A part of Elten - EltenLink / Elten Network desktop client.
-# Copyright (C) 2014-2021 Dawid Pieper
+# Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
@@ -10,6 +10,7 @@ module EltenAPI
             @@hotkey_actions=nil
         @@addprocs = []
     EMPTY_HOTKEY_ACTIONS = [].freeze
+    HOTKEY_KEYS = (1..11).flat_map { |key| [key, -key, key + 12, -(key + 12)] }.freeze
     class QuickAction
       attr_accessor :label, :key, :show
       attr_reader :action, :params
@@ -60,8 +61,13 @@ module EltenAPI
         end
       def call_symbol
         case @action
+        when :whatsnew
+          if !GlobalMenu.opened?
+            scene = Scene_Notifications.whatsnew
+            scene == nil ? alert(p_("Notifications", "There is nothing new."), false) : insert_scene(scene)
+          end
         when :context
-                   $opencontextmenu=true
+                   $opencontextmenu=true if !GlobalMenu.opened?
         when :lastspeech
           speak($speech_lasttext)
           when :copylastspeech
@@ -197,6 +203,22 @@ end
       build_hotkey_actions if @@hotkey_actions==nil
       @@hotkey_actions[key.to_i] || EMPTY_HOTKEY_ACTIONS
     end
+    def hotkey_keys
+      HOTKEY_KEYS
+    end
+    def hotkey_label(key)
+      key=key.to_i
+      return "" if !HOTKEY_KEYS.include?(key)
+      value=key.abs
+      parts=[]
+      if value>12
+        parts.push(KeyboardScheme.modifier_name)
+        value-=12
+      end
+      parts.push("SHIFT") if key<0
+      parts.push("F#{value}")
+      parts.join("+")
+    end
     def load_actions
       @@actions=[]
       invalidate_hotkey_cache
@@ -218,11 +240,14 @@ end
     def load_json_actions(path)
       data=JSON.parse(File.binread(path).to_s)
       fail TypeError, "Quick actions JSON must be an array" if !data.is_a?(Array)
+      migrated=false
       for ac in Array(data)
+        migrated=true if legacy_whatsnew_record?(ac)
         action=normalize_record(ac)
         register(*action) if action!=nil
       end
       delete_legacy_data_file
+      save_actions if migrated
     rescue Exception => e
       Log.error("Quick actions JSON load failed: #{e.class}: #{e.message}") if defined?(Log)
       @@actions=[]
@@ -266,7 +291,7 @@ end
     end
     def default_actions
       [
-      [Scene_Notifications, p_("EAPI_QuickActions", "Notification history"), [], 10],
+      whatsnew_action(10, false),
             [Scene_Contacts, p_("EAPI_QuickActions", "My contacts"), [], 9],
       [Scene_Online, p_("EAPI_QuickActions", "Who is online?"), [], -9],
       [Scene_Messages, p_("EAPI_QuickActions", "Messages"), [], -11],
@@ -275,6 +300,9 @@ end
       [Scene_Conference, p_("EAPI_QuickActions", "Conferences")],
       [Scene_PremiumPackages, p_("EAPI_QuickActions", "Premium packages")],
       ]+predefined_procs(true)
+    end
+    def whatsnew_action(key=0, show=false)
+      [:whatsnew, p_("EAPI_QuickActions", "What's new"), [], key, show]
     end
     def register_proc(program, ident, label, proc)
             s=program.to_s+"__"+ident.to_s
@@ -302,6 +330,7 @@ end
       [:donotdisturb, p_("EAPI_QuickActions", "Switch \"Do not disturb\" mode"), [], -2, false],
       [:feed, p_("EAPI_QuickActions", "Publish to a feed"), [], 4, false],
       ]
+      a.unshift(whatsnew_action) if defaults!=true
       a.delete_if{|action| action[0]==:tray} if !tray_supported?
       a.delete_if{|action| action[0]==:srsapi} if !defined?(NVDA) && !defined?(Sapi)
       if defaults!=true
@@ -337,6 +366,58 @@ end
       @@actions.delete(action)
       invalidate_hotkey_cache
       false
+    end
+    def action_identity(action, params=[])
+      serialized=serialize_action(action)
+      return nil if serialized==nil
+      [serialized, params.is_a?(Array) ? params : []]
+    end
+    def find_action(action, params=[])
+      load_actions if @@actions==nil
+      identity=action_identity(action, params)
+      return nil if identity==nil
+      @@actions.find { |item| action_identity(item.action, item.params)==identity }
+    end
+    def assign_hotkey(key, action, label="", params=[])
+      load_actions if @@actions==nil
+      key=key.to_i
+      return false if !HOTKEY_KEYS.include?(key)
+      return false if action_identity(action, params)==nil
+      target=find_action(action, params)
+      mutate_actions do
+        @@actions.delete_if do |item|
+          next false if item.equal?(target) || item.key.to_i!=key
+          if item.show==false
+            true
+          else
+            item.key=0
+            false
+          end
+        end
+        if target==nil
+          target=QuickAction.new(action, label, params, key, false)
+          @@actions.push(target)
+        else
+          target.key=key
+        end
+      end
+    end
+    def remove_hotkey(key)
+      load_actions if @@actions==nil
+      key=key.to_i
+      return false if !HOTKEY_KEYS.include?(key)
+      return true if !@@actions.any? { |item| item.key.to_i==key }
+      mutate_actions do
+        @@actions.delete_if do |item|
+          next false if item.key.to_i!=key
+          if item.show==false
+            true
+          else
+            item.key=0
+            false
+          end
+        end
+      end
     end
     def delete(index)
       index=normalize_index(index)
@@ -439,6 +520,7 @@ end
       }
     end
     def normalize_record(record)
+      legacy_whatsnew=legacy_whatsnew_record?(record)
       if record.is_a?(Hash)
         action=deserialize_action(record["action"])
         label=record["label"].to_s
@@ -454,8 +536,20 @@ end
       else
         return nil
       end
+      if legacy_whatsnew
+        action=:whatsnew
+        show=false if key==10
+      end
       return nil if action==nil
       [action, label, params, key, show]
+    end
+    def legacy_whatsnew_record?(record)
+      action = if record.is_a?(Hash)
+        record["action"]
+      elsif record.is_a?(Array) && record.size>0
+        record[0]
+      end
+      action.to_s=="Scene_WhatsNew"
     end
     def deserialize_action(action)
       return action if action.is_a?(Symbol) || action.is_a?(Class)
@@ -524,6 +618,23 @@ end
     def invalidate_hotkey_cache
       @@hotkey_actions=nil
     end
+    def mutate_actions
+      snapshot=@@actions.map { |action| [action, action.key] }
+      yield
+      invalidate_hotkey_cache
+      return true if save_actions
+      restore_action_snapshot(snapshot)
+      false
+    rescue Exception
+      restore_action_snapshot(snapshot) if snapshot!=nil
+      raise
+    end
+    def restore_action_snapshot(snapshot)
+      @@actions=snapshot.map { |entry| entry[0] }
+      snapshot.each { |action, key| action.key=key }
+      invalidate_hotkey_cache
+    end
+    private :mutate_actions, :restore_action_snapshot
     end
   end
   end

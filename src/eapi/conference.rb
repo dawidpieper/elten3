@@ -1,10 +1,12 @@
 # A part of Elten - EltenLink / Elten Network desktop client.
-# Copyright (C) 2014-2025 Dawid Pieper
+# Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
 
 
+
+require "monitor"
 
 module EltenAPI
   class Conference
@@ -139,6 +141,7 @@ class Channel
 @@keyboard_thread=nil
 @@configuration_signature=nil
 @@configuration_tick=0
+@@core_lifecycle=Monitor.new
 
 def self.load_steamaudio(file=nil)
   setup_core_runtime(false)
@@ -227,12 +230,12 @@ end
 
 def self.start_keyboard_state
   return if @@keyboard_thread!=nil && @@keyboard_thread.alive?
-  $conference_key_state ||= Array.new(256, false)
+  $conference_pushtotalk_held = false
   @@keyboard_thread=Thread.new {
     Thread.current.report_on_exception=false
     loop {
-      keys = EltenKeyboard.active_pressed_keys
-      $conference_key_state=keys
+      keys = @@pushtotalk_keys.dup
+      $conference_pushtotalk_held = EltenAPI::Keyboard.global_chord_held?(keys)
       sleep 0.02
     }
   }
@@ -303,12 +306,14 @@ end
 
 def self.open_core(nick=nil)
   setup_core_runtime
-  close_core(false)
-  sync_core_settings
-  @@configuration_signature=configuration_signature
-  @@core=Core.new(nick)
-  attach_core_callbacks(@@core)
-  @@core
+  @@core_lifecycle.synchronize do
+    close_core(false)
+    sync_core_settings
+    @@configuration_signature=configuration_signature
+    @@core=Core.new(nick)
+    attach_core_callbacks(@@core)
+    @@core
+  end
 end
 
 def self.refresh_open_state
@@ -325,16 +330,20 @@ def self.refresh_open_state
 end
 
 def self.close_core(trigger_close=true)
-  if @@core!=nil
-    begin
-      @@core.free
-    rescue Exception
-      Log.error("Conference close: #{$!.class}: #{$!.message}")
+  @@core_lifecycle.synchronize do
+    core=@@core
+    notify_closed=@@opened || core!=nil
+    @@core=nil
+    @@configuration_signature=nil
+    if core!=nil
+      begin
+        core.free
+      rescue Exception
+        Log.error("Conference close: #{$!.class}: #{$!.message}")
+      end
     end
+    setclosed if trigger_close && notify_closed
   end
-  @@core=nil
-  @@configuration_signature=nil
-  setclosed if trigger_close
 end
 
 def self.attach_core_callbacks(conf)
@@ -606,7 +615,7 @@ end
 def self.togglestream(stream=nil, source=nil)
   safe {
     st=source_for(stream, source)
-    st.toggle if st!=nil && st.toggleable?
+    @@core.toggle_source(st) if st!=nil && st.toggleable?
   }
   delay(0.05)
 end

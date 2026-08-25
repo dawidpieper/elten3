@@ -1,10 +1,13 @@
 # A part of Elten - EltenLink / Elten Network desktop client.
-# Copyright (C) 2014-2021 Dawid Pieper
+# Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
 
 class Scene_Login
+  AUTO_LOGIN_INVALID_PASSWORD_CODES = %w[session.invalid_credentials auth.invalid_password unauthorized].freeze
+  AUTO_LOGIN_PASSWORD_RETRIES = 1
+
   @@skipauto=false
   def initialize(skipauto=false)
     @skipauto=skipauto
@@ -170,7 +173,8 @@ end
   end
 end
     if logintemp != nil
-  Session.name=logintemp.name
+  name=logintemp.name
+  Session.name=name
       Session.token=logintemp.token
       Session.moderator=logintemp.moderator.to_i
       Session.fullname=logintemp.fullname
@@ -194,17 +198,8 @@ loop_update
             case @sel.index
       when 0
         when 1
-          loop do
-          password=input_text(p_("Login", "Password:"),flags: EditBox::Flags::Password, text: "", escapable: true) if password=="" or password==nil
-          if password==nil
-            break
-          else
-            begin
-              token=EltenLink::Authentication.auto_login_token(elten_link, name: name, password: password, computer: $computer, appid: $appid)
-            rescue EltenLink::Error
-              alert(p_("Login", "An error occurred while verifying your identity. You may have entered an incorrect password."))
-              password = ""
-            else
+          token=request_auto_login_token(name, password)
+          if token!=nil
               tokenenc=0
               if autologin_key_encryption_supported?
                 confirm(p_("Login", "Do you want to enable auto-login key encryption? Once encrypted, the auto-login key can be read only on this computer. Copying or exporting it will not allow another device to access your account. You can create separate auto-login keys for any other computers you use.")) {
@@ -223,9 +218,6 @@ loop_update
               alert(p_("Login", "Login data has been updated. Automatic login will remain enabled until you log out. You can manage automatic login keys on the My Account tab in the Community menu."))
               end
          speech_wait
-         break   
-         end
-                        end
           end
        when 2
          writeconfig("Login", "EnableAutoLogin", false)
@@ -249,7 +241,7 @@ speak(p_("Login", "Logged in as: %{user}")%{:user=>name}) if $silentstart != tru
 else
   speak(Session.greeting) if $silentstart != true
   end
-delay(0.1)
+EltenAPI::NotificationService.synchronize_runtime_state
 else
   case login_error&.code.to_s
   when "network_error", "timeout", "cancelled"
@@ -362,6 +354,35 @@ end
             else
               alert(p_("Login", "The PINs you entered do not match. Please try again."))
               end
+            end
+          end
+        end
+        def request_auto_login_token(name, password)
+          password_verified_by_login = password != nil && password != ""
+          retries = 0
+          loop do
+            if password == nil || password == ""
+              password=input_text(p_("Login", "Password:"),flags: EditBox::Flags::Password, text: "", escapable: true)
+              return nil if password==nil
+              next if password==""
+            end
+            begin
+              return EltenLink::Authentication.auto_login_token(elten_link, name: name, password: password, computer: $computer, appid: $appid)
+            rescue EltenLink::Error => e
+              Log.warning("Auto-login token creation failed for #{name}: #{e.code}: #{e.message}")
+              invalid_password = AUTO_LOGIN_INVALID_PASSWORD_CODES.include?(e.code.to_s)
+              if invalid_password && !password_verified_by_login && retries < AUTO_LOGIN_PASSWORD_RETRIES
+                retries += 1
+                alert(p_("Login", "An error occurred while verifying your identity. You may have entered an incorrect password."))
+                password = nil
+                next
+              end
+              if invalid_password
+                alert(p_("Login", "Automatic login could not be enabled because the password was not accepted. You are still logged in."))
+              else
+                alert(p_("Login", "Automatic login could not be enabled due to a connection or server error. You are still logged in."))
+              end
+              return nil
             end
           end
         end

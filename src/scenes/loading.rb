@@ -185,12 +185,11 @@ if Configuration.language==""
                                                                                   writeconfig("Interface", "Language", Configuration.language) if Configuration.language.to_s!=""
                                                                                 end
                                                                                 setlocale(Configuration.language)
-                                                                                SpeechOutput.apply_current_settings if defined?(SpeechOutput)
-                                                                                nvda_running = defined?(NVDA) && NVDA.controller_running?
-                                                                                          if (Configuration.voice == "?" or Configuration.voice == "") && nvda_running
-          v=Configuration.voice
-          Configuration.voice="NVDA"
-                    end
+                                                                                 nvda_running = defined?(NVDA) && NVDA.controller_running?
+                                                                                           if (Configuration.voice == "?" or Configuration.voice == "") && nvda_running
+           Configuration.voice="NVDA"
+                     end
+                                                                                 SpeechOutput.apply_current_settings if defined?(SpeechOutput)
                                   if $silentstart==nil
   $silentstart=true if $commandline.include?("/silentstart")
 end

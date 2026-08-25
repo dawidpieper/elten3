@@ -192,7 +192,7 @@ class AudioInfo
           when :UTF16
             content = deunicode(content)
           when :UnicodeFFE
-            for i in 0...content.bytesize / 2
+            (0...content.bytesize / 2).each do |i|
               s = i * 2
               c = content[s]
               content[s] = content[s + 1]
@@ -220,13 +220,13 @@ class AudioInfo
     if t != nil
       tgs = {}
       mapper = {"TIT2" => "TITLE", "TALB" => "ALBUM", "TPE1" => "ARTIST", "TRCK" => "TRACKNUMBER", "TCOM" => "COMPOSER", "TCOP" => "COPYRIGHT"}
-      for d, o in mapper
+      mapper.each do |d, o|
         f = t.find { |frame| frame.id == d }
         tgs[o] = f.strvalue if f != nil
       end
       chs = t.select { |frame| frame.id == "CHAP" }
       i = 0
-      for c in chs
+      chs.each do |c|
         time = c.numvalue / 1000.0
         name = ""
         sf = c.subframes.find { |s| s.id == "TIT2" }
@@ -266,7 +266,7 @@ class AudioInfo
     return @chapters if @chapters != nil && @chapters != []
     chapters = []
     if (t = tags_ogg) != nil
-      for i in 0..999
+      (0..999).each do |i|
         d = sprintf("%03d", i)
         if t["CHAPTER#{d}"] != nil && t["CHAPTER#{d}NAME"] != nil
           tm = t["CHAPTER#{d}"]
@@ -281,12 +281,12 @@ class AudioInfo
       end
     end
     if (t = tags_id3v2) != nil
-      for f in t
+      t.each do |f|
         if f.id == "CHAP" && f.subframes.size > 0
           c = Chapter.new
           c.time = f.numvalue / 1000.0
           c.name = ""
-          for g in f.subframes
+          f.subframes.each do |g|
             c.name = g.strvalue if g.id == "TIT2"
           end
           chapters.push(c)
@@ -304,7 +304,7 @@ class AudioInfo
       return t[ogg.upcase] if t[ogg.upcase] != nil
     end
     if (t = tags_id3v2) != nil
-      for r in t
+      t.each do |r|
         return r.strvalue[0...r.strvalue.index("\0") || r.strvalue.size] if r.id == id3
       end
     end
@@ -333,19 +333,29 @@ class SoundEffect
 end
 
 class Sound
-  attr_reader :file, :channel, :source_channel, :sample_handle, :kind, :basefrequency, :effects
+  attr_reader :file, :channel, :source_channel, :sample_handle, :kind, :basefrequency, :effects, :effect_buffer, :effect_buffer_seconds, :spatial_effect
 
   SAMPLE_FLOAT = 0x100
   BASS_STREAM_DECODE = 0x200000
   BASS_UNICODE = 0x80000000
+  BASS_SAMPLE_LOOP = 4
+  BASS_DATA_AVAILABLE = 0
+  BASS_CONFIG_UPDATE_PERIOD = 1
+  BASS_ACTIVE_STOPPED = 0
   FRAME_MILLISECONDS = 20
+  FLOAT_SAMPLE_BYTES = 4
+  EFFECT_QUEUE_POLL_SECONDS = FRAME_MILLISECONDS / 2000.0
+  INTERACTIVE_EFFECT_BUFFER_SECONDS = FRAME_MILLISECONDS / 1000.0
   @@finalizers = {}
 
-  def initialize(file = nil, sample: false, loop: false, stream: nil)
+  # :interactive selects a safe bounded buffer. Nil and :eager preserve eager buffering.
+  # effect_buffer_seconds remains available for advanced callers.
+  def initialize(file = nil, sample: false, loop: false, stream: nil, effect_buffer: nil, effect_buffer_seconds: nil)
     @file = file
     @stream_data = stream
     @sample = sample == true
     @looper = loop == true
+    configure_effect_buffer(effect_buffer, effect_buffer_seconds)
     @closed = false
     @sample_handle = 0
     @source_channel = 0
@@ -367,7 +377,7 @@ class Sound
     open_direct
     @basefrequency = frequency
     Bass::BASS_ChannelFlags.call(@channel, BASS_STREAM_DECODE, BASS_STREAM_DECODE) if @channel.to_i != 0
-    Bass::BASS_ChannelFlags.call(@channel, 4, 4) if @looper && @channel.to_i != 0
+    Bass::BASS_ChannelFlags.call(@channel, BASS_SAMPLE_LOOP, BASS_SAMPLE_LOOP) if @looper && @channel.to_i != 0
     @finalizer_id = object_id
     update_finalizer
     ObjectSpace.define_finalizer(self, self.class.finalizer(@finalizer_id))
@@ -397,7 +407,17 @@ class Sound
   end
 
   def self.free_stream_handle(handle)
-    Bass::BASS_StreamFree.call(handle)
+    Bass.free_stream(handle)
+  end
+
+  def effect_buffer_seconds=(value)
+    @effect_buffer = nil
+    @effect_buffer_seconds = normalize_effect_buffer_seconds(value)
+  end
+
+  def effect_buffer=(value)
+    @effect_buffer = normalize_effect_buffer(value)
+    @effect_buffer_seconds = @effect_buffer == :interactive ? INTERACTIVE_EFFECT_BUFFER_SECONDS : nil
   end
 
   def open_direct
@@ -432,6 +452,7 @@ class Sound
       update_finalizer
       return
     end
+    Bass::BASS_ChannelFlags.call(@source_channel, BASS_SAMPLE_LOOP, BASS_SAMPLE_LOOP) if @looper
     self.position = position if position > 0
     @basefrequency = frequency
     @processing_frequency = pipeline_output_frequency
@@ -448,6 +469,10 @@ class Sound
 
   def playing?
     status.playing?
+  end
+
+  def finished?
+    closed? || status.stopped?
   end
 
   def channels
@@ -535,9 +560,51 @@ class Sound
   def effect_remove(effect)
     removed = false
     @effects_mutex.synchronize { removed = @effects.delete(effect) != nil }
+    @spatial_effect = nil if removed && @spatial_effect.equal?(effect)
     effect.close if removed && effect.respond_to?(:close)
     rebuild_effect_pipeline
     removed
+  end
+
+  def spatialize(position: nil, interpolation: :bilinear)
+    fail(RuntimeError, "Audio3DEffect is unavailable") if !defined?(::Audio3DEffect)
+    position = Audio3DEffect::ORIGIN if position == nil
+    if @spatial_effect == nil || !@effects.include?(@spatial_effect)
+      effect = Audio3DEffect.new(position: position, interpolation: interpolation)
+      effect_add(effect)
+      @spatial_effect = effect
+    else
+      @spatial_effect.position = position
+      @spatial_effect.interpolation = interpolation
+    end
+    self
+  end
+
+  def spatial?
+    @spatial_effect != nil && @effects.include?(@spatial_effect)
+  end
+
+  def spatial_position
+    spatial? ? @spatial_effect.position : nil
+  end
+
+  def spatial_position=(position)
+    spatial? ? @spatial_effect.position = position : spatialize(position: position)
+    position
+  end
+
+  def spatial_interpolation
+    spatial? ? @spatial_effect.interpolation : nil
+  end
+
+  def spatial_interpolation=(interpolation)
+    spatial? ? @spatial_effect.interpolation = interpolation : spatialize(interpolation: interpolation)
+    interpolation
+  end
+
+  def despatialize
+    effect_remove(@spatial_effect) if spatial?
+    self
   end
 
   def close
@@ -557,6 +624,7 @@ class Sound
     @processing_channel = 0
     @processing_frequency = nil
     @processing_channels = 0
+    @spatial_effect = nil
     @@finalizers.delete(@finalizer_id)
     nil
   end
@@ -605,7 +673,7 @@ class Sound
   def new_channel
     return nil if @kind != :sample || @sample_handle.to_i == 0
     @channel = Bass::BASS_SampleGetChannel.call(@sample_handle, 0)
-    Bass::BASS_ChannelFlags.call(@channel, 4, 4) if @looper
+    Bass::BASS_ChannelFlags.call(@channel, BASS_SAMPLE_LOOP, BASS_SAMPLE_LOOP) if @looper
     update_finalizer
     @channel
   end
@@ -815,7 +883,10 @@ class Sound
     freq = frequency if freq <= 0
     freq = 1 if freq <= 0
     frame_samples = [(freq * FRAME_MILLISECONDS / 1000.0).to_i, 1].max
-    frame_bytes = frame_samples * source_channels * 4
+    frame_bytes = frame_samples * source_channels * FLOAT_SAMPLE_BYTES
+    output_channels = @playback_channels.to_i
+    output_channels = source_channels if output_channels <= 0
+    output_frame_bytes = frame_samples * output_channels * FLOAT_SAMPLE_BYTES
     buffer = "\0".b * frame_bytes
     loop do
       break if closed? || !@pipeline
@@ -823,8 +894,14 @@ class Sound
         sleep(FRAME_MILLISECONDS / 1000.0)
         next
       end
+      if effect_queue_full?(output_frame_bytes, freq, output_channels)
+        start_effect_output if @effect_buffer_seconds != nil
+        sleep(EFFECT_QUEUE_POLL_SECONDS)
+        next
+      end
       read = Bass::BASS_ChannelGetData.call(read_channel, buffer, frame_bytes)
       if read.to_i <= 0
+        start_effect_output if @effect_buffer_seconds != nil
         @processing_playing = false if read.to_i == -1 || read.to_i == 0
         sleep(FRAME_MILLISECONDS / 1000.0)
         next
@@ -840,8 +917,10 @@ class Sound
       if audio.bytesize > 0
         written = Bass::BASS_StreamPutData.call(@playback_channel, audio, audio.bytesize)
         if written.to_i > 0 && @playback_channel.to_i != 0
-          @processing_output_started = true
-          Bass::BASS_ChannelPlay.call(@playback_channel, 0)
+          if @effect_buffer_seconds == nil
+            @processing_output_started = true
+            Bass::BASS_ChannelPlay.call(@playback_channel, 0)
+          end
         end
       end
     end
@@ -851,5 +930,62 @@ class Sound
 
   def reset_effects
     @effects_mutex.synchronize { @effects.each { |effect| effect.reset if effect.respond_to?(:reset) } }
+  end
+
+  def effect_queue_full?(next_frame_bytes, frequency, channels)
+    seconds = @effect_buffer_seconds
+    return false if seconds == nil || @playback_channel.to_i == 0
+
+    pending_bytes = effect_pending_bytes
+    bytes_per_second = [frequency.to_i, 1].max * [channels.to_i, 1].max * FLOAT_SAMPLE_BYTES
+    update_milliseconds = Bass::BASS_GetConfig.call(BASS_CONFIG_UPDATE_PERIOD).to_i
+    minimum_seconds = ([update_milliseconds, 0].max + FRAME_MILLISECONDS) / 1000.0
+    limit_seconds = [seconds, minimum_seconds].max
+    limit_bytes = [(limit_seconds * bytes_per_second).round, next_frame_bytes.to_i].max
+    pending_bytes + next_frame_bytes.to_i > limit_bytes
+  rescue Exception
+    false
+  end
+
+  def effect_pending_bytes
+    queued = Bass::BASS_StreamPutData.call(@playback_channel, nil, 0).to_i
+    buffered = Bass::BASS_ChannelGetData.call(@playback_channel, nil, BASS_DATA_AVAILABLE).to_i
+    [queued, 0].max + [buffered, 0].max
+  end
+
+  def start_effect_output
+    return if @playback_channel.to_i == 0
+    if @processing_output_started
+      active = Bass::BASS_ChannelIsActive.call(@playback_channel).to_i
+      return if active != BASS_ACTIVE_STOPPED
+    end
+    @processing_output_started = Bass::BASS_ChannelPlay.call(@playback_channel, 0).to_i != 0
+  rescue Exception
+    @processing_output_started = false
+  end
+
+  def normalize_effect_buffer_seconds(value)
+    return nil if value == nil
+
+    seconds = Float(value)
+    raise ArgumentError if !seconds.finite? || seconds <= 0.0
+    seconds
+  rescue ArgumentError, TypeError
+    raise ArgumentError, "effect_buffer_seconds must be nil or a positive finite number"
+  end
+
+  def normalize_effect_buffer(value)
+    return nil if value == nil
+
+    preset = value.respond_to?(:to_sym) ? value.to_sym : nil
+    return preset if [:eager, :interactive].include?(preset)
+    raise ArgumentError, "effect_buffer must be nil, :eager, or :interactive"
+  end
+
+  def configure_effect_buffer(preset, seconds)
+    if preset != nil && seconds != nil
+      raise ArgumentError, "effect_buffer and effect_buffer_seconds cannot be used together"
+    end
+    preset == nil ? self.effect_buffer_seconds = seconds : self.effect_buffer = preset
   end
 end

@@ -46,7 +46,7 @@ module EltenBassStructs
     def bass_channel_info_values(buffer)
       filename_offset = POINTER_SIZE == 8 ? 32 : 28
       values = []
-      for i in 0...7
+      (0...7).each do |i|
         values.push(dword_value(buffer, i * 4))
       end
       values.push(pointer_value(buffer, filename_offset))
@@ -74,6 +74,7 @@ module Bass
   BASS_UNICODE = 0x80000000
   BASS_STREAM_DECODE = 0x200000
   BASS_STREAM_AUTOFREE = 0x40000
+  BASS_MIXER_CHAN_PAUSE = 0x20000
 
   def self.optional_dlopen(lib)
     EltenRuntimePaths.dlopen(lib)
@@ -154,6 +155,7 @@ module Bass
   BASS_Mixer_StreamCreate = Fiddle::Function.new(BASSMIX["BASS_Mixer_StreamCreate"], [F_UINT, F_UINT, F_UINT], F_UINT, BASS_ABI)
   BASS_Mixer_StreamAddChannel = Fiddle::Function.new(BASSMIX["BASS_Mixer_StreamAddChannel"], [F_UINT, F_UINT, F_UINT], F_INT, BASS_ABI)
   BASS_Mixer_ChannelRemove = Fiddle::Function.new(BASSMIX["BASS_Mixer_ChannelRemove"], [F_UINT], F_INT, BASS_ABI)
+  BASS_Mixer_ChannelFlags = Fiddle::Function.new(BASSMIX["BASS_Mixer_ChannelFlags"], [F_UINT, F_UINT, F_UINT], F_UINT, BASS_ABI)
   BASS_Mixer_ChannelGetData = Fiddle::Function.new(BASSMIX["BASS_Mixer_ChannelGetData"], [F_UINT, F_PTR, F_UINT], F_INT, BASS_ABI)
   BASS_Split_StreamCreate = Fiddle::Function.new(BASSMIX["BASS_Split_StreamCreate"], [F_UINT, F_UINT, F_PTR], F_UINT, BASS_ABI)
   BASS_VST_ChannelSetDSP = optional_fiddle(BASSVST, "BASS_VST_ChannelSetDSP", [F_UINT, F_PTR, F_UINT, F_INT], F_UINT)
@@ -233,9 +235,77 @@ module Bass
     "BASS_ERROR_UNKNOWN"
   end
 
+  MemoryStreamEntry = Struct.new(:data, :auto_free, :started)
+
+  def self.memory_stream_mutex
+    @memory_stream_mutex ||= Mutex.new
+  end
+
+  def self.remember_stream_data(channel, data, auto_free)
+    channel = channel.to_i
+    return false if channel == 0 || data == nil
+    memory_stream_mutex.synchronize do
+      @memory_stream_data ||= {}
+      @memory_stream_data[channel] = MemoryStreamEntry.new(data, auto_free == true, false)
+    end
+    true
+  end
+
+  def self.release_stream_data(channel, expected_entry = nil)
+    memory_stream_mutex.synchronize do
+      @memory_stream_data ||= {}
+      current = @memory_stream_data[channel.to_i]
+      return false if expected_entry != nil && !current.equal?(expected_entry)
+      @memory_stream_data.delete(channel.to_i)
+    end
+  end
+
+  def self.clear_memory_stream_data
+    memory_stream_mutex.synchronize do
+      @memory_stream_data ||= {}
+      @memory_stream_data.clear
+    end
+    true
+  end
+
+  def self.cleanup_memory_streams
+    entries = memory_stream_mutex.synchronize do
+      @memory_stream_data ||= {}
+      @memory_stream_data.select { |_channel, entry| entry.auto_free && entry.started }.to_a
+    end
+    entries.each do |channel, entry|
+      next if BASS_ChannelIsActive.call(channel).to_i != 0
+      memory_stream_mutex.synchronize do
+        @memory_stream_data.delete(channel) if @memory_stream_data[channel].equal?(entry)
+      end
+    rescue Exception
+    end
+    true
+  end
+
   def self.create_file_stream_from_memory(data, flags)
     data = data.to_s.b
-    BASS_StreamCreateFile.call(1, data, 0, data.bytesize, flags)
+    channel = BASS_StreamCreateFile.call(1, data, 0, data.bytesize, flags)
+    remember_stream_data(channel, data, (flags.to_i & BASS_STREAM_AUTOFREE) != 0)
+    channel
+  end
+
+  def self.play_stream(channel, restart = 0)
+    result = BASS_ChannelPlay.call(channel.to_i, restart.to_i)
+    if result.to_i != 0
+      memory_stream_mutex.synchronize do
+        entry = (@memory_stream_data ||= {})[channel.to_i]
+        entry.started = true if entry != nil
+      end
+    end
+    result
+  end
+
+  def self.free_stream(channel)
+    entry = memory_stream_mutex.synchronize { (@memory_stream_data ||= {})[channel.to_i] }
+    result = BASS_StreamFree.call(channel.to_i)
+    release_stream_data(channel, entry) if result.to_i != 0 && entry != nil
+    result
   end
 
   def self.create_file_stream_from_path(filename, pos = 0, flags = 0, tries = 1)
@@ -377,6 +447,7 @@ module Bass
             @@device=d
             if @init==true
             BASS_Free.call
+            clear_memory_stream_data
       BASS_Init.call(d, samplerate, 4, hWnd)
       BASS_SetDevice.call(d)
     else
@@ -489,7 +560,7 @@ return if @init==true
       raise(error_name)
     end
     plugins = ["bassopus", "bassflac", "bassmidi", "basswebm", "basswma", "bass_aac", "bass_ac3", "bass_spx", "basshls", "bassalac"]
-        for pl in plugins
+        plugins.each do |pl|
               Log.debug("Loading Bass plugin #{pl}")
           plugin_path = EltenRuntimePaths.absolute_library_file(pl)
           if BASS_PluginLoad.call(plugin_path, 0) == 0
@@ -514,6 +585,7 @@ prewarm_url_loader
     if BASS_Free.call == 0 then
       raise(error_name)
     end
+    clear_memory_stream_data
   end
 
   def self.create_stream_channel(filename, pos = 0, stream = nil, tries = 10)
@@ -614,7 +686,7 @@ class VST
   def parameters
     cnt = BASS_VST_GetParamCount.call(@vst)
     params=[]
-    for i in 0...cnt
+    (0...cnt).each do |i|
       params.push(Parameter.new(@vst, i))
     end
     params
@@ -679,7 +751,7 @@ class VST
   def programs
     count = BASS_VST_GetProgramCount.call(@vst)
     programs=[]
-    for i in 0...count
+    (0...count).each do |i|
       ptr = BASS_VST_GetProgramName.call(@vst, i)
       programs[i]=Bass.c_string(ptr).force_encoding("UTF-8")
     end

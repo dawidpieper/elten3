@@ -1,5 +1,5 @@
 # A part of Elten - EltenLink / Elten Network desktop client.
-# Copyright (C) 2014-2021 Dawid Pieper
+# Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
@@ -143,6 +143,7 @@ end
     @form.fields[0].flags=EditBox::Flags::MultiLine
     @form.index=0
     @form.fields[0].focus
+    EltenWindow.take_character(true) if defined?(EltenWindow) && EltenWindow.respond_to?(:take_character)
     @form.fields[1]=Button.new(_("Save"))
   else
     text=@form.fields[0].text
@@ -240,7 +241,9 @@ class Scene_Notes_New
         @form.fields[2]=btn
         end
       @form.update
-      break if key_pressed?(:key_escape) or ((key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form.index==3)
+      if key_pressed?(:key_escape) or ((key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form.index==3)
+        break if (@form.fields[0].text=="" and @form.fields[1].text=="") or confirm(p_("Notes", "Are you sure you want to close this note without saving?"))
+      end
       if ((key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form.index==2)
         name=@form.fields[0].text
         text=@form.fields[1].text

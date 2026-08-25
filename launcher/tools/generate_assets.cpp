@@ -1,3 +1,9 @@
+// A part of Elten - EltenLink / Elten Network desktop client.
+// Copyright (C) 2014-2026 Dawid Pieper
+// Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
+// Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+// You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>.
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -1192,9 +1198,8 @@ void CopyNativeCompanions(const Options &options, const fs::path &source, const 
 
         fs::path rootCopy = RuntimePackageRoot(options) / entry.path().filename();
         fs::path builtinCopy = RuntimePackageRoot(options) / "ruby_builtin_dlls" / entry.path().filename();
-        if (SameFileContent(entry.path(), builtinCopy)) {
-          if (SameFileContent(rootCopy, builtinCopy)) fs::remove(rootCopy, ec);
-        } else if (!fs::is_regular_file(rootCopy, ec)) {
+        if (SameFileContent(entry.path(), builtinCopy)) continue;
+        if (!fs::is_regular_file(rootCopy, ec)) {
           CopyIfChanged(entry.path(), rootCopy);
         } else if (!SameFileContent(entry.path(), rootCopy)) {
           CopyIfChanged(entry.path(), destination.parent_path() / entry.path().filename());
@@ -1430,6 +1435,10 @@ ZstdApi LoadZstd(const Options &options) {
     candidates.push_back(Slash(RuntimePackageRoot(options) / "libzstd.dll"));
     candidates.push_back("libzstd.dll");
   } else if (IsLinux(options)) {
+    // The bundled copy is stored under its soname, so that everything in the
+    // process resolves to the same library; the flat name stays as a fallback
+    // for packages assembled before that change.
+    candidates.push_back(Slash(RuntimePackageRoot(options) / "libzstd.so.1"));
     candidates.push_back(Slash(RuntimePackageRoot(options) / "libzstd.so"));
     candidates.push_back("libzstd.so.1");
     candidates.push_back("libzstd.so");
@@ -2065,10 +2074,16 @@ std::vector<std::string> ZstdCandidates() {
   std::string executable_dir = ExecutableDirectory();
   if (!executable_dir.empty()) {
     std::filesystem::path dir(executable_dir);
+    // The bundled copy is stored under its soname, so that everything loaded
+    // into the process resolves to one library rather than to a mixture of ours
+    // and the distribution's. The flat name stays behind it, for packages
+    // assembled before that change.
+    candidates.push_back((dir / "bin" / ")CPP" + runtimeDirName + R"CPP(" / "libzstd.so.1").lexically_normal().generic_string());
     candidates.push_back((dir / "bin" / ")CPP" + runtimeDirName + R"CPP(" / "libzstd.so").lexically_normal().generic_string());
   }
   candidates.push_back("libzstd.so.1");
   candidates.push_back("libzstd.so");
+  candidates.push_back("./bin/)CPP" + runtimeDirName + R"CPP(/libzstd.so.1");
   candidates.push_back("./bin/)CPP" + runtimeDirName + R"CPP(/libzstd.so");
   return candidates;
 }

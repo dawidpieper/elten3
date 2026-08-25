@@ -8,8 +8,14 @@ class Object
   include EltenAPI
   end
 
-def mac_quit_shortcut_request
+def window_quit_shortcut_request
   EltenWindow.consume_quit_shortcut_request
+rescue Exception
+  false
+end
+
+def window_alt_quit_shortcut_request
+  EltenWindow.consume_alt_quit_shortcut_request
 rescue Exception
   false
 end
@@ -46,7 +52,7 @@ $toscene = false
           if $scene != nil and $exit!=true
         $notifications_callback = nil
         Log.debug("Loading scene: #{$scene.class.to_s}")
-        EltenAPI::KeyboardState.clear_current_frame if defined?(EltenAPI::KeyboardState)
+        prepare_keyboard_scene_transition if defined?(EltenAPI::KeyboardState)
                               $scene.main
   else
     break
@@ -90,8 +96,15 @@ key_update
   retry
 rescue SystemExit
   if $immediateexit!=true
+  window_quit_requested = window_quit_shortcut_request
+  alt_quit_requested = window_alt_quit_shortcut_request
+  cancel_pending_alt_menu if alt_quit_requested
   loop_update
-  quit if key_held?(0x73) || mac_quit_shortcut_request
+  cancel_pending_alt_menu if alt_quit_requested
+  if key_held?(0x73) || window_quit_requested
+    EltenWindow.restore_from_tray if defined?(EltenWindow) && EltenWindow.respond_to?(:restore_from_tray)
+    quit
+  end
           play_sound("listbox_focus") if $exit==nil
   $toscene = true
     retry if $exit == nil
@@ -109,6 +122,7 @@ rescue Exception => error
             Programs::Extensions.shutdown(:client_shutdown) if defined?(Programs::Extensions)
             if $immediateexit!=true
   ActivityReports.shutdown
+  Sapi.shutdown if defined?(Sapi)
   NVDA.join if defined?(NVDA)
   NVDA.destroy if defined?(NVDA)
     EltenAPI::InvisibleInterface.stop if defined?(EltenAPI::InvisibleInterface)

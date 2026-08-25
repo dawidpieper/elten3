@@ -1,5 +1,5 @@
 # A part of Elten - EltenLink / Elten Network desktop client.
-# Copyright (C) 2014-2025 Dawid Pieper
+# Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
@@ -74,6 +74,9 @@ class Scene_Sounds
 'notification_followedforum' => p_("Sounds", "Notification: new thread on a followed forum"),
 'notification_followedforumpost' => p_("Sounds", "Notification: new post on a followed forum"),
 'notification_followedthread' => p_("Sounds", "Notification: new post in a followed thread"),
+'notification_forumpostreport' => p_("Sounds", "Notification: a forum post was reported"),
+'notification_forumpostreportresolved' => p_("Sounds", "Notification: a forum post report was resolved"),
+'notification_forumthreadoffer' => p_("Sounds", "Notification: a thread transfer offer"),
 'notification_friend' => p_("Sounds", "Notification: new friend"),
 'notification_groupinvitation' => p_("Sounds", "Notification: new invitation to a group"),
 'notification_mention' => p_("Sounds", "Notification: new mention"),

@@ -1,5 +1,5 @@
 # A part of Elten - EltenLink / Elten Network desktop client.
-# Copyright (C) 2026 Dawid Pieper
+# Copyright (C) 2014-2026 Dawid Pieper, Arkadiusz Koziol
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
 
 require "open3"
@@ -59,7 +59,8 @@ module EltenAPI
   class ChildProc
     attr_reader :pid, :process_id
 
-    def initialize(file, l_path = nil, path: nil, show_window: false)
+    def initialize(file, l_path = nil, path: nil, show_window: false, cancellation_token: nil)
+      cancellation_token.raise_if_cancelled! if cancellation_token != nil && cancellation_token.respond_to?(:raise_if_cancelled!)
       path ||= l_path
       path ||= Dir.pwd
       argv = EltenAPI.send(:child_process_arguments, file)
@@ -69,15 +70,19 @@ module EltenAPI
       @process_id = @pid
       @stdout_buffer = +"".b
       @stderr_buffer = +"".b
+      @cancellation_registration = cancellation_token.on_cancel { terminate } if cancellation_token != nil && cancellation_token.respond_to?(:on_cancel)
     end
 
     def running?
       return false if @wait_thread == nil
-      @wait_thread.alive?
+      running = @wait_thread.alive?
+      release_cancellation unless running
+      running
     end
 
     def exitstatus
       return nil if @wait_thread == nil || @wait_thread.alive?
+      release_cancellation
       @wait_thread.value.exitstatus
     rescue Exception
       nil
@@ -120,6 +125,7 @@ module EltenAPI
     end
 
     def close
+      release_cancellation
       @stdin.close rescue nil
       @stdout.close rescue nil
       @stderr.close rescue nil
@@ -129,6 +135,13 @@ module EltenAPI
     end
 
     private
+
+    def release_cancellation
+      registration = @cancellation_registration
+      @cancellation_registration = nil
+      registration.unregister if registration != nil
+    rescue Exception
+    end
 
     def fill_buffer(io, buffer)
       return if io == nil || io.closed?

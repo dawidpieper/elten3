@@ -65,16 +65,16 @@ module EltenLink
         end
       end
 
-      def build_id(client, branch: nil, os: nil, current_build_id: nil)
-        build_info(client, branch: branch, os: os, current_build_id: current_build_id).build_id
+      def build_id(client, branch: nil, os: nil, current_build_id: nil, timeout: Client::DEFAULT_TIMEOUT)
+        build_info(client, branch: branch, os: os, current_build_id: current_build_id, timeout: timeout).build_id
       end
 
-      def build_info(client, branch: nil, os: nil, current_build_id: nil)
+      def build_info(client, branch: nil, os: nil, current_build_id: nil, timeout: Client::DEFAULT_TIMEOUT)
         params = {}
         params["branch"] = branch if branch != nil
         params["os"] = os if os != nil
         params["build_id"] = normalize_build_id(current_build_id) if normalize_build_id(current_build_id) != nil
-        data = client.api_data("GET", "/api/v1/system/build-id", params)
+        data = client.api_data("GET", "/api/v1/system/build-id", params, timeout: timeout)
         BuildInfo.new(build_id: normalize_build_id(data["build_id"]), version_string: data["version_string"].to_s)
       rescue EltenLink::Error => e
         Log.warning("Build ID check failed: #{e.code} #{e.message}")
@@ -171,8 +171,8 @@ module EltenLink
         extra_url("soundfont.sf2")
       end
 
-      def server_time(client)
-        value = client.api_data("GET", "/api/v1/system/time")["time"].to_i
+      def server_time(client, timeout: Client::DEFAULT_TIMEOUT)
+        value = client.api_data("GET", "/api/v1/system/time", nil, timeout: timeout)["time"].to_i
         value < 0 ? Time.now : Time.at(value)
       end
 

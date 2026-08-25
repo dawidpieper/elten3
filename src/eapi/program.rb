@@ -13,6 +13,7 @@ require "stringio"
 module Programs
   MAGIC = "Elten3AppPackage".b
   ELTEN_API_VERSION = "3.0".freeze
+  ELTENLINK_CONTRACT_VERSION = "3.0".freeze
   MANIFEST_BEGIN = /^\=begin[ \t]+Elten3AppInfo[ \t]*\r?\n/.freeze
   MANIFEST_END = /^\=end[ \t]+Elten3AppInfo[ \t]*$/m.freeze
   UUID_PATTERN = /\A[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/i.freeze
@@ -39,7 +40,7 @@ module Programs
   end
 
   class Manifest
-    attr_reader :id, :name, :version, :build_id, :elten_api_version, :author, :main, :main_class, :platforms, :menu, :gems, :raw
+    attr_reader :id, :name, :version, :build_id, :elten_api_version, :eltenlink_contract_version, :author, :main, :main_class, :platforms, :menu, :gems, :required_assets, :raw
 
     def initialize(raw, source)
       @raw = raw.is_a?(Hash) ? raw : {}
@@ -49,13 +50,19 @@ module Programs
       @version = string_value("version", "version_string")
       @build_id = normalize_build_id(string_value("build_id", "BuildID"))
       @elten_api_version = string_value("EltenAPIVersion")
+      @eltenlink_contract_version = string_value("EltenLinkContractVersion")
       @author = string_value("author")
       @main = string_value("main", "file")
       @main_class = string_value("main_class", "class")
       @platforms = Array(@raw["platforms"]).map { |platform| platform.to_s.downcase.strip }.reject { |platform| platform == "" }
       @menu = @raw["menu"].is_a?(Hash) ? @raw["menu"] : {}
       @gems = Array(@raw["gems"]).map { |gem| gem.is_a?(Hash) ? gem["name"].to_s : gem.to_s }.reject { |gem| gem == "" }
+      @required_assets = normalize_required_assets(@raw["required_assets"])
       validate
+    end
+
+    def required_asset_names(type)
+      @required_assets[type.to_s] || []
     end
 
     def menu_label
@@ -89,6 +96,7 @@ module Programs
         :version => @version,
         :build_id => @build_id,
         :elten_api_version => @elten_api_version,
+        :eltenlink_contract_version => @eltenlink_contract_version,
         :author => @author,
         :file => main_file || @main,
         :main_class => @main_class,
@@ -126,6 +134,20 @@ module Programs
       text
     end
 
+    def normalize_required_assets(value)
+      return {}.freeze if value == nil
+      value = { "sounds" => value } if value.is_a?(Array)
+      raise ProgramError, "Invalid required_assets in #{@source}" if !value.is_a?(Hash)
+      assets = {}
+      value.each do |type, names|
+        type = type.to_s.strip
+        raise ProgramError, "Empty required asset type in #{@source}" if type == ""
+        names = names.is_a?(Array) ? names : [names]
+        assets[type] = names.map { |name| name.to_s.strip }.reject { |name| name == "" }.uniq.freeze
+      end
+      assets.freeze
+    end
+
     def validate
       raise ProgramError, "Missing program id in #{@source}" if @id == ""
       raise ProgramError, "Invalid program UUID #{@id.inspect} in #{@source}" if @id !~ UUID_PATTERN
@@ -135,6 +157,9 @@ module Programs
       raise ProgramError, "Missing program build_id in #{@source}" if @build_id == nil
       raise ProgramError, "Missing EltenAPIVersion in #{@source}" if @elten_api_version == ""
       raise ProgramError, "Program #{@name} requires unsupported Elten API #{@elten_api_version}" if !Programs.api_version_compatible?(@elten_api_version)
+      if @eltenlink_contract_version != "" && !Programs.eltenlink_contract_version_compatible?(@eltenlink_contract_version)
+        raise ProgramError, "Program #{@name} requires unsupported Elten API #{@eltenlink_contract_version}"
+      end
       raise ProgramError, "Missing program main_class in #{@source}" if @main_class == ""
       raise ProgramError, "Missing program platforms in #{@source}" if @platforms.empty?
     end
@@ -332,17 +357,31 @@ module Programs
       @data.to_s.b
     end
 
-    def create_sound(sample: false, loop: false)
+    def create_sound(sample: false, loop: false, effect_buffer: nil, effect_buffer_seconds: nil)
       return nil if !defined?(::Sound)
       sound = nil
       if sample == true || (@physical_path != nil && File.file?(@physical_path))
         source = path
         return nil if source == nil || source.to_s == ""
-        sound = ::Sound.new(source, sample: sample, loop: loop)
+        if effect_buffer == nil && effect_buffer_seconds == nil
+          sound = ::Sound.new(source, sample: sample, loop: loop)
+        else
+          options = { :sample => sample, :loop => loop }
+          options[:effect_buffer] = effect_buffer if effect_buffer != nil
+          options[:effect_buffer_seconds] = effect_buffer_seconds if effect_buffer_seconds != nil
+          sound = ::Sound.new(source, **options)
+        end
       else
         source = @data.to_s.b
         return nil if source.bytesize == 0
-        sound = ::Sound.new(stream: source.dup.b, loop: loop)
+        if effect_buffer == nil && effect_buffer_seconds == nil
+          sound = ::Sound.new(stream: source.dup.b, loop: loop)
+        else
+          options = { :stream => source.dup.b, :loop => loop }
+          options[:effect_buffer] = effect_buffer if effect_buffer != nil
+          options[:effect_buffer_seconds] = effect_buffer_seconds if effect_buffer_seconds != nil
+          sound = ::Sound.new(**options)
+        end
       end
       return sound if sound.opened?
       sound.close rescue nil
@@ -353,12 +392,30 @@ module Programs
       nil
     end
 
+    def create_spatial_sound(position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil)
+      options = { :sample => sample, :loop => loop }
+      if effect_buffer == nil && effect_buffer_seconds == nil
+        options[:effect_buffer] = :interactive
+      else
+        options[:effect_buffer] = effect_buffer if effect_buffer != nil
+        options[:effect_buffer_seconds] = effect_buffer_seconds if effect_buffer_seconds != nil
+      end
+      sound = create_sound(**options)
+      return nil if sound == nil
+      sound.spatialize(position: position, interpolation: interpolation)
+      sound
+    rescue Exception => e
+      Log.warning("Program spatial sound asset #{@name} failed: #{e.class}: #{e.message}")
+      sound.close rescue nil
+      nil
+    end
+
     def play(volume: 100, pitch: 100, pan: 50, ignore_elten_volume: false)
       return false if !defined?(Bass)
       stream = create_bass_stream
       return false if stream.to_i == 0
       apply_bass_attributes(stream, volume: volume, pitch: pitch, pan: pan, ignore_elten_volume: ignore_elten_volume)
-      Bass::BASS_ChannelPlay.call(stream, 0) != 0
+      Bass.play_stream(stream, 0) != 0
     rescue Exception => e
       Log.warning("Program sound asset #{@name} play failed: #{e.class}: #{e.message}")
       false
@@ -430,6 +487,8 @@ module Programs
       @native_loaded = {}
       @native_materialized = false
       @sound_assets = {}
+      @sound_pool = nil
+      @managed_resources = EltenAPI::Resources::Registry.new
       @language_files = {}
       language_files.each { |code, data| @language_files[normalize_language_code(code)] = data.to_s.b }
       @namespace = Programs.namespace_for(manifest)
@@ -595,6 +654,30 @@ module Programs
       @sound_assets[name.to_s]
     end
 
+    def required_assets
+      @manifest.required_assets
+    end
+
+    def missing_required_assets
+      missing = {}
+      required_assets.each do |type, names|
+        absent = names.reject { |name| required_asset_available?(type, name) }
+        missing[type] = absent if !absent.empty?
+      end
+      missing
+    end
+
+    def required_assets_available?
+      missing_required_assets.empty?
+    end
+
+    def validate_required_assets!
+      missing = missing_required_assets
+      return true if missing.empty?
+      details = missing.map { |type, names| "#{type}: #{names.join(', ')}" }.join("; ")
+      raise ProgramError, "Program #{@manifest.name} is missing required assets (#{details})"
+    end
+
     def sound_asset_path(name)
       asset = sound_asset(name)
       asset == nil ? nil : asset.path
@@ -605,9 +688,90 @@ module Programs
       asset == nil ? nil : asset.data
     end
 
-    def create_sound_from_asset(name, sample: false, loop: false)
+    def create_sound_from_asset(name, sample: false, loop: false, effect_buffer: nil, effect_buffer_seconds: nil)
       asset = sound_asset(name)
-      asset == nil ? nil : asset.create_sound(sample: sample, loop: loop)
+      return nil if asset == nil
+      return asset.create_sound(sample: sample, loop: loop) if effect_buffer == nil && effect_buffer_seconds == nil
+      options = { :sample => sample, :loop => loop }
+      options[:effect_buffer] = effect_buffer if effect_buffer != nil
+      options[:effect_buffer_seconds] = effect_buffer_seconds if effect_buffer_seconds != nil
+      asset.create_sound(**options)
+    end
+
+    def create_spatial_sound_from_asset(name, position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil)
+      asset = sound_asset(name)
+      return nil if asset == nil
+      asset.create_spatial_sound(
+        position: position,
+        sample: sample,
+        loop: loop,
+        interpolation: interpolation,
+        effect_buffer: effect_buffer,
+        effect_buffer_seconds: effect_buffer_seconds
+      )
+    end
+
+    def sound_pool(max_voices: SoundPool::DEFAULT_MAX_VOICES)
+      if @sound_pool == nil || @sound_pool.closed?
+        @sound_pool = SoundPool.new(max_voices: max_voices)
+      else
+        @sound_pool.max_voices = max_voices
+      end
+      @sound_pool
+    end
+
+    def play_sound_from_asset(name, volume: 1.0, sample: false, loop: false, spatial: nil, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, max_voices: SoundPool::DEFAULT_MAX_VOICES)
+      if spatial == nil
+        sound = create_sound_from_asset(
+          name,
+          sample: sample,
+          loop: loop,
+          effect_buffer: effect_buffer,
+          effect_buffer_seconds: effect_buffer_seconds
+        )
+      else
+        sound = create_spatial_sound_from_asset(
+          name,
+          position: spatial,
+          sample: sample,
+          loop: loop,
+          interpolation: interpolation,
+          effect_buffer: effect_buffer,
+          effect_buffer_seconds: effect_buffer_seconds
+        )
+      end
+      return nil if sound == nil
+      sound.volume = volume.to_f
+      sound_pool(max_voices: max_voices).play(sound)
+    rescue Exception => e
+      Log.warning("Managed program sound #{name} failed: #{e.class}: #{e.message}")
+      sound.close rescue nil
+      nil
+    end
+
+    def close_sound_pool
+      @sound_pool.close if @sound_pool != nil
+      @sound_pool = nil
+      nil
+    end
+
+    def managed_resources
+      if @managed_resources == nil || @managed_resources.closed?
+        @managed_resources = EltenAPI::Resources::Registry.new
+      end
+      @managed_resources
+    end
+
+    def manage(resource, release: :close, &block)
+      managed_resources.manage(resource, release: release, &block)
+    end
+
+    def release(resource, close: false)
+      @managed_resources != nil && @managed_resources.release(resource, close: close)
+    end
+
+    def close_managed_resources
+      @managed_resources == nil ? 0 : @managed_resources.close
     end
 
     def language_data(code)
@@ -660,6 +824,27 @@ module Programs
       end
     rescue Exception => e
       Log.warning("Cannot collect program sound assets for #{@entry_id}: #{e.class}: #{e.message}")
+    end
+
+    def required_asset_available?(type, name)
+      case type.to_s
+      when "sounds"
+        return true if sound_asset(name) != nil
+        extension = File.extname(name).downcase
+        extension != "" && sound_asset(File.basename(name, extension)) != nil
+      when "files"
+        logical = normalize_name(name)
+        @virtual_files.key?(logical) || begin
+          path = physical_path(logical)
+          path != nil && File.file?(path)
+        end
+      when "languages"
+        language_data(name) != nil
+      when "native"
+        native_for(name) != nil
+      else
+        false
+      end
     end
 
     def candidate_names(name)
@@ -834,6 +1019,8 @@ module Programs
 
     def unregister_runtime(runtime, reason = :unload)
       return if runtime == nil
+      runtime.close_managed_resources if runtime.respond_to?(:close_managed_resources)
+      runtime.close_sound_pool if runtime.respond_to?(:close_sound_pool)
       Extensions.unregister_runtime(runtime, reason) if defined?(Extensions)
       @@runtimes.delete(runtime.entry_id) if @@runtimes[runtime.entry_id].equal?(runtime)
       @@runtime_by_prefix.delete(runtime.virtual_prefix)
@@ -885,6 +1072,10 @@ module Programs
       ELTEN_API_VERSION
     end
 
+    def eltenlink_contract_version
+      ELTENLINK_CONTRACT_VERSION
+    end
+
     def api_version_compatible?(required)
       required_parts = parse_api_version(required)
       current_parts = parse_api_version(ELTEN_API_VERSION)
@@ -894,6 +1085,13 @@ module Programs
       current_parts += [0] * (max - current_parts.size)
       return false if required_parts[0] != current_parts[0]
       (current_parts <=> required_parts).to_i >= 0
+    end
+
+    def eltenlink_contract_version_compatible?(required)
+      required_parts = parse_api_version(required)
+      current_parts = parse_api_version(ELTENLINK_CONTRACT_VERSION)
+      return false if required_parts == nil || required_parts.size < 2 || current_parts == nil
+      required_parts[0, 2] == current_parts[0, 2]
     end
 
     def setup_package_info(file)
@@ -1328,6 +1526,7 @@ module Programs
       apps.each_value do |record|
         next if !record.is_a?(Hash)
         record.delete("entry")
+        record.delete("installation_source_path")
       end
       tmp = "#{file}.tmp-#{$$}-#{Thread.current.object_id}"
       File.binwrite(tmp, JSON.pretty_generate({ "apps" => apps }))
@@ -1394,7 +1593,7 @@ module Programs
       removed
     end
 
-    def register_app_entry(entry, uuid:, loaded:, installation_source: nil, installation_source_path: nil)
+    def register_app_entry(entry, uuid:, loaded:, installation_source: nil)
       registry = apps_registry
       apps = registry["apps"]
       uuid = uuid.to_s.downcase
@@ -1416,12 +1615,6 @@ module Programs
       end
       if installation_source != nil
         record["installation_source"] = normalize_installation_source(installation_source)
-        source_path = installation_source_path.to_s
-        if source_path == ""
-          record.delete("installation_source_path")
-        else
-          record["installation_source_path"] = source_path
-        end
         record["update_time"] = now
       elsif record["installation_source"].to_s == ""
         record["installation_source"] = "autodetected"
@@ -1695,7 +1888,6 @@ module Programs
         :registered => record.is_a?(Hash),
         :registry_loaded => record.is_a?(Hash) && record["loaded"] == true,
         :installation_source => installation_source,
-        :installation_source_path => record.is_a?(Hash) ? record["installation_source_path"].to_s : "",
         :installation_time => record.is_a?(Hash) ? record["installation_time"].to_s.to_i : 0,
         :update_time => record.is_a?(Hash) ? record["update_time"].to_s.to_i : 0,
         :error => error.to_s
@@ -1762,7 +1954,7 @@ module Programs
       nil
     end
 
-    def load_sig(entry, persist: true, installation_source: nil, installation_source_path: nil)
+    def load_sig(entry, persist: true, installation_source: nil)
       Log.info("Loading program #{entry}")
       return true if @@runtimes.key?(entry)
       runtime = nil
@@ -1786,6 +1978,7 @@ module Programs
       )
       load_runtime_locale(runtime)
       (source[:sound_files] || {}).each { |name, data| runtime.add_sound_asset(name, :data => data) }
+      runtime.validate_required_assets!
       runtime.load_main
       main_class = resolve_main_class(runtime)
       bind_manifest(main_class, runtime)
@@ -1793,7 +1986,7 @@ module Programs
       if persist
         source = installation_source
         source = "autodetected" if source == nil && registry_record(entry) == nil
-        register_app_entry(entry, uuid: manifest.id, loaded: true, installation_source: source, installation_source_path: installation_source_path)
+        register_app_entry(entry, uuid: manifest.id, loaded: true, installation_source: source)
       end
       initialize_program_class(main_class)
       true
@@ -2147,6 +2340,22 @@ class Program
       @app_runtime == nil ? nil : @app_runtime.sound_asset(name)
     end
 
+    def required_assets
+      @app_runtime == nil ? {} : @app_runtime.required_assets
+    end
+
+    def missing_required_assets
+      @app_runtime == nil ? {} : @app_runtime.missing_required_assets
+    end
+
+    def required_assets_available?
+      @app_runtime == nil || @app_runtime.required_assets_available?
+    end
+
+    def validate_required_assets!
+      @app_runtime == nil ? true : @app_runtime.validate_required_assets!
+    end
+
     def sound_asset_path(name)
       @app_runtime == nil ? nil : @app_runtime.sound_asset_path(name)
     end
@@ -2155,8 +2364,66 @@ class Program
       @app_runtime == nil ? nil : @app_runtime.sound_asset_data(name)
     end
 
-    def create_sound_from_asset(name, sample: false, loop: false)
-      @app_runtime == nil ? nil : @app_runtime.create_sound_from_asset(name, sample: sample, loop: loop)
+    def create_sound_from_asset(name, sample: false, loop: false, effect_buffer: nil, effect_buffer_seconds: nil)
+      return nil if @app_runtime == nil
+      return @app_runtime.create_sound_from_asset(name, sample: sample, loop: loop) if effect_buffer == nil && effect_buffer_seconds == nil
+      options = { :sample => sample, :loop => loop }
+      options[:effect_buffer] = effect_buffer if effect_buffer != nil
+      options[:effect_buffer_seconds] = effect_buffer_seconds if effect_buffer_seconds != nil
+      @app_runtime.create_sound_from_asset(name, **options)
+    end
+
+    def create_spatial_sound_from_asset(name, position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil)
+      return nil if @app_runtime == nil
+      @app_runtime.create_spatial_sound_from_asset(
+        name,
+        position: position,
+        sample: sample,
+        loop: loop,
+        interpolation: interpolation,
+        effect_buffer: effect_buffer,
+        effect_buffer_seconds: effect_buffer_seconds
+      )
+    end
+
+    def sound_pool(max_voices: SoundPool::DEFAULT_MAX_VOICES)
+      @app_runtime == nil ? nil : @app_runtime.sound_pool(max_voices: max_voices)
+    end
+
+    def play_sound_from_asset(name, volume: 1.0, sample: false, loop: false, spatial: nil, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, max_voices: SoundPool::DEFAULT_MAX_VOICES)
+      return nil if @app_runtime == nil
+      @app_runtime.play_sound_from_asset(
+        name,
+        volume: volume,
+        sample: sample,
+        loop: loop,
+        spatial: spatial,
+        interpolation: interpolation,
+        effect_buffer: effect_buffer,
+        effect_buffer_seconds: effect_buffer_seconds,
+        max_voices: max_voices
+      )
+    end
+
+    def close_sound_pool
+      @app_runtime.close_sound_pool if @app_runtime != nil
+    end
+
+    def managed_resources
+      @app_runtime == nil ? nil : @app_runtime.managed_resources
+    end
+
+    def manage(resource, release: :close, &block)
+      raise Programs::ProgramError, "Managed resources require an application runtime" if @app_runtime == nil
+      @app_runtime.manage(resource, release: release, &block)
+    end
+
+    def release(resource, close: false)
+      @app_runtime != nil && @app_runtime.release(resource, close: close)
+    end
+
+    def close_managed_resources
+      @app_runtime == nil ? 0 : @app_runtime.close_managed_resources
     end
 
     def play_app_sound(name, volume: 100, pitch: 100, pan: 50, ignore_elten_volume: false)
@@ -2226,6 +2493,22 @@ class Program
     self.class.sound_asset(name)
   end
 
+  def required_assets
+    self.class.required_assets
+  end
+
+  def missing_required_assets
+    self.class.missing_required_assets
+  end
+
+  def required_assets_available?
+    self.class.required_assets_available?
+  end
+
+  def validate_required_assets!
+    self.class.validate_required_assets!
+  end
+
   def sound_asset_path(name)
     self.class.sound_asset_path(name)
   end
@@ -2234,16 +2517,75 @@ class Program
     self.class.sound_asset_data(name)
   end
 
-  def create_sound_from_asset(name, sample: false, loop: false)
-    self.class.create_sound_from_asset(name, sample: sample, loop: loop)
+  def create_sound_from_asset(name, sample: false, loop: false, effect_buffer: nil, effect_buffer_seconds: nil)
+    return self.class.create_sound_from_asset(name, sample: sample, loop: loop) if effect_buffer == nil && effect_buffer_seconds == nil
+    options = { :sample => sample, :loop => loop }
+    options[:effect_buffer] = effect_buffer if effect_buffer != nil
+    options[:effect_buffer_seconds] = effect_buffer_seconds if effect_buffer_seconds != nil
+    self.class.create_sound_from_asset(name, **options)
+  end
+
+  def create_spatial_sound_from_asset(name, position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil)
+    self.class.create_spatial_sound_from_asset(
+      name,
+      position: position,
+      sample: sample,
+      loop: loop,
+      interpolation: interpolation,
+      effect_buffer: effect_buffer,
+      effect_buffer_seconds: effect_buffer_seconds
+    )
+  end
+
+  def sound_pool(max_voices: SoundPool::DEFAULT_MAX_VOICES)
+    self.class.sound_pool(max_voices: max_voices)
+  end
+
+  def play_sound_from_asset(name, volume: 1.0, sample: false, loop: false, spatial: nil, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, max_voices: SoundPool::DEFAULT_MAX_VOICES)
+    self.class.play_sound_from_asset(
+      name,
+      volume: volume,
+      sample: sample,
+      loop: loop,
+      spatial: spatial,
+      interpolation: interpolation,
+      effect_buffer: effect_buffer,
+      effect_buffer_seconds: effect_buffer_seconds,
+      max_voices: max_voices
+    )
   end
 
   def play_app_sound(name, volume: 100, pitch: 100, pan: 50, ignore_elten_volume: false)
     self.class.play_app_sound(name, volume: volume, pitch: pitch, pan: pan, ignore_elten_volume: ignore_elten_volume)
   end
 
+  def managed_resources
+    @managed_resources ||= EltenAPI::Resources::Registry.new
+  end
+
+  def manage(resource, release: :close, &block)
+    @managed_resources = nil if @managed_resources != nil && @managed_resources.closed?
+    managed_resources.manage(resource, release: release, &block)
+  end
+
+  def release(resource, close: false)
+    @managed_resources != nil && @managed_resources.release(resource, close: close)
+  end
+
+  def close_managed_resources
+    return 0 if @managed_resources == nil
+    resources = @managed_resources
+    @managed_resources = nil
+    resources.close
+  end
+
   def finish(v = nil)
-    close
+    begin
+      close
+    ensure
+      close_managed_resources
+      self.class.close_sound_pool
+    end
     Log.info("Program exited #{self.class}")
     alert(p_("Program", "The program has been closed."))
     $scene = Scene_Main.new
@@ -2326,3 +2668,5 @@ class EltenApp
     @package.manifest.author
   end
 end
+
+require_relative "unsigned_package_builder" if !defined?(Programs::UnsignedPackageBuilder)

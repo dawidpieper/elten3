@@ -14,9 +14,7 @@ module EltenAPI
             sleep(0.1)
               nvda = defined?(NVDA) ? NVDA : nil
               if nvda != nil && SpeechOutput.current_output != nvda
-                if !nvda.check and nvda.usable?
-nvda.stop
-end
+                nvda.check
                       end
               rescue Exception
         fail
@@ -45,13 +43,13 @@ end
                                                                 $scene = newsc
                                                                   while $scene != nil and $scene.is_a?(Scene_Main) == false and $exit!=true
 Log.debug("Loading parallel scene: #{$scene.class.to_s}")
-EltenAPI::KeyboardState.clear_current_frame if defined?(EltenAPI::KeyboardState)
+prepare_keyboard_scene_transition if defined?(EltenAPI::KeyboardState)
 $scene.main
                       end
                       $scene = return_to_main ? Scene_Main.new : sc
 $scene=Scene_Main.new if $scene.is_a?(Scene_Main) or $scene == nil
 $scene=nil if $exit==true
-EltenAPI::KeyboardState.clear_current_frame if defined?(EltenAPI::KeyboardState)
+prepare_keyboard_scene_transition if defined?(EltenAPI::KeyboardState)
 $focus = true if $scene.is_a?(Scene_Main) == false                     and $scene!=nil
 Log.info("Exiting parallel scenes thread")
 end

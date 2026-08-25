@@ -31,7 +31,7 @@ module EltenAPI
   end
 
   module ConfigurationMigrations
-    CURRENT_VERSION = 2
+    CURRENT_VERSION = 3
 
     BOOLEAN_KEYS = [
       ["Interface", "DisableFeedNotifications"],
@@ -125,6 +125,7 @@ module EltenAPI
 
       migrate_configuration_to_version_1(path) if version < 1
       migrate_configuration_to_version_2(path) if version < 2
+      migrate_configuration_to_version_3(path) if version < 3
       writeini(path, "Elten", "ConfigurationVersion", CURRENT_VERSION)
       true
     end
@@ -145,6 +146,15 @@ module EltenAPI
       writeini(path, "Advanced", "SessionRefreshInterval", current)
       writeini(path, "Advanced", "AgentSessionTime", nil)
       WelcomeWizardLaunch.upgrade_detected
+    end
+
+    def migrate_configuration_to_version_3(path)
+      migrate_configuration_value(
+        path,
+        "System",
+        "AutoStart",
+        { "0" => "disabled", "false" => "disabled", "1" => "hidden", "true" => "hidden" }
+      )
     end
 
     def migrate_configuration_value(path, group, key, mapping)

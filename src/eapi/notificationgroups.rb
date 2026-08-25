@@ -2,7 +2,32 @@
 # Copyright (C) 2014-2026 Dawid Pieper
 
 module NotificationGroups
-  NotificationGroup = Struct.new(:key, :cat, :label, :category, :date, :revoked, :ids, :payload, :virtual, :action, keyword_init: true) do
+  NOTIFICATION_TYPE_ORDER = %w[
+    message
+    followedthread
+    followedforum
+    mention
+    forumthreadoffer
+    forumpostreport
+    forumpostreportresolved
+    friend
+    birthday
+    followedblog
+    blogcomment
+    followedblogpost
+    blogfollower
+    blogmention
+    groupinvitation
+    mtr
+    program_updates
+    update
+  ].freeze
+  NOTIFICATION_TYPE_ALIASES = {
+    "followedforumpost" => "followedforum"
+  }.freeze
+  NOTIFICATION_HISTORY_LIMIT = 100
+
+  NotificationGroup = Struct.new(:key, :cat, :label, :category, :date, :revoked, :ids, :payload, :payloads, :fallback_text, :event_count, :virtual, :action, keyword_init: true) do
     def virtual?
       virtual == true
     end
@@ -12,6 +37,26 @@ module NotificationGroups
   @@virtual_notification_groups = []
   @@virtual_notification_seen_at = {}
   @@virtual_notification_mutex = Mutex.new
+
+  def self.default_notification_type_order
+    NOTIFICATION_TYPE_ORDER.dup
+  end
+
+  def self.notification_type_key(cat)
+    key = cat.to_s
+    key = NOTIFICATION_TYPE_ALIASES[key] if NOTIFICATION_TYPE_ALIASES.key?(key)
+    NOTIFICATION_TYPE_ORDER.include?(key) ? key : nil
+  end
+
+  def self.normalize_notification_type_order(order)
+    values = order.is_a?(String) ? order.split(",") : Array(order)
+    normalized = []
+    values.each do |value|
+      key = value.to_s
+      normalized << key if NOTIFICATION_TYPE_ORDER.include?(key) && !normalized.include?(key)
+    end
+    normalized.concat(NOTIFICATION_TYPE_ORDER - normalized)
+  end
 
   def self.virtual_notification_groups
     @@virtual_notification_mutex.synchronize do
@@ -76,6 +121,8 @@ module NotificationGroups
       next if include_revoked != true && notification.revoked
 
       change_time = notification_change_time(notification)
+      payload = notification.payload
+      payload = {} unless payload.is_a?(Hash)
       key = [notification.revoked ? "revoked" : "active", notification.cat, group_key(notification)].join("\u001F")
       group = by_key[key]
       if group == nil
@@ -86,23 +133,144 @@ module NotificationGroups
           date: change_time,
           revoked: notification.revoked,
           ids: [],
-          payload: notification.payload || {},
+          payload: payload,
+          payloads: [],
+          fallback_text: "",
           virtual: false,
           action: nil
         )
         by_key[key] = group
       end
       group.ids << notification.id if notification.id.to_i > 0
-      if change_time >= group.date.to_i
-        group.date = change_time
-        group.payload = notification.payload || {}
-      end
+      group.payloads << {
+        date: change_time,
+        id: notification.id.to_i,
+        payload: payload,
+        fallback_text: notification_fallback_text(notification)
+      }
     end
 
-    by_key.values.each do |group|
+    groups = unify_overlapping_notification_groups(by_key.values)
+    groups.each do |group|
+      entries = group.payloads.sort_by { |entry| [-entry[:date].to_i, -entry[:id].to_i] }
+      group.event_count ||= entries.length
+      latest = entries.first
+      if latest != nil
+        group.date = latest[:date]
+        group.payload = latest[:payload]
+        group.fallback_text = latest[:fallback_text]
+      end
+      group.payloads = entries.map { |entry| entry[:payload] }
       group.action = action_for(group.cat, group.payload)
       group.label = group_label(group)
     end
+  end
+
+  def unify_overlapping_notification_groups(groups)
+    groups = groups.dup
+    unify_followed_forum_groups(groups)
+    unify_blog_comment_groups(groups)
+    groups
+  end
+
+  def unify_followed_forum_groups(groups)
+    buckets = groups.select { |group| %w[followedthread followedforum followedforumpost].include?(group.cat.to_s) }
+      .group_by { |group| [group.revoked == true, forum_thread_id(group)] }
+
+    buckets.each do |(_revoked, thread_id), related|
+      next unless thread_id.to_i > 0
+
+      followed_thread = related.find { |group| group.cat.to_s == "followedthread" }
+      next if followed_thread == nil
+
+      related.select { |group| group.cat.to_s == "followedforumpost" }.each do |followed_forum_post|
+        original_count = followed_forum_post.payloads.length
+        remove_exact_duplicate_entries(followed_thread, followed_forum_post, "postid")
+        if followed_forum_post.payloads.empty?
+          groups.delete(followed_forum_post)
+        elsif unreliable_entry_identity?(followed_thread, followed_forum_post, identity_field: "postid")
+          followed_forum_post.event_count = original_count
+          merge_parallel_groups(followed_thread, followed_forum_post)
+          groups.delete(followed_forum_post)
+        end
+      end
+
+      related.select { |group| group.cat.to_s == "followedforum" }.each do |followed_forum|
+        remove_exact_duplicate_entries(followed_thread, followed_forum, "postid")
+        groups.delete(followed_forum) if followed_forum.payloads.empty?
+      end
+    end
+  end
+
+  def unify_blog_comment_groups(groups)
+    buckets = groups.select { |group| %w[blogcomment followedblogpost].include?(group.cat.to_s) }
+      .group_by { |group| [group.revoked == true, blog_post_identity(group)] }
+
+    buckets.each do |(_revoked, identity), related|
+      next if identity == nil
+
+      own_post = related.find { |group| group.cat.to_s == "blogcomment" }
+      followed_post = related.find { |group| group.cat.to_s == "followedblogpost" }
+      next if own_post == nil || followed_post == nil
+
+      merge_parallel_groups(own_post, followed_post)
+      groups.delete(followed_post)
+    end
+  end
+
+  def forum_thread_id(group)
+    group.payloads.each do |entry|
+      thread_id = notification_entry_payload(entry)["threadid"].to_i
+      return thread_id if thread_id > 0
+    end
+    0
+  end
+
+  def blog_post_identity(group)
+    group.payloads.each do |entry|
+      payload = notification_entry_payload(entry)
+      blog = payload["blog"].to_s.downcase
+      post_id = payload["postid"].to_i
+      return [blog, post_id] if !blog.empty? && post_id > 0
+    end
+    nil
+  end
+
+  def remove_exact_duplicate_entries(winner, duplicate, identity_field)
+    winner_identities = winner.payloads.filter_map do |entry|
+      identity = notification_entry_payload(entry)[identity_field].to_i
+      identity if identity > 0
+    end
+    return if winner_identities.empty?
+
+    removed, remaining = duplicate.payloads.partition do |entry|
+      identity = notification_entry_payload(entry)[identity_field].to_i
+      identity > 0 && winner_identities.include?(identity)
+    end
+    return if removed.empty?
+
+    winner.ids.concat(removed.map { |entry| entry[:id].to_i }.select { |id| id > 0 }).uniq!
+    duplicate.payloads = remaining
+    duplicate.ids = remaining.map { |entry| entry[:id].to_i }.select { |id| id > 0 }.uniq
+  end
+
+  def unreliable_entry_identity?(*groups, identity_field:)
+    groups.any? do |group|
+      group.payloads.any? { |entry| notification_entry_payload(entry)[identity_field].to_i <= 0 }
+    end
+  end
+
+  def merge_parallel_groups(winner, duplicate)
+    winner_count = winner.event_count.to_i > 0 ? winner.event_count.to_i : winner.payloads.length
+    duplicate_count = duplicate.event_count.to_i > 0 ? duplicate.event_count.to_i : duplicate.payloads.length
+    winner.event_count = [winner_count, duplicate_count].max
+    winner.ids.concat(duplicate.ids).uniq!
+    winner.payloads.concat(duplicate.payloads)
+  end
+
+  def notification_entry_payload(entry)
+    payload = entry[:payload]
+    payload.is_a?(Hash) ? payload : {}
   end
 
   def collect_virtual_notification_groups
@@ -202,7 +370,33 @@ module NotificationGroups
     groups.sort_by { |group| [group.revoked ? 1 : 0, -group.date.to_i, group.category.to_s, group.label.to_s] }
   end
 
-  def limit_visible_notification_groups(groups, revoked_limit: 20)
+  def sort_main_notification_groups(groups, sort_mode: :time, type_order: NotificationGroups.default_notification_type_order)
+    return sort_notification_groups(groups) if sort_mode.to_sym != :type
+
+    sort_notification_groups_by_type(groups, type_order)
+  end
+
+  def build_active_main_notification_groups(notifications)
+    groups = build_notification_groups(notifications, include_revoked: false)
+    append_virtual_notification_groups(groups, collect_virtual_notification_groups, include_revoked: false)
+    sort_main_notification_groups(
+      groups,
+      sort_mode: Configuration.mainnotificationsort,
+      type_order: Configuration.mainnotificationtypeorder
+    )
+  end
+
+  def sort_notification_groups_by_type(groups, type_order)
+    order = NotificationGroups.normalize_notification_type_order(type_order)
+    ranks = order.each_with_index.to_h
+    fallback_rank = order.size
+    groups.sort_by do |group|
+      type_key = NotificationGroups.notification_type_key(group.cat)
+      [group.revoked ? 1 : 0, ranks.fetch(type_key, fallback_rank), -group.date.to_i, group.category.to_s, group.label.to_s]
+    end
+  end
+
+  def limit_visible_notification_groups(groups, revoked_limit: NOTIFICATION_HISTORY_LIMIT)
     revoked_count = 0
     groups.to_a.select do |group|
       next true if !group.revoked
@@ -234,6 +428,9 @@ module NotificationGroups
     virtual_count = group.payload["count"].to_i if group.virtual? && group.payload.is_a?(Hash)
     return virtual_count if virtual_count != nil && virtual_count > 0
 
+    event_count = group.event_count.to_i if group.respond_to?(:event_count)
+    return event_count if event_count != nil && event_count > 0
+
     [group.ids.size, 1].max
   end
 
@@ -254,6 +451,12 @@ module NotificationGroups
       end
     when "followedthread", "followedforum", "followedforumpost"
       ["forum", payload["threadid"].to_i].join(":")
+    when "forumthreadoffer"
+      thread_id = payload["threadid"].to_i
+      thread_id > 0 ? [cat, thread_id].join(":") : [cat, notification.id.to_i].join(":")
+    when "forumpostreport", "forumpostreportresolved"
+      report_id = payload["reportid"].to_i
+      report_id > 0 ? [cat, report_id].join(":") : [cat, notification.id.to_i].join(":")
     when "followedblog", "blogcomment", "followedblogpost"
       ["blog", payload["blog"], payload["postid"].to_i].join(":")
     when "blogfollower"
@@ -266,10 +469,11 @@ module NotificationGroups
   end
 
   def group_description(group)
-    title = title_for(group.cat, group.payload)
-    title = group.payload["title"].to_s if title.to_s.empty? && group.payload.is_a?(Hash)
-    title = group.payload["threadname"].to_s if title.to_s.empty? && group.payload.is_a?(Hash)
-    title = group.payload["user"].to_s if title.to_s.empty? && group.payload.is_a?(Hash)
+    title = title_for(group.cat, group.payload, count: group_count(group), payloads: group.payloads)
+    title = single_line_notification_text(group.fallback_text) if title.to_s.empty?
+    title = single_line_notification_text(group.payload["title"]) if title.to_s.empty? && group.payload.is_a?(Hash)
+    title = single_line_notification_text(group.payload["threadname"]) if title.to_s.empty? && group.payload.is_a?(Hash)
+    title = single_line_notification_text(group.payload["user"]) if title.to_s.empty? && group.payload.is_a?(Hash)
     title = p_("Notifications", "Notification") if title.to_s.empty?
     title
   end
@@ -290,6 +494,12 @@ module NotificationGroups
       p_("Notifications", "Followed forums")
     when "mention"
       p_("Notifications", "Forum mentions")
+    when "forumthreadoffer"
+      p_("Notifications", "Thread transfer offers")
+    when "forumpostreport"
+      p_("Notifications", "Forum post reports")
+    when "forumpostreportresolved"
+      p_("Notifications", "Forum post report results")
     when "friend"
       p_("Notifications", "Contacts")
     when "birthday"
@@ -317,46 +527,338 @@ module NotificationGroups
     end
   end
 
-  def title_for(cat, payload)
+  def title_for(cat, payload, count: 1, payloads: nil)
     payload = {} unless payload.is_a?(Hash)
+    payloads = notification_payloads(payload, payloads)
     case cat.to_s
     when "message"
-      message_title(payload)
-    when "followedthread", "followedforum", "followedforumpost"
-      payload["threadname"].to_s
+      message_title(payload, count: count, payloads: payloads)
+    when "followedthread"
+      followed_thread_title(payload, count: count, payloads: payloads)
+    when "followedforum"
+      followed_forum_thread_title(payload, payloads: payloads)
+    when "followedforumpost"
+      followed_forum_post_title(payload, count: count, payloads: payloads)
     when "mention"
-      author = payload["author"].to_s
-      thread = payload["threadname"].to_s
-      message = payload["message"].to_s
-      [thread, author, message].reject(&:empty?).join(" - ")
-    when "followedblog", "blogcomment", "followedblogpost"
-      blog_post_title(payload)
+      forum_mention_title(payload, payloads: payloads)
+    when "forumthreadoffer"
+      forum_thread_offer_title(payload, payloads: payloads)
+    when "forumpostreport"
+      forum_post_report_title(payload, payloads: payloads)
+    when "forumpostreportresolved"
+      forum_post_report_result_title(payload, payloads: payloads)
+    when "followedblog"
+      followed_blog_title(payload, payloads: payloads)
+    when "blogcomment"
+      blog_comment_title(payload, count: count, payloads: payloads, followed: false)
+    when "followedblogpost"
+      blog_comment_title(payload, count: count, payloads: payloads, followed: true)
     when "blogmention"
-      [blog_post_title(payload), payload["author"].to_s, payload["message"].to_s].reject(&:empty?).join(" - ")
+      blog_mention_title(payload, payloads: payloads)
     when "blogfollower"
-      [payload["user"].to_s, blog_display_name(payload)].reject(&:empty?).join(" - ")
-    when "friend", "mtr"
-      payload["user"].to_s
+      blog_follower_title(payload, count: count, payloads: payloads)
+    when "friend"
+      contact_title(payload, payloads: payloads)
+    when "birthday"
+      birthday_title(payload, payloads: payloads)
     when "groupinvitation"
-      payload["groupname"].to_s
+      group_invitation_title(payload, payloads: payloads)
+    when "mtr"
+      monitor_title(payload, count: count, payloads: payloads)
     when "program_updates"
       program_updates_title(payload)
     when "update"
       update_title(payload)
     else
-      payload["alert"].to_s
+      ""
     end
   end
 
-  def message_title(payload)
-    participant = message_participant(payload)
-    title = payload["groupname"].to_s
-    title = participant if title.empty?
-    return title unless messages_grouped_by_subject?
+  def message_title(payload, count: 1, payloads: nil)
+    payloads = notification_payloads(payload, payloads)
+    senders = payload_name_list(payloads, "sender")
+    return "" if senders.empty?
 
-    subject = payload["subject"].to_s
-    subject = p_("Notifications", "No subject") if subject.empty?
-    [title, subject].reject(&:empty?).join(": ")
+    group = first_payload_value(payload, payloads, "groupname")
+    subject = display_message_subject(first_payload_value(payload, payloads, "subject")) if messages_grouped_by_subject?
+    if !subject.to_s.empty?
+      if !group.empty?
+        return np_("Notifications", "%{sender} sent a new message to %{group}: %{subject}", "%{sender} sent new messages to %{group}: %{subject}", count) % { sender: senders, group: group, subject: subject }
+      end
+      return np_("Notifications", "%{sender} sent a new message: %{subject}", "%{sender} sent new messages: %{subject}", count) % { sender: senders, subject: subject }
+    end
+
+    if !group.empty?
+      return np_("Notifications", "%{sender} sent a new message to %{group}", "%{sender} sent new messages to %{group}", count) % { sender: senders, group: group }
+    end
+    np_("Notifications", "%{sender} sent a new message", "%{sender} sent new messages", count) % { sender: senders }
+  end
+
+  def followed_thread_title(payload, count: 1, payloads: nil)
+    payloads = notification_payloads(payload, payloads)
+    thread = first_payload_value(payload, payloads, "threadname")
+    return "" if thread.empty?
+
+    authors = payload_name_list(payloads, "author")
+    if !authors.empty?
+      return np_("Notifications", "%{thread}: new post by %{authors} in a thread you follow", "%{thread}: new posts by %{authors} in a thread you follow", count) % { thread: thread, authors: authors }
+    end
+    np_("Notifications", "%{thread}: new post in a thread you follow", "%{thread}: new posts in a thread you follow", count) % { thread: thread }
+  end
+
+  def followed_forum_thread_title(payload, payloads: nil)
+    payloads = notification_payloads(payload, payloads)
+    thread = first_payload_value(payload, payloads, "threadname")
+    return "" if thread.empty?
+
+    forum = first_payload_value(payload, payloads, "forumname")
+    authors = payload_name_list(payloads, "author")
+    if !forum.empty? && !authors.empty?
+      return p_("Notifications", "%{thread}: new thread started by %{authors} in %{forum}, a forum you follow") % { forum: forum, authors: authors, thread: thread }
+    elsif !forum.empty?
+      return p_("Notifications", "%{thread}: new thread in %{forum}, a forum you follow") % { forum: forum, thread: thread }
+    elsif !authors.empty?
+      return p_("Notifications", "%{thread}: new thread started by %{authors} in a forum you follow") % { authors: authors, thread: thread }
+    end
+    p_("Notifications", "%{thread}: new thread in a forum you follow") % { thread: thread }
+  end
+
+  def followed_forum_post_title(payload, count: 1, payloads: nil)
+    payloads = notification_payloads(payload, payloads)
+    thread = first_payload_value(payload, payloads, "threadname")
+    return "" if thread.empty?
+
+    forum = first_payload_value(payload, payloads, "forumname")
+    authors = payload_name_list(payloads, "author")
+    if !forum.empty? && !authors.empty?
+      return np_("Notifications", "%{thread}: new post by %{authors} in %{forum}, a forum you follow", "%{thread}: new posts by %{authors} in %{forum}, a forum you follow", count) % { forum: forum, authors: authors, thread: thread }
+    elsif !forum.empty?
+      return np_("Notifications", "%{thread}: new post in %{forum}, a forum you follow", "%{thread}: new posts in %{forum}, a forum you follow", count) % { forum: forum, thread: thread }
+    elsif !authors.empty?
+      return np_("Notifications", "%{thread}: new post by %{authors} in a forum you follow", "%{thread}: new posts by %{authors} in a forum you follow", count) % { thread: thread, authors: authors }
+    end
+    np_("Notifications", "%{thread}: new post in a forum you follow", "%{thread}: new posts in a forum you follow", count) % { thread: thread }
+  end
+
+  def forum_mention_title(payload, payloads: nil)
+    payloads = notification_payloads(payload, payloads)
+    author = first_payload_value(payload, payloads, "author")
+    return "" if author.empty?
+
+    thread = first_payload_value(payload, payloads, "threadname")
+    message = first_payload_value(payload, payloads, "message")
+    if !thread.empty?
+      return p_("Notifications", "%{author} sent you a forum mention in %{thread}") % { author: author, thread: thread } if message.empty?
+      return p_("Notifications", "%{author} sent you a forum mention in %{thread}: %{message}") % { author: author, thread: thread, message: message }
+    end
+    return p_("Notifications", "%{author} sent you a forum mention") % { author: author } if message.empty?
+    p_("Notifications", "%{author} sent you a forum mention: %{message}") % { author: author, message: message }
+  end
+
+  def forum_thread_offer_title(payload, payloads: nil)
+    payloads = notification_payloads(payload, payloads)
+    thread = first_payload_value(payload, payloads, "threadname")
+    return "" if thread.empty?
+
+    group = first_payload_value(payload, payloads, "groupname")
+    forum = first_payload_value(payload, payloads, "forumname")
+    if !forum.empty? && !group.empty?
+      return p_("Notifications", "%{thread} from %{forum} has been offered to the group %{group}") % { thread: thread, forum: forum, group: group }
+    elsif !group.empty?
+      return p_("Notifications", "%{thread} has been offered to the group %{group}") % { thread: thread, group: group }
+    end
+    p_("Notifications", "%{thread} has been offered to one of your groups") % { thread: thread }
+  end
+
+  def forum_post_report_title(payload, payloads: nil)
+    payloads = notification_payloads(payload, payloads)
+    reporter = first_payload_value(payload, payloads, "reporter")
+    thread = first_payload_value(payload, payloads, "threadname")
+    comment = first_payload_value(payload, payloads, "comment")
+    return "" if reporter.empty? && thread.empty?
+
+    title = if !reporter.empty? && !thread.empty?
+      p_("Notifications", "%{reporter} reported a post in %{thread}") % { reporter: reporter, thread: thread }
+    elsif !reporter.empty?
+      p_("Notifications", "%{reporter} reported a forum post") % { reporter: reporter }
+    else
+      p_("Notifications", "A post in %{thread} was reported") % { thread: thread }
+    end
+    comment.empty? ? title : p_("Notifications", "%{title}: %{comment}") % { title: title, comment: comment }
+  end
+
+  def forum_post_report_result_title(payload, payloads: nil)
+    payloads = notification_payloads(payload, payloads)
+    moderator = first_payload_value(payload, payloads, "moderator")
+    thread = first_payload_value(payload, payloads, "threadname")
+    response = first_payload_value(payload, payloads, "response")
+    approved = notification_payload_truthy?(payload["approved"]) || payload["status"].to_s == "approved"
+    title = if !moderator.empty? && !thread.empty?
+      approved ? p_("Notifications", "%{moderator} accepted your report in %{thread}") % { moderator: moderator, thread: thread } : p_("Notifications", "%{moderator} rejected your report in %{thread}") % { moderator: moderator, thread: thread }
+    elsif !thread.empty?
+      approved ? p_("Notifications", "Your report in %{thread} was accepted") % { thread: thread } : p_("Notifications", "Your report in %{thread} was rejected") % { thread: thread }
+    else
+      approved ? p_("Notifications", "Your forum post report was accepted") : p_("Notifications", "Your forum post report was rejected")
+    end
+    if notification_payload_truthy?(payload["suggestion_used"])
+      title = p_("Notifications", "%{title}. The suggested action was applied") % { title: title }
+    end
+    response.empty? ? title : p_("Notifications", "%{title}. Response: %{response}") % { title: title, response: response }
+  end
+
+  def notification_payload_truthy?(value)
+    value == true || value.to_s == "1" || value.to_s.downcase == "true"
+  end
+
+  def followed_blog_title(payload, payloads: nil)
+    payloads = notification_payloads(payload, payloads)
+    blog = first_blog_display_name(payload, payloads)
+    post = first_payload_value(payload, payloads, "title")
+    return "" if blog.empty? || post.empty?
+
+    p_("Notifications", "%{blog}, a blog you follow, has a new post: %{post}") % { blog: blog, post: post }
+  end
+
+  def blog_comment_title(payload, count: 1, payloads: nil, followed: false)
+    payloads = notification_payloads(payload, payloads)
+    blog = first_blog_display_name(payload, payloads)
+    post = first_payload_value(payload, payloads, "title")
+    return "" if blog.empty? || post.empty?
+
+    authors = payload_name_list(payloads, "author")
+    if followed
+      if !authors.empty?
+        return np_("Notifications", "%{post}, a post you follow on %{blog}, has a new comment from %{authors}", "%{post}, a post you follow on %{blog}, has new comments from %{authors}", count) % { blog: blog, authors: authors, post: post }
+      end
+      return np_("Notifications", "%{post}, a post you follow on %{blog}, has a new comment", "%{post}, a post you follow on %{blog}, has new comments", count) % { blog: blog, post: post }
+    end
+
+    if !authors.empty?
+      return np_("Notifications", "%{post}, your post on %{blog}, has a new comment from %{authors}", "%{post}, your post on %{blog}, has new comments from %{authors}", count) % { blog: blog, authors: authors, post: post }
+    end
+    np_("Notifications", "%{post}, your post on %{blog}, has a new comment", "%{post}, your post on %{blog}, has new comments", count) % { blog: blog, post: post }
+  end
+
+  def blog_mention_title(payload, payloads: nil)
+    payloads = notification_payloads(payload, payloads)
+    author = first_payload_value(payload, payloads, "author")
+    post = first_payload_value(payload, payloads, "title")
+    return "" if author.empty? || post.empty?
+
+    message = first_payload_value(payload, payloads, "message")
+    return p_("Notifications", "%{author} sent you a blog mention in %{post}") % { author: author, post: post } if message.empty?
+    p_("Notifications", "%{author} sent you a blog mention in %{post}: %{message}") % { author: author, post: post, message: message }
+  end
+
+  def blog_follower_title(payload, count: 1, payloads: nil)
+    payloads = notification_payloads(payload, payloads)
+    blog = first_blog_display_name(payload, payloads)
+    users = payload_name_list(payloads, "user")
+    return "" if blog.empty? || users.empty?
+
+    np_("Notifications", "Blog %{blog} has a new follower: %{users}", "Blog %{blog} has new followers: %{users}", count) % { blog: blog, users: users }
+  end
+
+  def contact_title(payload, payloads: nil)
+    user = first_payload_value(payload, notification_payloads(payload, payloads), "user")
+    return "" if user.empty?
+
+    p_("Notifications", "%{user} added you to their contacts") % { user: user }
+  end
+
+  def birthday_title(payload, payloads: nil)
+    user = first_payload_value(payload, notification_payloads(payload, payloads), "user")
+    return "" if user.empty?
+
+    p_("Notifications", "It is %{user}'s birthday today") % { user: user }
+  end
+
+  def group_invitation_title(payload, payloads: nil)
+    payloads = notification_payloads(payload, payloads)
+    group = first_payload_value(payload, payloads, "groupname")
+    return "" if group.empty?
+
+    inviter = first_payload_value(payload, payloads, "inviter")
+    if !inviter.empty?
+      return p_("Notifications", "%{inviter} invited you to join the group %{group}") % { inviter: inviter, group: group }
+    end
+    p_("Notifications", "You have been invited to join the group %{group}") % { group: group }
+  end
+
+  def monitor_title(payload, count: 1, payloads: nil)
+    user = first_payload_value(payload, notification_payloads(payload, payloads), "user")
+    return "" if user.empty?
+
+    np_("Notifications", "%{user} came online", "%{user} came online more than once", count) % { user: user }
+  end
+
+  def notification_payloads(payload, payloads)
+    values = Array(payloads).select { |value| value.is_a?(Hash) }
+    values = [payload] if values.empty? && payload.is_a?(Hash)
+    values
+  end
+
+  def first_payload_value(payload, payloads, key)
+    (notification_payloads(payload, payloads) + [payload]).each do |value|
+      text = single_line_notification_text(value[key])
+      return text unless text.empty?
+    end
+    ""
+  end
+
+  def first_blog_display_name(payload, payloads)
+    name = first_payload_value(payload, payloads, "blogname")
+    name.empty? ? first_payload_value(payload, payloads, "blog") : name
+  end
+
+  def payload_name_list(payloads, key)
+    values = []
+    incomplete = false
+    payloads.each do |payload|
+      name = single_line_notification_text(payload[key])
+      if name.empty?
+        incomplete = true
+      else
+        values << name
+      end
+    end
+    format_notification_name_list(values, include_others: incomplete && !values.empty?)
+  end
+
+  def format_notification_name_list(values, include_others: false, limit: 4)
+    names = []
+    seen = {}
+    Array(values).each do |value|
+      name = single_line_notification_text(value)
+      next if name.empty?
+
+      key = name.downcase
+      next if seen[key]
+
+      seen[key] = true
+      names << name
+    end
+    more = include_others || names.size > limit.to_i
+    names = names.first(limit.to_i)
+    return "" if names.empty?
+    return "#{names.join(", ")} #{p_("Notifications", "and others")}" if more
+    return names[0] if names.size == 1
+
+    "#{names[0...-1].join(", ")} #{p_("Notifications", "and")} #{names[-1]}"
+  end
+
+  def display_message_subject(value)
+    single_line_notification_text(value).sub(/\A(?:re:\s*)+/i, "").strip
+  end
+
+  def single_line_notification_text(value)
+    value.to_s.gsub(/[\r\n\t]+/, " ").gsub(/ {2,}/, " ").strip
+  end
+
+  def notification_fallback_text(notification)
+    text = notification.notification.to_s if notification.respond_to?(:notification)
+    text = notification.alert.to_s if text.to_s.empty? && notification.respond_to?(:alert)
+    single_line_notification_text(text)
   end
 
   def blog_post_title(payload)
@@ -367,25 +869,29 @@ module NotificationGroups
   end
 
   def blog_display_name(payload)
-    name = payload["blogname"].to_s
-    name.empty? ? payload["blog"].to_s : name
+    name = single_line_notification_text(payload["blogname"])
+    name.empty? ? single_line_notification_text(payload["blog"]) : name
   end
 
   def update_title(payload)
-    version = payload["version"].to_s
-    return p_("Notifications", "Update available") if version.empty?
+    version = single_line_notification_text(payload["version"])
+    return p_("Notifications", "A new Elten version is available") if version.empty?
 
-    p_("Notifications", "Update available (%{version})") % { version: version }
+    p_("Notifications", "A new Elten version is available: %{version}") % { version: version }
   end
 
   def program_updates_title(payload)
     count = payload["count"].to_i
-    names = Array(payload["names"]).map(&:to_s).reject(&:empty?)
-    if count == 1 && names[0].to_s != ""
-      p_("Notifications", "Program update available: %{name}") % { name: names[0] }
-    else
-      p_("Notifications", "%{count} program updates available") % { count: count }
+    count = 1 if count <= 0
+    known_names = Array(payload["names"])
+      .map { |name| single_line_notification_text(name) }
+      .reject(&:empty?)
+      .uniq { |name| name.downcase }
+    names = format_notification_name_list(known_names, include_others: count > known_names.size)
+    if names.empty?
+      return np_("Notifications", "A program update is available", "Program updates are available", count)
     end
+    np_("Notifications", "A program update is available: %{programs}", "Program updates are available: %{programs}", count) % { programs: names }
   end
 
   def action_for(cat, payload)
@@ -395,18 +901,33 @@ module NotificationGroups
       Proc.new { open_message(payload) }
     when "followedthread", "followedforum", "followedforumpost", "mention"
       Proc.new { open_forum_thread(payload, cat.to_s) }
+    when "forumthreadoffer"
+      Proc.new { open_forum_thread_offer(payload) }
+    when "forumpostreport"
+      Proc.new { open_forum_post_report(payload) }
+    when "forumpostreportresolved"
+      Proc.new { open_forum_post_report_result(payload) }
     when "followedblog", "blogcomment", "followedblogpost", "blogmention"
       Proc.new { open_blog_post(payload, cat.to_s) }
     when "blogfollower"
-      Proc.new { insert_scene(Scene_Blog_Followers.new(nil), true) }
+      Proc.new { insert_scene(Scene_Blog_Followers.new(nil), true, return_to_main: true) }
     when "friend"
       Proc.new { insert_scene(Scene_Users_AddedMeToContacts.new(true), true) }
     when "birthday"
-      Proc.new { insert_scene(Scene_Contacts.new(1), true) }
+      Proc.new { open_birthday(payload) }
     when "groupinvitation"
       Proc.new { insert_scene(Scene_Forum.new(nil, nil, 4), true) }
     else
       nil
+    end
+  end
+
+  def open_birthday(payload)
+    user = payload["user"].to_s
+    if user.empty?
+      insert_scene(Scene_Contacts.new(1), true)
+    else
+      usermenu(user)
     end
   end
 
@@ -452,6 +973,28 @@ module NotificationGroups
     end
   end
 
+  def open_forum_thread_offer(payload)
+    thread_id = payload["threadid"].to_i
+    target = thread_id > 0 ? -12 : nil
+    insert_scene(Scene_Forum.new(thread_id > 0 ? thread_id : nil, target), true, return_to_main: true)
+  end
+
+  def open_forum_post_report(payload)
+    target = Scene_Forum.group_reports_target(payload["groupid"], payload["reportid"])
+    insert_scene(Scene_Forum.new(nil, target), true, return_to_main: true)
+  end
+
+  def open_forum_post_report_result(payload)
+    moderator = single_line_notification_text(payload["moderator"])
+    if moderator.empty?
+      alert(p_("Notifications", "The moderator is not available."))
+      return
+    end
+    confirm(p_("Notifications", "Would you like to write a private message to %{moderator}?") % { moderator: moderator }) do
+      insert_scene(Scene_Messages_New.new(moderator, "", "", Scene_Main.new), true, return_to_main: true)
+    end
+  end
+
   def forum_mention_from_payload(payload)
     mention = Struct_Forum_Mention.new(payload["mentionid"].to_i)
     mention.thread = payload["threadid"].to_i
@@ -475,7 +1018,8 @@ module NotificationGroups
     post.author = payload["author"].to_s
     post.followed = true if cat.to_s == "followedblogpost"
     post.mention = blog_mention_from_payload(payload) if cat.to_s == "blogmention" && payload["mentionid"].to_i > 0
-    insert_scene(Scene_Blog_Read.new(post, -1, 0, 0, Scene_Main.new), true, return_to_main: true)
+    first_unread = ["blogcomment", "followedblogpost"].include?(cat.to_s)
+    insert_scene(Scene_Blog_Read.new(post, -1, 0, 0, Scene_Main.new, first_unread: first_unread), true, return_to_main: true)
   end
 
   def blog_mention_from_payload(payload)

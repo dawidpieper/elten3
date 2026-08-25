@@ -22,6 +22,12 @@ module EltenAPI
       text = ""
       honor = card.main_honor&.name_for(Configuration.language)
       text += "#{if honor==nil;p_("EAPI_Common", "User");else;honor;end}: #{user} \r\n"
+      if card.ban&.active?
+        text += p_("EAPI_Common", "Banned until %{date}") % { date: format_date(Time.at(card.ban.totime)) }
+        text += "\r\n"
+        text += p_("EAPI_Common", "Ban reason: %{reason}") % { reason: card.ban.reason }
+        text += "\r\n"
+      end
       text += card.status.text
       text += "\r\n"
       fullname = ""

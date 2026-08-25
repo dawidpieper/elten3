@@ -24,17 +24,23 @@ module CalendarSceneHelpers
               "#{format_date(event.starttime, false, false)} - #{format_date(event.endtime, false, false)}"
             end
     parts = [event.name.to_s, range]
+    parts << calendar_event_recurrence_label(event) if event.recurring?
     parts << calendar_label(calendar) if calendar != nil
     parts.join(", ")
   end
 
   def show_event_details(event, calendar=nil)
     text = event_label(event, calendar)
+    if event.recurring?
+      series = calendar_event_series(event)
+      text += "\r\n#{p_("Calendar", "Series range: %{start} - %{end}") % { start: format_date(series.starttime), end: format_date(series.endtime) }}"
+    end
     text += "\r\n#{event.description}" if event.description.to_s != ""
     input_text(p_("Calendar", "Event details"), flags: EditBox::Flags::MultiLine | EditBox::Flags::ReadOnly, text: text, escapable: true)
   end
 
   def event_dialog(calendars, selected_calendar, selected_date, event=nil)
+    event = calendar_event_series(event) if event != nil
     available = if event == nil
                   calendars.select { |calendar| can_manage_calendar_events?(calendar) }
                 else
@@ -50,18 +56,18 @@ module CalendarSceneHelpers
     minutes = (0..59).map { |minute| sprintf("%02d", minute) }
     min_year = [starttime.year, endtime.year, Time.now.year].min - 1
     max_year = [starttime.year, endtime.year, Time.now.year].max + 20
-    ranges = [
-      p_("Calendar", "All-day event"),
-      p_("Calendar", "Time range on selected day"),
-      p_("Calendar", "Custom date and time range")
+    frequency_values = [0, 1, 7, -1, :custom]
+    frequencies = [
+      p_("Calendar", "Continuous"),
+      p_("Calendar", "Daily"),
+      p_("Calendar", "Weekly"),
+      p_("Calendar", "Monthly on the start day"),
+      p_("Calendar", "Every N days")
     ]
-    range_index = if event == nil || event.all_day?
-                    0
-                  elsif same_day?(event.starttime, event.endtime)
-                    1
-                  else
-                    2
-                  end
+    frequency_index = event == nil ? 0 : frequency_values.index(event.frequency) || 4
+    custom_frequency = frequency_index == 4 ? event.frequency.to_s : "2"
+    time_types = [p_("Calendar", "All-day event"), p_("Calendar", "Timed event")]
+    time_type_index = event == nil || event.all_day_series? ? 0 : 1
     name = event == nil ? "" : event.name.to_s
     description = event == nil ? "" : event.description.to_s
 
@@ -69,59 +75,77 @@ module CalendarSceneHelpers
       edt_name = EditBox.new(p_("Calendar", "Event name"), text: name, quiet: true),
       edt_description = EditBox.new(p_("Calendar", "Description"), type: EditBox::Flags::MultiLine, text: description, quiet: true),
       lst_calendar = ListBox.new(available.map { |calendar| calendar_label(calendar) }, header: p_("Calendar", "Calendar"), index: calendar_index),
-      lst_range = ListBox.new(ranges, header: p_("Calendar", "Time range"), index: range_index),
+      lst_frequency = ListBox.new(frequencies, header: p_("Calendar", "Frequency"), index: frequency_index),
+      edt_frequency = EditBox.new(p_("Calendar", "Number of days"), type: EditBox::Flags::Numbers, text: custom_frequency, quiet: true),
+      btn_start = DateButton.new(p_("Calendar", "Start date"), (min_year..max_year), include_hour: false),
+      btn_end = DateButton.new(p_("Calendar", "End date"), (min_year..max_year), include_hour: false),
+      lst_time_type = ListBox.new(time_types, header: p_("Calendar", "Event time"), index: time_type_index),
       lst_start_hour = ListBox.new(hours, header: p_("Calendar", "Start hour"), index: starttime.hour),
       lst_start_minute = ListBox.new(minutes, header: p_("Calendar", "Start minute"), index: starttime.min),
       lst_end_hour = ListBox.new(hours, header: p_("Calendar", "End hour"), index: endtime.hour),
       lst_end_minute = ListBox.new(minutes, header: p_("Calendar", "End minute"), index: endtime.min),
-      btn_start = DateButton.new(p_("Calendar", "Start date and time"), (min_year..max_year), include_hour: true),
-      btn_end = DateButton.new(p_("Calendar", "End date and time"), (min_year..max_year), include_hour: true),
-      Button.new(event == nil ? p_("Calendar", "Add event") : _("Save")),
-      Button.new(_("Cancel"))
+      btn_save = Button.new(event == nil ? p_("Calendar", "Add event") : _("Save")),
+      btn_cancel = Button.new(_("Cancel"))
     ]
-    btn_start.setdate(starttime.year, starttime.month, starttime.day, starttime.hour, starttime.min, starttime.sec)
-    btn_end.setdate(endtime.year, endtime.month, endtime.day, endtime.hour, endtime.min, endtime.sec)
+    btn_start.setdate(starttime.year, starttime.month, starttime.day, 0, 0, 0)
+    btn_end.setdate(endtime.year, endtime.month, endtime.day, 0, 0, 0)
     form = Form.new(fields)
-    hour_fields = [lst_start_hour, lst_start_minute, lst_end_hour, lst_end_minute]
-    custom_fields = [btn_start, btn_end]
-    lst_range.on(:move) do
-      apply_event_range_visibility(form, lst_range.index, hour_fields, custom_fields)
+    time_fields = [lst_start_hour, lst_start_minute, lst_end_hour, lst_end_minute]
+    lst_frequency.on(:move) do
+      lst_frequency.index == 4 ? form.show(edt_frequency) : form.hide(edt_frequency)
     end
-    apply_event_range_visibility(form, lst_range.index, hour_fields, custom_fields)
+    lst_time_type.on(:move) do
+      time_fields.each { |field| lst_time_type.index == 1 ? form.show(field) : form.hide(field) }
+    end
+    lst_frequency.trigger(:move)
+    lst_time_type.trigger(:move)
     accepted = false
     times = nil
+    frequency = 0
+    current_state = proc do
+      [edt_name.text.to_s, edt_description.text.to_s, lst_calendar.index, lst_frequency.index,
+       edt_frequency.text.to_s, btn_start.year, btn_start.month, btn_start.day,
+       btn_end.year, btn_end.month, btn_end.day, lst_time_type.index,
+       lst_start_hour.index, lst_start_minute.index, lst_end_hour.index, lst_end_minute.index]
+    end
+    initial_state = current_state.call
     dialog_open
     loop do
       loop_update
       form.update
-      if key_pressed?(:key_escape) || ((key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 11)
-        break
+      if key_pressed?(:key_escape) || ((key_pressed?(:key_enter) || key_pressed?(:key_space)) && fields[form.index] == btn_cancel)
+        break if current_state.call == initial_state || confirm(p_("Calendar", "Are you sure you want to close without saving?"))
       end
-      if (key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 10
+      if (key_pressed?(:key_enter) || key_pressed?(:key_space)) && fields[form.index] == btn_save
         if edt_name.text.to_s.strip == ""
           alert(p_("Calendar", "Enter an event name"))
           edt_name.focus
           next
         end
-        if lst_range.index == 2 &&
-            (btn_start.year.to_i <= 0 || btn_start.month.to_i <= 0 || btn_start.day.to_i <= 0 ||
-             btn_end.year.to_i <= 0 || btn_end.month.to_i <= 0 || btn_end.day.to_i <= 0)
+        if btn_start.year.to_i <= 0 || btn_start.month.to_i <= 0 || btn_start.day.to_i <= 0 ||
+            btn_end.year.to_i <= 0 || btn_end.month.to_i <= 0 || btn_end.day.to_i <= 0
           alert(p_("Calendar", "Select both a start date and an end date"))
           next
         end
+        frequency = frequency_values[lst_frequency.index]
+        if frequency == :custom
+          frequency = edt_frequency.text.to_i
+          if frequency <= 0 || frequency > 2_147_483_647
+            alert(p_("Calendar", "Enter a valid number of days"))
+            edt_frequency.focus
+            next
+          end
+        end
         begin
-          times = case lst_range.index
-                  when 0
-                    all_day_range(date)
-                  when 1
+          times = if lst_time_type.index == 0
                     [
-                      Time.local(date.year, date.month, date.day, lst_start_hour.index, lst_start_minute.index, 0),
-                      Time.local(date.year, date.month, date.day, lst_end_hour.index, lst_end_minute.index, 0)
+                      Time.local(btn_start.year, btn_start.month, btn_start.day, 0, 0, 0),
+                      Time.local(btn_end.year, btn_end.month, btn_end.day, 23, 59, 59)
                     ]
                   else
                     [
-                      Time.local(btn_start.year, btn_start.month, btn_start.day, btn_start.hour, btn_start.min, btn_start.sec),
-                      Time.local(btn_end.year, btn_end.month, btn_end.day, btn_end.hour, btn_end.min, btn_end.sec)
+                      Time.local(btn_start.year, btn_start.month, btn_start.day, lst_start_hour.index, lst_start_minute.index, 0),
+                      Time.local(btn_end.year, btn_end.month, btn_end.day, lst_end_hour.index, lst_end_minute.index, 0)
                     ]
                   end
         rescue ArgumentError
@@ -145,17 +169,9 @@ module CalendarSceneHelpers
       name: edt_name.text.to_s,
       description: edt_description.text.to_s,
       starttime: times[0],
-      endtime: times[1]
+      endtime: times[1],
+      frequency: frequency
     }
-  end
-
-  def apply_event_range_visibility(form, range_index, hour_fields, custom_fields)
-    hour_fields.each { |field| range_index.to_i == 1 ? form.show(field) : form.hide(field) }
-    custom_fields.each { |field| range_index.to_i == 2 ? form.show(field) : form.hide(field) }
-  end
-
-  def all_day_range(date)
-    [Time.local(date.year, date.month, date.day, 0, 0, 0), Time.local(date.year, date.month, date.day, 23, 59, 59)]
   end
 
   def can_manage_calendar_events?(calendar)
@@ -170,6 +186,7 @@ module CalendarSceneHelpers
   end
 
   def create_or_update_event(calendars, calendar, date, event=nil)
+    event = calendar_event_series(event) if event != nil
     values = event_dialog(calendars, calendar, date, event)
     return false if values == nil
 
@@ -180,7 +197,8 @@ module CalendarSceneHelpers
         name: values[:name],
         description: values[:description],
         starttime: values[:starttime],
-        endtime: values[:endtime]
+        endtime: values[:endtime],
+        frequency: values[:frequency]
       )
       alert(p_("Calendar", "The event has been added"))
     else
@@ -191,7 +209,8 @@ module CalendarSceneHelpers
         name: values[:name],
         description: values[:description],
         starttime: values[:starttime],
-        endtime: values[:endtime]
+        endtime: values[:endtime],
+        frequency: values[:frequency]
       )
       alert(p_("Calendar", "The event has been updated"))
     end
@@ -203,6 +222,7 @@ module CalendarSceneHelpers
   end
 
   def delete_calendar_event(calendar, event)
+    event = calendar_event_series(event)
     return false if !confirm(p_("Calendar", "Do you really want to delete %{name}?") % { name: event.name })
 
     EltenLink::Calendars.delete_event(elten_link, calendar, event)
@@ -224,6 +244,23 @@ module CalendarSceneHelpers
     Date.new(value.year, value.month, value.day)
   rescue Exception
     Date.today
+  end
+
+  def calendar_event_series(event)
+    event.respond_to?(:series_event) ? event.series_event : event
+  end
+
+  def calendar_event_recurrence_label(event)
+    case event.frequency.to_i
+    when 1
+      p_("Calendar", "Daily")
+    when 7
+      p_("Calendar", "Weekly")
+    when -1
+      p_("Calendar", "Monthly on day %{day}") % { day: calendar_event_series(event).starttime.day }
+    else
+      p_("Calendar", "Every %{count} days") % { count: event.frequency.to_i }
+    end
   end
 end
 
@@ -346,11 +383,7 @@ class Scene_Calendar
   def events_on(date)
     date = normalize_calendar_date(date)
     @events_by_day ||= {}
-    @events_by_day[date] ||= (@events || []).select do |event|
-      first = Date.new(event.starttime.year, event.starttime.month, event.starttime.day)
-      last = Date.new(event.endtime.year, event.endtime.month, event.endtime.day)
-      first <= date && date <= last
-    end
+    @events_by_day[date] ||= (@events || []).flat_map { |event| event.occurrences_on(date) }
   end
 
   def calendar_day_event_counts(date)
@@ -398,13 +431,10 @@ class Scene_Calendar
     current = normalize_calendar_date(date)
     threshold = current + (direction < 0 ? -1 : 1)
     candidates = (@events || []).filter_map do |event|
-      first = normalize_calendar_date(event.starttime)
-      last = normalize_calendar_date(event.endtime)
-      first, last = last, first if last < first
       if direction < 0
-        [last, threshold].min if first <= threshold
+        event.event_date_on_or_before(threshold)
       else
-        [first, threshold].max if last >= threshold
+        event.event_date_on_or_after(threshold)
       end
     end
     direction < 0 ? candidates.max : candidates.min
@@ -641,11 +671,14 @@ class Scene_Calendar_Management
     ]
     form = Form.new(fields)
     accepted = false
+    init_name = edt_name.text.to_s
     dialog_open
     loop do
       loop_update
       form.update
-      break if key_pressed?(:key_escape) || ((key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 4)
+      if key_pressed?(:key_escape) || ((key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 4)
+        break if edt_name.text.to_s == init_name || confirm(p_("Calendar", "Are you sure you want to close without saving?"))
+      end
       if (key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 3
         if edt_name.text.to_s.strip == ""
           alert(p_("Calendar", "Enter a calendar name"))
@@ -801,9 +834,9 @@ class Scene_Calendar_Public
     calendar = current_calendar
     if calendar != nil
       if @subscribed_ids.include?(calendar.id)
-        menu.option(p_("Calendar", "Unsubscribe"), nil, "s") { unsubscribe(calendar) }
+        menu.option(p_("Calendar", "Unsubscribe"), nil, "l") { unsubscribe(calendar) }
       elsif !calendar.owned_by?(Session.name) && !calendar.moderator?
-        menu.option(p_("Calendar", "Subscribe"), nil, "s") { subscribe(calendar) }
+        menu.option(p_("Calendar", "Subscribe"), nil, "l") { subscribe(calendar) }
       end
     end
     if Session.languages.to_s != ""
@@ -905,14 +938,15 @@ class Scene_Calendar_Upcoming
   def load_upcoming
     @calendars = EltenLink::Calendars.list(elten_link)
     now = Time.now
-    @events = EltenLink::Calendars.all_events(elten_link)
-    mark_public_calendar_events(@events, @calendars)
-    @events.select! { |event| event.endtime.to_i >= now.to_i }
+    events = EltenLink::Calendars.all_events(elten_link)
+    mark_public_calendar_events(events, @calendars)
+    events.select! { |event| event.endtime.to_i >= now.to_i }
     if @return_filter_id == nil
-      @events.reject!(&:public_calendar?)
+      events.reject!(&:public_calendar?)
     else
-      @events.select! { |event| event.calendar_id == @return_filter_id }
+      events.select! { |event| event.calendar_id == @return_filter_id }
     end
+    @events = events.filter_map { |event| event.next_occurrence(now) }
     @events.sort_by! { |event| [event.starttime.to_i, event.endtime.to_i, event.id] }
   rescue EltenLink::Error => error
     Log.warning("Upcoming calendars failed: #{error.message}")

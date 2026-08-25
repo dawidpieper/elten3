@@ -23,6 +23,7 @@ gem "bigdecimal", "3.3.1"
 gem "nokogiri", "1.19.4", force_ruby_platform: true
 gem "rubyzip", "3.2.2"
 gem "fiddle", "1.1.8"
+gem "net-http", "0.9.1"
 
 platforms :windows do
   gem "win32ole", "1.9.2"

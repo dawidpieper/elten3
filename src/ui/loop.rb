@@ -122,7 +122,12 @@ end
               @@call = CallWindow.new(d['call_id'], d['caller'], d['channel'], d['password']) if @@call==nil || @@call.id!=d['call_id']
            elsif d['func']=='call_stop'
               call_sound_stop
+              missed_call = @@call if @@call != nil && @@call.id == d['call_id'] && !@@call.handled?
               @@call=nil
+              if missed_call != nil && missed_call.caller != nil
+                @@missedcalls_window ||= MissedCallsWindow.new
+                @@missedcalls_window.add_caller(missed_call.caller)
+              end
               $focus=true
            elsif d['func']=='missed_call'
              if d['caller']!=nil
@@ -155,6 +160,7 @@ end
            Log.error("Notification service UI drain: #{$!.class}: #{$!.message}")
          end
        loop_now = loop_update_time
+       Bass.cleanup_memory_streams if defined?(Bass) && loop_update_due?(:bass_memory_streams, PERIODIC_SLOW_SECONDS, loop_now)
        if loop_update_due?(:alarms, PERIODIC_SLOW_SECONDS, loop_now)
          Alarms.update
        end
@@ -185,50 +191,50 @@ end
                   c=4
                   while c==4
           errors=[
-          ["Error #123", "Failed to show error #123."],
-          ["This computer is hungry!", "Please place the hamburger in the hard-drive slot."],
-                    ["Error #404", "The error you are looking for was not found."],
-          ["Matrix Breach Detected", "Neo is currently unavailable, please try again later."],
-          ["Unstable Quantum State", "Elten is now both crashed and not crashed."],
-          ["Unexpected Success", "The operation completed successfully.\nThis is highly suspicious."],
-          ["Existential Error", "Your computer is questioning its purpose.\nPlease reassure it."],
-          ["RAM Daydreaming", "Memory is temporarily imagining things. Try again later."],
-          ["Parallel Universe Mismatch", "Elten ran successfully in a different universe."],
-          ["Critical Tea Shortage", "Operation aborted until tea levels are restored."],
-          ["Suspicious Silence", "No errors found.\nThis can't be right."],
-          ["Window Open Error", "Attempt to open a window resulted in actual glass breaking."],
-["Error #Ď€", "System froze at digit 3.\nIt refuses to continue irrational numbers."],
-["Paradox Detected", "This error message has not been written yet.\nPlease read it when it exists."],
-["Recursive Complaint", "This message is complaining about this message complaining about this message..."],
-["Forbidden Knowledge Access", "You are not allowed to know what went wrong.\nStop asking."],
-["Error #undefined", "Even the system has no idea what this is."],
-["404: Code Not Found", "This function went out for coffee and never came back."],
-["The Force Was Not With You", "Check midichlorian drivers."],
-["Jedi Mind Trick Failed", "These are, unfortunately, the bugs you are looking for."],
-["Entish Processing", "This operation may take a looooong time."],
-["Silver Sword Required", "Process terminated due to monster interference."],
-["RubberDuckNotFound", "Debugging halted.\nPlease attach a certified rubber duck."],
-["KeyboardBufferOverflow", "User typed faster than humanly possible.\nSuspect: cat."],
-["Thread Scheduler Panic", "Ruby threads running.\nProbably. Maybe. Hard to tell."],
-["Implicit Return Confusion", "Code returned the last value.\nElten didn't mean THAT last value."],
-["Bitwise Romance Error", "Elten tried to OR a bit that wanted to AND."],
-["Compiler Sadness", "It compiled.\nIt ran.\nIt failed anyway."],
-["Existential Error", "Program paused to ask why it should continue at all."],
-["Elten PTSD", "It has seen things.\nTerrible things."],
-["Coffee Overflow", "System jitter levels critical. Reduce caffeine immediately."],
-["Universal Constant Modified", "Pi now equals 3. Please update mathematics."],
-["Error #YOLO", "System attempted operation without considering consequences."],
-["Emotional Support Required", "System is sad and needs a compliment."],
-["error", "Artificial Stupidity Enabled"],
-["Broken Fourth Wall", "This error knows you are reading it."],
-["Philosophical Segmentation Fault", "Cogito ergo crash."],
-["Boredom Overflow", "The CPU refuses to continue until something interesting happens."],
-["Error #NaN", "System tried to divide by a sandwich."],
-["Duck Typing Failure", "Object does not quack like a duck."],
-["Procrastination Mode Enabled", "The task will start.\nEventually."],
-["Error #2.71828", "The system encountered an irrational sense of growth."],
-["+++ Divide By Cucumber Error +++", "Reinstall Universe And Reboot."],
-]
+            [p_("EAPI_UI", "Error #123"), p_("EAPI_UI", "Failed to show error #123.")],
+            [p_("EAPI_UI", "This computer is hungry!"), p_("EAPI_UI", "Please place the hamburger in the hard-drive slot.")],
+            [p_("EAPI_UI", "Error #404"), p_("EAPI_UI", "The error you are looking for was not found.")],
+            [p_("EAPI_UI", "Matrix Breach Detected"), p_("EAPI_UI", "Neo is currently unavailable, please try again later.")],
+            [p_("EAPI_UI", "Unstable Quantum State"), p_("EAPI_UI", "Elten is now both crashed and not crashed.")],
+            [p_("EAPI_UI", "Unexpected Success"), p_("EAPI_UI", "The operation completed successfully.\nThis is highly suspicious.")],
+            [p_("EAPI_UI", "Existential Error"), p_("EAPI_UI", "Your computer is questioning its purpose.\nPlease reassure it.")],
+            [p_("EAPI_UI", "RAM Daydreaming"), p_("EAPI_UI", "Memory is temporarily imagining things. Try again later.")],
+            [p_("EAPI_UI", "Parallel Universe Mismatch"), p_("EAPI_UI", "Elten ran successfully in a different universe.")],
+            [p_("EAPI_UI", "Critical Tea Shortage"), p_("EAPI_UI", "Operation aborted until tea levels are restored.")],
+            [p_("EAPI_UI", "Suspicious Silence"), p_("EAPI_UI", "No errors found.\nThis can't be right.")],
+            [p_("EAPI_UI", "Window Open Error"), p_("EAPI_UI", "Attempt to open a window resulted in actual glass breaking.")],
+            [p_("EAPI_UI", "Error #π"), p_("EAPI_UI", "System froze at digit 3.\nIt refuses to continue irrational numbers.")],
+            [p_("EAPI_UI", "Paradox Detected"), p_("EAPI_UI", "This error message has not been written yet.\nPlease read it when it exists.")],
+            [p_("EAPI_UI", "Recursive Complaint"), p_("EAPI_UI", "This message is complaining about this message complaining about this message...")],
+            [p_("EAPI_UI", "Forbidden Knowledge Access"), p_("EAPI_UI", "You are not allowed to know what went wrong.\nStop asking.")],
+            [p_("EAPI_UI", "Error #undefined"), p_("EAPI_UI", "Even the system has no idea what this is.")],
+            [p_("EAPI_UI", "404: Code Not Found"), p_("EAPI_UI", "This function went out for coffee and never came back.")],
+            [p_("EAPI_UI", "The Force Was Not With You"), p_("EAPI_UI", "Check midichlorian drivers.")],
+            [p_("EAPI_UI", "Jedi Mind Trick Failed"), p_("EAPI_UI", "These are, unfortunately, the bugs you are looking for.")],
+            [p_("EAPI_UI", "Entish Processing"), p_("EAPI_UI", "This operation may take a looooong time.")],
+            [p_("EAPI_UI", "Silver Sword Required"), p_("EAPI_UI", "Process terminated due to monster interference.")],
+            [p_("EAPI_UI", "RubberDuckNotFound"), p_("EAPI_UI", "Debugging halted.\nPlease attach a certified rubber duck.")],
+            [p_("EAPI_UI", "KeyboardBufferOverflow"), p_("EAPI_UI", "User typed faster than humanly possible.\nSuspect: cat.")],
+            [p_("EAPI_UI", "Thread Scheduler Panic"), p_("EAPI_UI", "Ruby threads running.\nProbably. Maybe. Hard to tell.")],
+            [p_("EAPI_UI", "Implicit Return Confusion"), p_("EAPI_UI", "Code returned the last value.\nElten didn't mean THAT last value.")],
+            [p_("EAPI_UI", "Bitwise Romance Error"), p_("EAPI_UI", "Elten tried to OR a bit that wanted to AND.")],
+            [p_("EAPI_UI", "Compiler Sadness"), p_("EAPI_UI", "It compiled.\nIt ran.\nIt failed anyway.")],
+            [p_("EAPI_UI", "Existential Error"), p_("EAPI_UI", "Program paused to ask why it should continue at all.")],
+            [p_("EAPI_UI", "Elten PTSD"), p_("EAPI_UI", "It has seen things.\nTerrible things.")],
+            [p_("EAPI_UI", "Coffee Overflow"), p_("EAPI_UI", "System jitter levels critical. Reduce caffeine immediately.")],
+            [p_("EAPI_UI", "Universal Constant Modified"), p_("EAPI_UI", "Pi now equals 3. Please update mathematics.")],
+            [p_("EAPI_UI", "Error #YOLO"), p_("EAPI_UI", "System attempted operation without considering consequences.")],
+            [p_("EAPI_UI", "Emotional Support Required"), p_("EAPI_UI", "System is sad and needs a compliment.")],
+            [p_("EAPI_UI", "error"), p_("EAPI_UI", "Artificial Stupidity Enabled")],
+            [p_("EAPI_UI", "Broken Fourth Wall"), p_("EAPI_UI", "This error knows you are reading it.")],
+            [p_("EAPI_UI", "Philosophical Segmentation Fault"), p_("EAPI_UI", "Cogito ergo crash.")],
+            [p_("EAPI_UI", "Boredom Overflow"), p_("EAPI_UI", "The CPU refuses to continue until something interesting happens.")],
+            [p_("EAPI_UI", "Error #NaN"), p_("EAPI_UI", "System tried to divide by a sandwich.")],
+            [p_("EAPI_UI", "Duck Typing Failure"), p_("EAPI_UI", "Object does not quack like a duck.")],
+            [p_("EAPI_UI", "Procrastination Mode Enabled"), p_("EAPI_UI", "The task will start.\nEventually.")],
+            [p_("EAPI_UI", "Error #2.71828"), p_("EAPI_UI", "The system encountered an irrational sense of growth.")],
+            [p_("EAPI_UI", "+++ Divide By Cucumber Error +++"), p_("EAPI_UI", "Reinstall Universe And Reboot.")],
+          ]
           while errors.size>0
             r=rand(errors.size)
             error=errors[r]
@@ -275,7 +281,7 @@ if tr == true
             EltenWindow.restore_from_tray
         }
         $tray_restore_ignore_until = Time.now.to_f + 1.0
-        clear_keyboard_input_state
+        clear_keyboard_input_state(preserve_activation_guard: true)
         play_sound("login")
   speak("ELTEN")
   end

@@ -98,7 +98,8 @@ module EltenAPI
   class ChildProc
     attr_reader :pid, :process_id
 
-    def initialize(file, l_path=nil, path: nil, show_window: false)
+    def initialize(file, l_path=nil, path: nil, show_window: false, cancellation_token: nil)
+      cancellation_token.raise_if_cancelled! if cancellation_token != nil && cancellation_token.respond_to?(:raise_if_cancelled!)
       path ||= l_path
       path ||= Dir.pwd
       @stdin_rd = EltenWin32.pointer_buffer
@@ -138,6 +139,7 @@ module EltenAPI
       close_handle_buffer(@stdin_rd)
       close_handle_buffer(@stdout_wr)
       close_handle_buffer(@stderr_wr)
+      @cancellation_registration = cancellation_token.on_cancel { terminate } if cancellation_token != nil && cancellation_token.respond_to?(:on_cancel)
     end
 
     def close_handle(handle)
@@ -155,10 +157,13 @@ module EltenAPI
       return false if @pid==nil || @pid==0
       x="\0"*4
       GET_EXIT_CODE_PROCESS.call(@pid,x)
-      x.unpack("I").first==259
+      running = x.unpack("I").first==259
+      release_cancellation unless running
+      running
     end
 
     def terminate
+      return false if @pid==nil || @pid==0
       TERMINATE_PROCESS.call(@pid,0)
     end
 
@@ -208,6 +213,7 @@ module EltenAPI
     end
 
     def close
+      release_cancellation
       close_handle_buffer(@stdin_wr)
       close_handle_buffer(@stdout_rd)
       close_handle_buffer(@stderr_rd)
@@ -216,6 +222,13 @@ module EltenAPI
     end
 
     private
+
+    def release_cancellation
+      registration = @cancellation_registration
+      @cancellation_registration = nil
+      registration.unregister if registration != nil
+    rescue Exception
+    end
 
     def wide(value)
       (value.to_s.encode("UTF-16LE") + [0].pack("S").force_encoding("UTF-16LE")).dup.force_encoding(Encoding::BINARY)

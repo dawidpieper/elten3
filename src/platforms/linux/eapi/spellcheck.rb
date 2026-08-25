@@ -1,5 +1,5 @@
 # A part of Elten - EltenLink / Elten Network desktop client.
-# Copyright (C) 2026 Dawid Pieper
+# Copyright (C) 2014-2026 Dawid Pieper, Arkadiusz Koziol
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
 
 class SpellCheck

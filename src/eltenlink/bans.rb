@@ -10,6 +10,10 @@ module EltenLink
       @totime = totime.to_i
       @reason = reason.to_s
     end
+
+    def active?(now = Time.now.to_i)
+      @banned == true && @totime > now.to_i
+    end
   end
 
   module Bans

@@ -1,5 +1,5 @@
 # A part of Elten - EltenLink / Elten Network desktop client.
-# Copyright (C) 2026 Dawid Pieper
+# Copyright (C) 2014-2026 Dawid Pieper, Arkadiusz Koziol
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
 
 module LinuxWindowNative
@@ -154,6 +154,42 @@ module LinuxWindowNative
       ""
     end
 
+    # Characters composed by SDL - including AltGr and IME results - are queued in
+    # typing order and drained here. The per-virtual-key map above cannot do that
+    # job: it is keyed by the key rather than by the keystroke, so it keeps only
+    # the last character typed for a given key and carries no order at all.
+    def take_character(multi = false)
+      @char_queue ||= []
+      @char_frame_consumed = true
+      return "" if @char_queue.empty?
+      return @char_queue.shift.to_s if multi != true
+      text = @char_queue.join
+      @char_queue = []
+      text
+    rescue Exception
+      ""
+    end
+
+    # Called once per input frame. Characters that nobody read for a whole frame
+    # are dropped, so keystrokes made outside an edit control cannot pile up and
+    # then flood the next one that opens.
+    def begin_character_frame
+      @char_queue ||= []
+      @char_queue.shift(@char_frame_prefix.to_i) if @char_frame_consumed != true
+      @char_frame_prefix = @char_queue.size
+      @char_frame_consumed = false
+      true
+    rescue Exception
+      true
+    end
+
+    def clear_character_queue
+      @char_queue = []
+      @char_frame_prefix = 0
+      @char_frame_consumed = false
+      true
+    end
+
     private
 
     def ensure_initialized
@@ -260,6 +296,7 @@ module LinuxWindowNative
       @key_events = []
       @translated_chars = {}
       @last_text_vk = nil
+      clear_character_queue
     end
 
     def text_virtual_key?(key)
@@ -269,14 +306,22 @@ module LinuxWindowNative
     end
 
     def store_text_input(text)
-      return if @last_text_vk == nil
       text = sanitize_text(text)
+      queue_characters(text)
+      return if @last_text_vk == nil
       @translated_chars ||= {}
       if text == ""
         @translated_chars.delete(@last_text_vk)
       else
         @translated_chars[@last_text_vk] = text
       end
+    rescue Exception
+    end
+
+    def queue_characters(text)
+      return if text == ""
+      @char_queue ||= []
+      text.each_char { |char| @char_queue << char }
     rescue Exception
     end
 
@@ -634,6 +679,7 @@ module EltenWindow
 
     def clear_input_state
       @keyboard_state = "\0" * 256
+      LinuxWindowNative.clear_character_queue if @native_window == true && defined?(LinuxWindowNative)
       EltenKeyboard.clear_state
       true
     end
@@ -643,13 +689,16 @@ module EltenWindow
     end
 
     def begin_input_frame
-      return true if @native_window == true
+      if @native_window == true
+        LinuxWindowNative.begin_character_frame if defined?(LinuxWindowNative)
+        return true
+      end
       update_messages
       true
     end
 
     def character_input_supported?
-      false
+      @native_window == true
     end
 
     def keyboard_flags_driven?
@@ -668,7 +717,10 @@ module EltenWindow
       false
     end
 
-    def take_character(_multi = false)
+    def take_character(multi = false)
+      return LinuxWindowNative.take_character(multi) if @native_window == true && defined?(LinuxWindowNative)
+      ""
+    rescue Exception
       ""
     end
 

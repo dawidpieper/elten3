@@ -1,5 +1,5 @@
 # A part of Elten - EltenLink / Elten Network desktop client.
-# Copyright (C) 2026 Dawid Pieper
+# Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>.
@@ -13,6 +13,7 @@ module EltenAPI
       NOTIFICATION_QUERY_OVERLAP = 86_400
       NOTIFICATION_DEDUP_LIMIT = 8_192
       VIRTUAL_UPDATE_CHECK_INTERVAL = 600.0
+      INITIAL_RUNTIME_STATE_TIMEOUT = 5.0
 
       def start
         ensure_state
@@ -124,6 +125,27 @@ module EltenAPI
         true
       end
 
+      def synchronize_runtime_state(timeout=INITIAL_RUNTIME_STATE_TIMEOUT)
+        ensure_state
+        key = session_key
+        return false if key == nil
+
+        ticket = queue_runtime_state_refresh(key)
+        start
+        deadline = monotonic_time + [timeout.to_f, 0.0].max
+        loop do
+          return true if runtime_state_refresh_completed?(key, ticket)
+          if monotonic_time >= deadline
+            Log.warning("Initial runtime state synchronization timed out")
+            return false
+          end
+          loop_update(false)
+        end
+      rescue StandardError => e
+        Log.warning("Initial runtime state synchronization failed: #{e.class}: #{e.message}")
+        false
+      end
+
       private
 
       def ensure_state
@@ -134,9 +156,14 @@ module EltenAPI
         @background_responses = Queue.new
         @notification_ids = {}
         @active_notifications_mutex = Mutex.new
+        @runtime_state_mutex = Mutex.new
         @active_notifications = []
         @active_notifications_hash = ""
         @active_notifications_request_id = 0
+        @runtime_state_refresh_serial = 0
+        @pending_runtime_state_refresh = nil
+        @completed_runtime_state_key = nil
+        @completed_runtime_state_refresh = 0
         @sigids = []
         @request_serial = 0
         @inflight_requests = {}
@@ -169,7 +196,13 @@ module EltenAPI
               clear_stale_requests(now)
               @feed_request_pending = false if @feed_request_pending == true && now - (@feed_request_started_at || 0) > 30
               @virtual_update_request_pending = false if @virtual_update_request_pending == true && now - (@virtual_update_request_started_at || 0) > REQUEST_STALE_AFTER
-              request_status(key) if now >= (@next_request_at || 0) && @inflight_requests.size < MAX_INFLIGHT_REQUESTS
+              refresh_ticket = pending_runtime_state_refresh(key)
+              if refresh_ticket != nil && @inflight_requests.size < MAX_INFLIGHT_REQUESTS
+                request_status(key, refresh_ticket)
+                consume_runtime_state_refresh(key, refresh_ticket)
+              elsif now >= (@next_request_at || 0) && @inflight_requests.size < MAX_INFLIGHT_REQUESTS
+                request_status(key)
+              end
               if now >= (@next_virtual_update_check_at || 0) && @virtual_update_request_pending != true
                 if launched_by_launcher?
                   request_virtual_updates(key, now)
@@ -225,7 +258,46 @@ module EltenAPI
           @active_notifications_hash = ""
           @active_notifications_request_id = 0
         end
+        @runtime_state_mutex.synchronize do
+          @completed_runtime_state_key = nil
+          @completed_runtime_state_refresh = 0
+        end
         NotificationGroups.clear_virtual_notifications if defined?(NotificationGroups)
+      end
+
+      def queue_runtime_state_refresh(key)
+        @runtime_state_mutex.synchronize do
+          @runtime_state_refresh_serial += 1
+          @pending_runtime_state_refresh = [key, @runtime_state_refresh_serial]
+          @runtime_state_refresh_serial
+        end
+      end
+
+      def pending_runtime_state_refresh(key)
+        @runtime_state_mutex.synchronize do
+          pending_key, ticket = @pending_runtime_state_refresh
+          pending_key == key ? ticket : nil
+        end
+      end
+
+      def consume_runtime_state_refresh(key, ticket)
+        @runtime_state_mutex.synchronize do
+          @pending_runtime_state_refresh = nil if @pending_runtime_state_refresh == [key, ticket]
+        end
+      end
+
+      def complete_runtime_state_refresh(key, ticket)
+        return if ticket == nil
+        @runtime_state_mutex.synchronize do
+          @completed_runtime_state_key = key
+          @completed_runtime_state_refresh = [@completed_runtime_state_refresh.to_i, ticket.to_i].max
+        end
+      end
+
+      def runtime_state_refresh_completed?(key, ticket)
+        @runtime_state_mutex.synchronize do
+          @completed_runtime_state_key == key && @completed_runtime_state_refresh.to_i >= ticket.to_i
+        end
       end
 
       def refresh_interval
@@ -246,7 +318,7 @@ module EltenAPI
         Time.now.to_f
       end
 
-      def request_status(key)
+      def request_status(key, refresh_ticket=nil)
         @request_serial += 1
         request_id = @request_serial
         started_at = monotonic_time
@@ -256,7 +328,7 @@ module EltenAPI
         name, token = key
         shown = window_active?
         lasttime = notification_request_lasttime(base_lasttime, calibrating)
-        @inflight_requests[request_id] = { "started_at" => started_at, "calibrating" => calibrating }
+        @inflight_requests[request_id] = { "started_at" => started_at, "calibrating" => calibrating, "refresh_ticket" => refresh_ticket }
         params = notification_request_params(name, token, lasttime, shown)
         path = EltenLink::Client.append_query("/api/v1/system/realtime-state", params)
         elten_link.e_json_request("GET", path, {}, [key, request_id]) do |answer, request_data|
@@ -280,12 +352,13 @@ module EltenAPI
           end
           info = @inflight_requests.delete(request_id)
           calibrating = info.is_a?(Hash) && info["calibrating"] == true
-          handle_status_response(answer, key, calibrating, request_id)
+          refresh_ticket = info.is_a?(Hash) ? info["refresh_ticket"] : nil
+          handle_status_response(answer, key, calibrating, request_id, refresh_ticket)
           count += 1
         end
       end
 
-      def handle_status_response(answer, key, calibrating=false, request_id=0)
+      def handle_status_response(answer, key, calibrating=false, request_id=0, refresh_ticket=nil)
         return if key != @session_key
         return if !answer.is_a?(String)
         body = answer.dup.force_encoding("UTF-8").encode("UTF-8", invalid: :replace, undef: :replace)
@@ -309,6 +382,7 @@ module EltenAPI
         else
           handle_window_notifications(response)
         end
+        complete_runtime_state_refresh(key, refresh_ticket)
       rescue JSON::ParserError
         Log.error("Notification JSON parse error")
       rescue Exception
@@ -415,7 +489,6 @@ module EltenAPI
           @call_id = nil
           @call_caller = nil
           enqueue_event("func" => "call_stop", "call_id" => call_id, "caller" => caller)
-          request_missed_call_status(key, call_id, caller)
         end
       end
 

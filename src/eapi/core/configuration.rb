@@ -37,6 +37,21 @@ module EltenAPI
       default
     end
 
+    def load_configuration_order(group, key, values)
+      raw = readconfig(group, key, values.join(","))
+      requested = raw.to_s.split(",")
+      normalized = []
+      requested.each do |value|
+        normalized << value if values.include?(value) && !normalized.include?(value)
+      end
+      normalized.concat(values - normalized)
+      if normalized != requested
+        Log.warning("Invalid configuration order for #{group}/#{key}: #{raw.inspect}; using #{normalized.join(",").inspect}")
+        writeconfig(group, key, normalized.join(","))
+      end
+      normalized
+    end
+
     def load_configuration
         Log.info("Loading configuration")
         migrate_configuration
@@ -49,6 +64,8 @@ module EltenAPI
   Configuration.maintabs = load_configuration_list("MainWindow", "Tabs", [:notifications, :feed, :actions], [:notifications, :feed, :actions])
   Configuration.showemptynotifications = load_configuration_boolean("MainWindow", "ShowNotificationsWhenEmpty", false)
   Configuration.mainnotificationfocus = load_configuration_choice("MainWindow", "NotificationFocus", [:keep_current, :new_notifications, :unread_notifications], :new_notifications)
+  Configuration.mainnotificationsort = load_configuration_choice("MainWindow", "NotificationSort", [:time, :type], :time)
+  Configuration.mainnotificationtypeorder = load_configuration_order("MainWindow", "NotificationTypeOrder", NotificationGroups.default_notification_type_order)
   Configuration.iimodifiers = load_configuration_choice("InvisibleInterface", "IIModifiers", [:automatic, :alt_ctrl_windows, :alt_shift_windows, :alt_ctrl_shift, :alt_ctrl, :alt_shift], :automatic)
   Configuration.iicards = load_configuration_list("InvisibleInterface", "Cards", [:messages, :feed, :conference], [:messages, :feed, :conference])
   Configuration.roundupforms = load_configuration_boolean("Interface", "RoundUpForms", false)
@@ -99,11 +116,11 @@ Configuration.checkupdates = load_configuration_boolean("Updates", "CheckAtStart
 Configuration.autoplay = load_configuration_choice("Interface", "AutoPlay", [:always, :without_transcription, :never], :always)
 Configuration.branch = load_configuration_choice("Updates", "Branch", [:auto, :stable, :rc, :beta], :auto)
 if tray_supported?
-c_autostart=load_configuration_boolean("System", "AutoStart", false)
+Configuration.autostart=load_configuration_choice("System", "AutoStart", [:disabled, :hidden, :visible], :disabled)
 path=EltenSystemHelpers.autostart_executable_path(current_executable_path)
-c_autostart=false if !EltenSystemHelpers.autostart_executable?(path)
-autostart_cmd=EltenSystemHelpers.autostart_command(path)
-EltenSystemHelpers.sync_autostart(c_autostart, autostart_cmd)
+Configuration.autostart=:disabled if !EltenSystemHelpers.autostart_executable?(path)
+autostart_cmd=EltenSystemHelpers.autostart_command(path, hidden: Configuration.autostart == :hidden)
+EltenSystemHelpers.sync_autostart(Configuration.autostart != :disabled, autostart_cmd)
 end
 Configuration.voice = readconfig("Voice","Voice","")
 if $rvc==nil

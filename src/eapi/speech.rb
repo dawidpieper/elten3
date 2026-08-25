@@ -72,12 +72,17 @@ module EltenAPI
   # Speech related functions
     
     def alert(text, wait=true)
-      Programs.emit_event(:speech_alert)
-      speak(text)
-      braille = text.is_a?(SpeechSequence) ? text.braille_text : text
-      out = braille_output
-      out.braille_alert(braille) if out != nil
-      speech_wait if wait
+      modal_interaction_open if wait
+      begin
+        Programs.emit_event(:speech_alert)
+        speak(text)
+        braille = text.is_a?(SpeechSequence) ? text.braille_text : text
+        out = braille_output
+        out.braille_alert(braille) if out != nil
+        speech_wait if wait
+      ensure
+        modal_interaction_close if wait
+      end
     end
   
       @@current_speechsequence=nil

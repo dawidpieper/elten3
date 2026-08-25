@@ -1,5 +1,5 @@
 # A part of Elten - EltenLink / Elten Network desktop client.
-# Copyright (C) 2014-2023 Dawid Pieper
+# Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
@@ -551,7 +551,7 @@ end
 end
   
 class Scene_Blog_Read
-  def initialize(post,category,categoryselindex=0,postselindex=0,scene=nil,page=0,search=nil)
+  def initialize(post,category,categoryselindex=0,postselindex=0,scene=nil,page=0,search=nil,first_unread: false)
     @post=post
     @category = category
         @categoryselindex = categoryselindex
@@ -559,6 +559,7 @@ class Scene_Blog_Read
     @scene=scene
 @page=page
 @search=search
+@first_unread=first_unread
     @isowner=(blogowners(post.owner)||"").include?(Session.name)
           end
   def main
@@ -659,7 +660,8 @@ else
   @fields.push(nil)
   end
 @fields.push(Button.new(p_("Blog", "Return")))
-@form = Form.new(@fields)
+@postcur=@knownposts+2 if @first_unread && @knownposts<@posts.size
+@form = Form.new(@fields,index: @postcur)
 if @comments==0
   @form.fields[-3]=nil
   @form.fields[-4]=nil
@@ -706,17 +708,24 @@ def update
     end
   end
 if (key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form.index == @form.fields.size - 2
+  return if !confirm_comment_discard
   @form.fields[0]
   txt = @form.fields[0].text
     $scene = Scene_Blog_PostEditor.new(@post.owner,@post.id,@category,@categoryselindex,@postselindex)
     end
   if key_pressed?(:key_escape) or ((key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form.index == @form.fields.size - 1)
+  if confirm_comment_discard
 if @scene == nil
     $scene = Scene_Blog_Posts.new(@post.owner,@category,@categoryselindex,@postselindex, @search, @page)
   else
     $scene = @scene
     end
+    end
   end
+end
+def confirm_comment_discard
+  comment_field = @form.fields[@form.fields.size - 4]
+  comment_field==nil || comment_field.text=="" || comment_field.text=="\r\n" || confirm(p_("Blog", "Are you sure you want to cancel creating this comment?"))
 end
 def format(post)
    date=Time.now
@@ -828,7 +837,7 @@ def context(menu)
       return
     end
     if !users.include?(to)
-      insert_scene(Scene_Messages_New.new(to, subj, text, Scene_Main.new))
+      insert_scene(Scene_Messages_New.new(to, subj, text, Scene_Main.new, cursor_at_start: true))
       return
     end
     reply_type=LocalConfig["MentionReplyType", "", type: :string]
@@ -839,7 +848,7 @@ def context(menu)
       LocalConfig["MentionReplyType"]=reply_type
     end
     if reply_type=="message"
-      insert_scene(Scene_Messages_New.new(to, subj, text, Scene_Main.new))
+      insert_scene(Scene_Messages_New.new(to, subj, text, Scene_Main.new, cursor_at_start: true))
       return
     end
     message=input_text(p_("Blog", "Message"), flags: 0, text: "", escapable: true)
@@ -2068,8 +2077,12 @@ end
 }
 }
 changed=false
+edt_title.on(:delete) {changed=true}
+edt_title.on(:insert) {changed=true}
 edt_post.on(:delete) {changed=true}
 edt_post.on(:insert) {changed=true}
+edt_excerpt.on(:delete) {changed=true}
+edt_excerpt.on(:insert) {changed=true}
 for i in 0...@categories.size
   lst_categories.selected[i] = true if @categories[i].id == @category
 end

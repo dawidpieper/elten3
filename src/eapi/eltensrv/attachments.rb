@@ -44,7 +44,7 @@ module EltenAPI
     end
 
     def attachment_action(info)
-      extension=File.extname(info.name).downcase
+      extension=EltenPath.extname(info.name).downcase
       actions=if AUDIO_ATTACHMENT_EXTENSIONS.include?(extension)
         [[:save, p_("EAPI_Common", "Save")], [:play, p_("EAPI_Common", "Play")]]
       elsif TEXT_ATTACHMENT_EXTENSIONS.include?(extension) && info.size!=nil && info.size<=TEXT_ATTACHMENT_VIEW_LIMIT
@@ -79,7 +79,7 @@ module EltenAPI
         return
       end
       flags=EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly
-      flags|=EditBox::Flags::MarkDown if File.extname(info.name).downcase==".md"
+      flags|=EditBox::Flags::MarkDown if EltenPath.extname(info.name).downcase==".md"
       input_text(info.name, flags: flags, text: decode_attachment_text(data), escapable: true)
     end
 

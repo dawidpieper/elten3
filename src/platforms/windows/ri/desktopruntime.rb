@@ -1,5 +1,5 @@
 # A part of Elten - EltenLink / Elten Network desktop client.
-# Copyright (C) 2026 Dawid Pieper
+# Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
@@ -166,6 +166,10 @@ module EltenKeyboard
       false
     end
 
+    def global_key_down?(key)
+      async_key_down?(key)
+    end
+
     private
 
     def keyboard_monitor
@@ -326,6 +330,8 @@ module EltenWindow
   DESTROY_WINDOW = Fiddle::Function.new(USER32["DestroyWindow"], [HANDLE], INT, ABI)
   DEF_WINDOW_PROC = Fiddle::Function.new(USER32["DefWindowProcW"], [HANDLE, INT, HANDLE, HANDLE], HANDLE, ABI)
   POST_QUIT_MESSAGE = Fiddle::Function.new(USER32["PostQuitMessage"], [INT], Fiddle::TYPE_VOID, ABI)
+  REGISTER_HOT_KEY = Fiddle::Function.new(USER32["RegisterHotKey"], [HANDLE, INT, INT, INT], INT, ABI)
+  UNREGISTER_HOT_KEY = Fiddle::Function.new(USER32["UnregisterHotKey"], [HANDLE, INT], INT, ABI)
   GET_FOREGROUND_WINDOW = Fiddle::Function.new(USER32["GetForegroundWindow"], [], HANDLE, ABI)
   GET_PARENT = Fiddle::Function.new(USER32["GetParent"], [HANDLE], HANDLE, ABI)
   IS_ICONIC = Fiddle::Function.new(USER32["IsIconic"], [HANDLE], INT, ABI)
@@ -362,9 +368,13 @@ module EltenWindow
   WM_SYSKEYUP = 0x0105
   WM_SYSCHAR = 0x0106
   WM_UNICHAR = 0x0109
+  WM_HOTKEY = 0x0312
   WM_APP = 0x8000
   WM_DISPATCH_ACTIONS = WM_APP + 0x51
   WM_REQUEST_EXIT = WM_APP + 0x52
+  RESTORE_HOTKEY_ID = 0x454C
+  RESTORE_HOTKEY_MODIFIERS = 0x0001 | 0x0002 | 0x0004 | 0x4000
+  VK_T = 0x54
   VK_CONTROL = 0x11
   VK_MENU = 0x12
   VK_F4 = 0x73
@@ -376,7 +386,9 @@ module EltenWindow
   SC_CLOSE = 0xF060
   SC_MINIMIZE = 0xF020
   KEYBOARD_ACTIVATION_MIN_DELAY = 0.05
-  KEYBOARD_ACTIVATION_MAX_DELAY = 2.0
+  KEYBOARD_ACTIVATION_MAX_DELAY = 0.5
+  ACTIVATION_ACK_WARNING_SECONDS = 1.0
+  WINDOW_UPDATE_WARNING_SECONDS = 1.0
   MINIMIZE_RESTORE_SUPPRESS_TIME = 1.0
   MSG_SIZE = Fiddle::SIZEOF_VOIDP == 8 ? 48 : 28
 
@@ -498,7 +510,7 @@ module EltenWindow
       suppress_minimize_requests
       show(SW_RESTORE)
       focus(@hwnd)
-      clear_input_state
+      clear_input_state(preserve_activation_guard: true)
       suppress_minimize_requests
       true
     rescue Exception => e
@@ -528,6 +540,7 @@ module EltenWindow
       @window_thread = Thread.current
       @window_thread_id = GET_CURRENT_THREAD_ID.call.to_i
       @message_loop_stopped = false
+      register_restore_hotkey
       message = "\0" * MSG_SIZE
       loop do
         result = GET_MESSAGE.call(message, 0, 0, 0).to_i
@@ -538,6 +551,7 @@ module EltenWindow
       end
       true
     ensure
+      unregister_restore_hotkey
       window_state_monitor.synchronize { @close_requested = true }
       fail_pending_window_actions(RuntimeError.new("Windows message loop has stopped"))
     end
@@ -557,6 +571,11 @@ module EltenWindow
       wparam = wparam.to_i
       lparam = lparam.to_i
       case message
+      when WM_HOTKEY
+        if wparam == RESTORE_HOTKEY_ID
+          EltenTray.request_restore("hotkey CTRL+ALT+SHIFT+T") if defined?(EltenTray)
+          return 0
+        end
       when WM_DISPATCH_ACTIONS
         service_window_requests(wparam)
         return 0
@@ -581,7 +600,7 @@ module EltenWindow
       if defined?(EltenTray) && message == EltenTray::CALLBACK_MESSAGE
         return 0 if EltenTray.handle_callback(wparam, lparam)
       end
-      return 0 if close_message?(message, wparam)
+      return 0 if close_message?(message, wparam, lparam)
       minimize_message(message, wparam)
       record_key_message(message, wparam, lparam)
       if character_message?(message)
@@ -596,21 +615,26 @@ module EltenWindow
       DEF_WINDOW_PROC.call(hwnd, message, wparam, lparam) rescue 0
     end
 
-    def activation_input_blocked?
+    def activation_input_blocked?(consume_finish: false)
       unless window_thread?
-        return window_state_monitor.synchronize { @activation_ignore_max_until != nil }
+        return window_state_monitor.synchronize { @activation_input_guard_active == true }
       end
       window_state_monitor.synchronize do
-        next false if @activation_ignore_max_until == nil
+        next false if @activation_input_guard_active != true
         now = monotonic_time
         state = capture_keyboard_state_raw
+        if @activation_input_acknowledged != true
+          sync_keyboard_state_without_delivery(state)
+          clear_character_queue
+          next true
+        end
         if now <= @activation_ignore_min_until.to_f || (now <= @activation_ignore_max_until.to_f && keyboard_state_has_pressed_keys?(state))
           sync_keyboard_state_without_delivery(state)
           clear_character_queue
           next true
         end
         finish_activation_ignore(state)
-        false
+        consume_finish == true
       end
     rescue Exception
       clear_activation_guard
@@ -621,12 +645,36 @@ module EltenWindow
       window_state_monitor.synchronize { @close_requested == true }
     end
 
+    def restore_hotkey_registered?
+      @restore_hotkey_registered == true
+    end
+
     def consume_close_request
       window_state_monitor.synchronize do
         requested = @close_requested == true
         @close_requested = false
         requested
       end
+    end
+
+    def consume_quit_shortcut_request
+      window_state_monitor.synchronize do
+        requested = @quit_shortcut_requested == true
+        @quit_shortcut_requested = false
+        requested
+      end
+    rescue Exception
+      false
+    end
+
+    def consume_alt_quit_shortcut_request
+      window_state_monitor.synchronize do
+        requested = @alt_quit_shortcut_requested == true
+        @alt_quit_shortcut_requested = false
+        requested
+      end
+    rescue Exception
+      false
     end
 
     def consume_minimize_request
@@ -662,10 +710,10 @@ module EltenWindow
       end
     end
 
-    def clear_input_state
-      clear_activation_guard
+    def clear_input_state(preserve_activation_guard: false)
+      clear_activation_guard if preserve_activation_guard != true
       if !window_thread?
-        post_window_action(true) { clear_input_state }
+        post_window_action(true) { clear_input_state(preserve_activation_guard: preserve_activation_guard) }
         return true
       end
       clear_native_keyboard_state
@@ -676,6 +724,10 @@ module EltenWindow
       end
       EltenKeyboard.clear_state
       true
+    end
+
+    def clear_input_state_preserving_activation_guard
+      clear_input_state(preserve_activation_guard: true)
     end
 
     def post_window_action(wait = false, &block)
@@ -742,6 +794,10 @@ module EltenWindow
       true
     end
 
+    def keyboard_scene_transition_guard?
+      true
+    end
+
     def take_character(multi = false)
       window_state_monitor.synchronize do
         @character_queue ||= []
@@ -782,6 +838,7 @@ module EltenWindow
 
     def request_window_update
       pump_sync
+      started_at = monotonic_time
       token = nil
       @pump_mutex.synchronize do
         @pump_request += 1
@@ -793,6 +850,8 @@ module EltenWindow
         raise RuntimeError, "Windows message loop stopped during an update" if @completed_updates[token] != true
         @completed_updates.delete(token)
       end
+      elapsed = monotonic_time - started_at
+      Log.warning("Windows window update dispatch waited %.3f seconds" % elapsed) if elapsed >= WINDOW_UPDATE_WARNING_SECONDS && defined?(Log)
       true
     end
 
@@ -918,8 +977,11 @@ module EltenWindow
     def ignore_activation_input
       window_state_monitor.synchronize do
         now = monotonic_time
-        @activation_ignore_min_until = now + KEYBOARD_ACTIVATION_MIN_DELAY
-        @activation_ignore_max_until = now + KEYBOARD_ACTIVATION_MAX_DELAY
+        @activation_input_guard_active = true
+        @activation_input_acknowledged = false
+        @activation_input_started_at = now
+        @activation_ignore_min_until = nil
+        @activation_ignore_max_until = nil
         clear_character_queue
         clear_key_events
         EltenKeyboard.clear_state
@@ -929,10 +991,32 @@ module EltenWindow
 
     def clear_activation_guard
       window_state_monitor.synchronize do
+        @activation_input_guard_active = false
+        @activation_input_acknowledged = false
+        @activation_input_started_at = nil
         @activation_ignore_min_until = nil
         @activation_ignore_max_until = nil
       end
       true
+    end
+
+    def acknowledge_activation_input
+      delay = window_state_monitor.synchronize do
+        return false if @activation_input_guard_active != true
+        return true if @activation_input_acknowledged == true
+        now = monotonic_time
+        @activation_input_acknowledged = true
+        @activation_ignore_min_until = now + KEYBOARD_ACTIVATION_MIN_DELAY
+        @activation_ignore_max_until = now + KEYBOARD_ACTIVATION_MAX_DELAY
+        now - @activation_input_started_at.to_f
+      end
+      if delay >= ACTIVATION_ACK_WARNING_SECONDS && defined?(Log)
+        Log.warning("Windows input activation waited %.3f seconds for UI acknowledgement" % delay)
+      end
+      true
+    rescue Exception
+      clear_activation_guard
+      false
     end
 
     def finish_activation_ignore(state = nil)
@@ -985,6 +1069,7 @@ module EltenWindow
       window_state_monitor.synchronize do
         @key_event_queue ||= []
         @key_event_queue.clear
+        @key_message_down = Array.new(256, false)
         @right_alt_down = false
         @altgr_character_input = false
       end
@@ -1018,6 +1103,7 @@ module EltenWindow
       token = token.to_i
       run_window_actions
       capture_keyboard_state
+      acknowledge_activation_input if token > 0
       run_window_actions
       snapshot_character_frame if token > 0
       @pump_mutex.synchronize do
@@ -1049,6 +1135,30 @@ module EltenWindow
         @pump_cond.broadcast
       end
       true
+    end
+
+    def register_restore_hotkey
+      hwnd = window_handle(nil, false)
+      @restore_hotkey_hwnd = hwnd
+      @restore_hotkey_registered = hwnd != 0 && REGISTER_HOT_KEY.call(hwnd, RESTORE_HOTKEY_ID, RESTORE_HOTKEY_MODIFIERS, VK_T) != 0
+      Log.warning("Could not register restore hotkey CTRL+ALT+SHIFT+T; using polling fallback") if !@restore_hotkey_registered && defined?(Log)
+      @restore_hotkey_registered
+    rescue Exception => e
+      @restore_hotkey_registered = false
+      Log.warning("Restore hotkey registration failed: #{e}") if defined?(Log)
+      false
+    end
+
+    def unregister_restore_hotkey
+      hwnd = @restore_hotkey_hwnd.to_i
+      UNREGISTER_HOT_KEY.call(hwnd, RESTORE_HOTKEY_ID) if @restore_hotkey_registered == true && hwnd != 0
+      @restore_hotkey_registered = false
+      @restore_hotkey_hwnd = nil
+      true
+    rescue Exception
+      @restore_hotkey_registered = false
+      @restore_hotkey_hwnd = nil
+      false
     end
 
     def capture_keyboard_state
@@ -1088,20 +1198,25 @@ module EltenWindow
       message == WM_CHAR || message == WM_DEADCHAR || message == WM_UNICHAR
     end
 
-    def close_message?(message, wparam)
+    def close_message?(message, wparam, lparam = 0)
       if message == WM_CLOSE
-        window_state_monitor.synchronize { @close_requested = true }
+        window_state_monitor.synchronize { @close_requested = true; @quit_shortcut_requested = true }
         return true
       end
       if message == WM_SYSKEYDOWN && wparam.to_i == VK_F4
+        return true if repeated_key_message?(lparam)
         return true if activation_input_blocked?
-        window_state_monitor.synchronize { @close_requested = true }
+        window_state_monitor.synchronize do
+          @close_requested = true
+          @quit_shortcut_requested = true
+          @alt_quit_shortcut_requested = true
+        end
         return true
       end
       return false unless message == WM_SYSCOMMAND
       command = wparam.to_i & 0xfff0
       if command == SC_CLOSE
-        window_state_monitor.synchronize { @close_requested = true }
+        window_state_monitor.synchronize { @close_requested = true; @quit_shortcut_requested = true }
         return true
       end
       false
@@ -1142,7 +1257,7 @@ module EltenWindow
 
     def activation_key_message?(message)
       return false unless message == WM_KEYDOWN || message == WM_KEYUP || message == WM_SYSKEYDOWN || message == WM_SYSKEYUP || message == WM_SYSCHAR
-      activation_input_blocked?
+      activation_input_blocked?(consume_finish: true)
     rescue Exception
       false
     end
@@ -1155,10 +1270,12 @@ module EltenWindow
       event = down && repeated_key_message?(lparam) ? :repeat : down
       press_state = capture_key_event_state if down
       window_state_monitor.synchronize do
+        @key_message_down ||= Array.new(256, false)
+        next if event == :repeat && @key_message_down[key] != true
+        @key_message_down[key] = down
         @right_alt_down = down if key == VK_MENU && extended_key_message?(lparam)
-        if @altgr_character_input == true && altgr_control_key?(key)
+        if @altgr_character_input == true && altgr_modifier_key?(key)
           if down == false
-            @altgr_character_input = false
             next
           elsif @right_alt_down == true
             next
@@ -1220,12 +1337,12 @@ module EltenWindow
     def begin_altgr_character_input
       @altgr_character_input = true
       @key_event_queue ||= []
-      @key_event_queue.delete_if { |key, _event, _press_state| altgr_control_key?(key) }
+      @key_event_queue.delete_if { |key, _event, _press_state| altgr_modifier_key?(key) }
     end
 
     def normalize_altgr_keyboard_state(state)
       return state if @altgr_character_input != true
-      [VK_CONTROL, VK_LCONTROL].each do |key|
+      [VK_CONTROL, VK_LCONTROL, VK_MENU].each do |key|
         state.setbyte(key, state.getbyte(key).to_i & 0x7f)
       end
       state
@@ -1233,7 +1350,7 @@ module EltenWindow
 
     def normalize_altgr_key_events(events)
       return events if @altgr_character_input != true
-      events.reject { |key, _event, _press_state| altgr_control_key?(key) }
+      events.reject { |key, _event, _press_state| altgr_modifier_key?(key) }
     end
 
     def clear_finished_altgr_character_input
@@ -1244,8 +1361,8 @@ module EltenWindow
       @altgr_character_input = false if !control_down
     end
 
-    def altgr_control_key?(key)
-      key.to_i == VK_CONTROL || key.to_i == VK_LCONTROL
+    def altgr_modifier_key?(key)
+      key.to_i == VK_CONTROL || key.to_i == VK_LCONTROL || key.to_i == VK_MENU
     end
 
     def menu_message?(message, wparam)
@@ -1318,6 +1435,7 @@ module EltenTray
     end
 
     def restore_hotkey_pressed?
+      return false if defined?(EltenWindow) && EltenWindow.restore_hotkey_registered?
       ensure_api
       pressed = key_down?(0x11) && key_down?(0x12) && key_down?(0x10) && key_down?(0x54)
       triggered = pressed && @restore_hotkey_down != true

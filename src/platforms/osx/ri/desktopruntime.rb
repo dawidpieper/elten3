@@ -1,5 +1,5 @@
 # A part of Elten - EltenLink / Elten Network desktop client.
-# Copyright (C) 2026 Dawid Pieper
+# Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
 
 require "monitor"
@@ -39,6 +39,9 @@ module OSXWindowNative
   TIMER_STATE_REFRESH_SECONDS = 0.05
   TIMER_FOCUS_REPAIR_SECONDS = 0.10
   MAX_KEY_EVENT_QUEUE = 1024
+  HID_UP_CONFIRMATIONS = 2
+  SYNTHETIC_INITIAL_LEASE_SECONDS = 1.0
+  SYNTHETIC_REPEAT_LEASE_SECONDS = 0.5
   MAC_KEY_Q = 12
   MAC_KEY_FN = 63
   NX_DEVICE_LEFT_CONTROL_MASK = 0x00000001
@@ -246,16 +249,23 @@ module OSXWindowNative
       "\0" * 256
     end
 
-    def consume_key_events
+    def consume_keyboard_snapshot
       keyboard_state_monitor.synchronize do
+        @keyboard_state ||= ("\0" * 256)
         @key_event_queue ||= []
         reconcile_keyboard_state_locked if @keyboard_allowed == true
+        state = @keyboard_allowed == true ? @keyboard_state.dup : ("\0" * 256)
         events = @key_event_queue
         @key_event_queue = []
-        events
+        [state, events]
       end
-    rescue Exception
-      []
+    rescue Exception => e
+      Log.warning("Keyboard snapshot failed: #{e.class}: #{e.message}") if defined?(Log)
+      ["\0" * 256, []]
+    end
+
+    def consume_key_events
+      consume_keyboard_snapshot[1]
     end
 
     def clear_input_state
@@ -801,17 +811,16 @@ module OSXWindowNative
           request_close(true)
           return :consumed
         end
-        set_event_key(event, true)
-        return :consumed
+        return set_event_key(event, true) ? :consumed : true
       when 11
-        set_event_key(event, false)
-        return :consumed
+        return set_event_key(event, false) ? :consumed : true
       when 12
         update_modifier_keys(@msg_ulong.call(event, sel("modifierFlags")).to_i)
         return :consumed
       end
       true
-    rescue Exception
+    rescue Exception => e
+      debug("key event failed: #{e.class}: #{e.message}")
       false
     end
 
@@ -932,7 +941,8 @@ module OSXWindowNative
       update_translated_key_character(vk, event, down)
       set_keyboard_key(vk, down, down && event_repeat?(event))
       true
-    rescue Exception
+    rescue Exception => e
+      debug("key state update failed: #{e.class}: #{e.message}")
       false
     end
 
@@ -1118,7 +1128,11 @@ module OSXWindowNative
       return false if down == true && repeat == true && previous != true
       @keyboard_state.setbyte(key, down ? 0x80 : 0)
       if down == true
-        @pressed_keys[key] = true
+        entry = (@pressed_keys[key] ||= { down_at: monotonic_time, repeat_at: nil, hid: false, up: 0 })
+        if repeat
+          entry[:repeat_at] = monotonic_time
+          entry[:up] = 0
+        end
       else
         @pressed_keys.delete(key)
       end
@@ -1130,6 +1144,7 @@ module OSXWindowNative
       @keyboard_state ||= ("\0" * 256)
       @pressed_keys ||= {}
       first_pressed = first_pressed_keys_locked
+      now = monotonic_time
       @pressed_keys.keys.each do |key|
         if (@keyboard_state.getbyte(key).to_i & 0x80) == 0
           @pressed_keys.delete(key)
@@ -1137,10 +1152,29 @@ module OSXWindowNative
         end
         # Deliver a captured keyDown once even if the key was released before this input frame.
         next if first_pressed[key] == true
+        entry = @pressed_keys[key]
         physical = ::EltenKeyboard.physical_key_down?(key)
-        next if physical != false
+        if physical == true
+          entry[:hid] = now
+          entry[:up] = 0
+          next
+        end
+        session = ::EltenKeyboard.session_key_down?(key)
+        lease = ::EltenKeyboard::MODIFIER_KEYS.include?(key) ? ::EltenKeyboard::STALE_MODIFIER_KEY_SECONDS : SYNTHETIC_INITIAL_LEASE_SECONDS
+        source_lease = if physical == nil
+          now - (entry[:hid] || entry[:down_at]).to_f <= lease
+        else
+          entry[:hid] == false && session == true && now - entry[:down_at].to_f <= SYNTHETIC_INITIAL_LEASE_SECONDS
+        end
+        repeat_lease = entry[:repeat_at] != nil && now - entry[:repeat_at].to_f <= SYNTHETIC_REPEAT_LEASE_SECONDS
+        if source_lease || repeat_lease
+          entry[:up] = 0
+          next
+        end
+        entry[:up] = entry[:up].to_i + 1
+        next if entry[:up] < HID_UP_CONFIRMATIONS
         set_keyboard_key_locked(key, false)
-        Log.debug("Keyboard state reconciled: released key #{key}") if defined?(Log)
+        Log.debug("Keyboard missing keyUp recovered: key=#{key} session=#{session.inspect}") if defined?(Log)
       end
       true
     rescue Exception => e
@@ -1401,6 +1435,7 @@ module EltenKeyboard
   VK_CONTROL_RIGHT = 0xA3
   VK_CONTEXT_MENU = 0x5D
   CG_EVENT_SOURCE_STATE_COMBINED_SESSION_STATE = 0
+  CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE = 1
   STALE_REPEATABLE_KEY_SECONDS = 1.0
   STALE_MODIFIER_KEY_SECONDS = 15.0
   MODIFIER_KEYS = [VK_SHIFT, VK_CONTROL, VK_OPTION, VK_COMMAND_LEFT, VK_COMMAND_RIGHT, VK_CONTROL_LEFT, VK_CONTROL_RIGHT, VK_CONTEXT_MENU]
@@ -1538,10 +1573,30 @@ module EltenKeyboard
     end
 
     def physical_key_down?(key)
+      key_source_down?(CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE, key)
+    end
+
+    def global_key_down?(key)
+      physical_key_down?(key) == true
+    end
+
+    def session_key_down?(key)
+      key_source_down?(CG_EVENT_SOURCE_STATE_COMBINED_SESSION_STATE, key)
+    end
+
+    def key_source_down?(source, key)
       mac_keys = mac_keys_for_virtual_key(key)
+      if key.to_i == VK_CONTROL
+        mac_keys = [VK_CONTROL_LEFT, VK_CONTROL_RIGHT, VK_COMMAND_LEFT, VK_COMMAND_RIGHT].flat_map { |child| mac_keys_for_virtual_key(child) }
+      end
       return nil if mac_keys.empty?
-      mac_keys.any? { |mac_key| cg_event_source_key_state.call(CG_EVENT_SOURCE_STATE_COMBINED_SESSION_STATE, mac_key.to_i).to_i != 0 }
-    rescue Exception
+      result = mac_keys.any? { |mac_key| cg_event_source_key_state.call(source, mac_key.to_i).to_i != 0 }
+      @key_state_error = nil
+      result
+    rescue Exception => e
+      error = "#{e.class}: #{e.message}"
+      Log.warning("Keyboard key-state query failed: #{error}") if defined?(Log) && @key_state_error != error
+      @key_state_error = error
       nil
     end
 
@@ -1586,7 +1641,7 @@ module EltenKeyboard
       state = "\0" * 256
       mac_keys_by_virtual_key.each do |virtual_key, mac_keys|
         next if virtual_key < 0 || virtual_key > 255
-        if mac_keys.any? { |mac_key| cg_event_source_key_state.call(CG_EVENT_SOURCE_STATE_COMBINED_SESSION_STATE, mac_key.to_i).to_i != 0 }
+        if mac_keys.any? { |mac_key| cg_event_source_key_state.call(CG_EVENT_SOURCE_STATE_HID_SYSTEM_STATE, mac_key.to_i).to_i != 0 }
           state.setbyte(virtual_key, 0x80)
         end
       end
@@ -1911,6 +1966,13 @@ module EltenWindow
 
     def take_character(_multi = false)
       ""
+    end
+
+    def consume_keyboard_snapshot
+      return OSXWindowNative.consume_keyboard_snapshot if @native_window == true && defined?(OSXWindowNative)
+      [keyboard_state, consume_key_events]
+    rescue Exception
+      ["\0" * 256, []]
     end
 
     def consume_key_events

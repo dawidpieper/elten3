@@ -98,6 +98,13 @@ module EltenAPI
         # Updates a files tree
       def update(init=false)
 super
+        if @path!="" && !current_directory_available?
+          close_preview
+          @path=""
+          @file=""
+          @sel=nil
+          @refresh=false
+        end
         if @sel == nil or @refresh == true
               if @path == ""
           @disks=EltenSystemHelpers.logical_drives
@@ -122,7 +129,7 @@ else
     begin
       if File.directory?(full)
         dirs.push(entry)
-      elsif @hidefiles!=true && (allowed_exts==nil || allowed_exts.include?(File.extname(entry).downcase))
+      elsif @hidefiles!=true && (allowed_exts==nil || allowed_exts.include?(EltenPath.extname(entry).downcase))
         fls.push(entry)
       end
     rescue Exception
@@ -198,6 +205,13 @@ end
 $filestrees[@id]=[@path,@file]
 end
 
+def current_directory_available?
+  File.directory?(@path)
+rescue StandardError
+  false
+end
+private :current_directory_available?
+
 def handle_preview_keys
   return if !handles_file_preview_keys?
   if raw_key_held?(:key_shift)
@@ -225,7 +239,7 @@ end
 def preview_selected_file
   file=selected
   return if file=="" || !File.file?(file)
-  case File.extname(file).downcase
+  case EltenPath.extname(file).downcase
   when *AUDIO_EXTENSIONS
     toggle_audio_preview(file)
   when *TEXT_EXTENSIONS
@@ -379,7 +393,7 @@ end
 
 def filetype
   return 0 if File.directory?(cfile(true))
-  ext=File.extname(selected).downcase
+  ext=EltenPath.extname(selected).downcase
   if AUDIO_EXTENSIONS.include?(ext)
     return 1
   elsif TEXT_EXTENSIONS.include?(ext)

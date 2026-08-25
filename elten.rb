@@ -1,10 +1,16 @@
+# A part of Elten - EltenLink / Elten Network desktop client.
+# Copyright (C) 2014-2026 Dawid Pieper
+# Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
+# Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
+# You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
+
 root = File.expand_path(__dir__)
 Dir.chdir(root)
 $LOAD_PATH.unshift(File.join(root, "src")) unless defined?(::EltenEmbedded)
 
 module Elten
-  VERSION_STRING = "ELTEN 3.0 RC 1"
-  BRANCH = "rc"
+  VERSION_STRING = "ELTEN 3.0"
+  BRANCH = "stable"
 
   class << self
     def version

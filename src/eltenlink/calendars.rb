@@ -2,6 +2,8 @@
 # Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
 
+require "date"
+
 module EltenLink
   class Calendar
     attr_accessor :id, :author, :creation, :name, :public, :lang, :personal, :moderator
@@ -35,14 +37,16 @@ module EltenLink
   end
 
   class CalendarEvent
-    attr_accessor :id, :calendar_id, :author, :starttime, :endtime, :name, :description, :public_calendar
+    attr_accessor :id, :calendar_id, :author, :starttime, :endtime, :frequency, :name, :description, :public_calendar
 
-    def initialize(id: 0, calendar_id: 0, author: nil, starttime: nil, endtime: nil, name: "", description: "", public_calendar: false)
+    def initialize(id: 0, calendar_id: 0, author: nil, starttime: nil, endtime: nil, frequency: 0, name: "", description: "", public_calendar: false)
       @id = id.to_i
       @calendar_id = calendar_id.to_i
       @author = author.to_s
       @starttime = time_value(starttime)
       @endtime = time_value(endtime)
+      @frequency = frequency.to_i
+      @frequency = 0 if @frequency < -1
       @name = name.to_s
       @description = description.to_s
       @public_calendar = public_calendar == true
@@ -54,14 +58,245 @@ module EltenLink
         @endtime.hour == 23 && @endtime.min == 59 && @endtime.sec == 59
     end
 
+    def all_day_series?
+      @starttime.hour == 0 && @starttime.min == 0 && @starttime.sec == 0 &&
+        @endtime.hour == 23 && @endtime.min == 59 && @endtime.sec == 59
+    end
+
     def public_calendar?
       @public_calendar == true
+    end
+
+    def recurring?
+      @frequency != 0
+    end
+
+    def series_event
+      self
+    end
+
+    def occurrence_on(value)
+      date = date_value(value)
+      if !recurring?
+        return self if start_date <= date && date <= end_date
+        return nil
+      end
+      return nil unless recurrence_date?(date)
+
+      build_occurrence(date)
+    end
+
+    def occurrences_on(value)
+      date = date_value(value)
+      return [self] if !recurring? && start_date <= date && date <= end_date
+      return [] if !recurring?
+
+      [date - 1, date].filter_map do |start|
+        occurrence = occurrence_on(start)
+        next if occurrence == nil
+
+        occurrence if date_value(occurrence.starttime) <= date && date <= date_value(occurrence.endtime)
+      end
+    end
+
+    def occurrence_date_on_or_after(value)
+      target = date_value(value)
+      if !recurring?
+        candidate = [target, start_date].max
+        return candidate if candidate <= end_date
+        return nil
+      end
+
+      candidate = @frequency == -1 ? monthly_date_on_or_after(target) : interval_date_on_or_after(target)
+      candidate if candidate != nil && occurrence_on(candidate) != nil
+    end
+
+    def occurrence_date_on_or_before(value)
+      target = date_value(value)
+      if !recurring?
+        candidate = [target, end_date].min
+        return candidate if candidate >= start_date
+        return nil
+      end
+
+      candidate = @frequency == -1 ? monthly_date_on_or_before(target) : interval_date_on_or_before(target)
+      while candidate != nil
+        return candidate if occurrence_on(candidate) != nil
+
+        candidate = if @frequency == -1
+                      monthly_date_on_or_before(candidate - 1)
+                    elsif candidate - @frequency >= start_date
+                      candidate - @frequency
+                    end
+      end
+      nil
+    end
+
+    def event_date_on_or_after(value)
+      target = date_value(value)
+      return target unless occurrences_on(target).empty?
+
+      occurrence_date_on_or_after(target)
+    end
+
+    def event_date_on_or_before(value)
+      target = date_value(value)
+      return target unless occurrences_on(target).empty?
+
+      occurrence_date = occurrence_date_on_or_before(target)
+      return nil if occurrence_date == nil
+
+      occurrence = occurrence_on(occurrence_date)
+      [date_value(occurrence.endtime), target].min if occurrence != nil
+    end
+
+    def next_occurrence(now=Time.now)
+      return self if !recurring? && @endtime >= now
+      return nil if !recurring?
+
+      today = date_value(now)
+      previous_date = occurrence_date_on_or_before(today)
+      previous = occurrence_on(previous_date) if previous_date != nil
+      return previous if previous != nil && previous.endtime >= now
+
+      next_date = occurrence_date_on_or_after(today + 1)
+      occurrence_on(next_date) if next_date != nil
     end
 
     private
 
     def time_value(value)
       value.is_a?(Time) ? value : Time.at(value.to_i)
+    end
+
+    def date_value(value)
+      return value if value.is_a?(Date)
+
+      Date.new(value.year, value.month, value.day)
+    end
+
+    def start_date
+      date_value(@starttime)
+    end
+
+    def end_date
+      date_value(@endtime)
+    end
+
+    def recurrence_date?(date)
+      return false if date < start_date || date > end_date
+      if @frequency == -1
+        date.day == start_date.day
+      elsif @frequency > 0
+        ((date - start_date).to_i % @frequency).zero?
+      else
+        false
+      end
+    end
+
+    def build_occurrence(date)
+      start_seconds = seconds_since_midnight(@starttime)
+      end_seconds = seconds_since_midnight(@endtime)
+      occurrence_end_date = end_seconds < start_seconds ? date + 1 : date
+      occurrence_start = local_time(date, @starttime)
+      occurrence_end = local_time(occurrence_end_date, @endtime)
+      return nil if occurrence_start < @starttime || occurrence_end > @endtime
+
+      CalendarEventOccurrence.new(self, occurrence_start, occurrence_end)
+    end
+
+    def seconds_since_midnight(time)
+      time.hour * 3600 + time.min * 60 + time.sec
+    end
+
+    def local_time(date, source)
+      Time.local(date.year, date.month, date.day, source.hour, source.min, source.sec)
+    end
+
+    def interval_date_on_or_after(target)
+      target = start_date if target < start_date
+      distance = (target - start_date).to_i
+      candidate = start_date + ((distance + @frequency - 1) / @frequency) * @frequency
+      candidate if candidate <= end_date
+    end
+
+    def interval_date_on_or_before(target)
+      target = end_date if target > end_date
+      return nil if target < start_date
+
+      start_date + ((target - start_date).to_i / @frequency) * @frequency
+    end
+
+    def monthly_date_on_or_after(target)
+      target = start_date if target < start_date
+      month = [months_between(start_date, target), 0].max
+      loop do
+        candidate = monthly_date(month)
+        return nil if month_start(month) > end_date
+        return candidate if candidate != nil && candidate >= target && candidate <= end_date
+        month += 1
+      end
+    end
+
+    def monthly_date_on_or_before(target)
+      target = end_date if target > end_date
+      return nil if target < start_date
+
+      month = months_between(start_date, target)
+      while month >= 0
+        candidate = monthly_date(month)
+        return candidate if candidate != nil && candidate <= target && candidate >= start_date
+        month -= 1
+      end
+      nil
+    end
+
+    def months_between(first, second)
+      (second.year - first.year) * 12 + second.month - first.month
+    end
+
+    def month_start(offset)
+      total = start_date.year * 12 + start_date.month - 1 + offset
+      Date.new(total / 12, total % 12 + 1, 1)
+    end
+
+    def monthly_date(offset)
+      month = month_start(offset)
+      Date.new(month.year, month.month, start_date.day)
+    rescue Date::Error
+      nil
+    end
+  end
+
+  class CalendarEventOccurrence
+    attr_reader :series_event, :starttime, :endtime
+
+    def initialize(series_event, starttime, endtime)
+      @series_event = series_event
+      @starttime = starttime
+      @endtime = endtime
+    end
+
+    [:id, :calendar_id, :author, :frequency, :name, :description, :public_calendar].each do |method|
+      define_method(method) { @series_event.public_send(method) }
+    end
+
+    def all_day?
+      @starttime.year == @endtime.year && @starttime.yday == @endtime.yday &&
+        @starttime.hour == 0 && @starttime.min == 0 && @starttime.sec == 0 &&
+        @endtime.hour == 23 && @endtime.min == 59 && @endtime.sec == 59
+    end
+
+    def public_calendar?
+      @series_event.public_calendar?
+    end
+
+    def recurring?
+      true
+    end
+
+    def all_day_series?
+      @series_event.all_day_series?
     end
   end
 
@@ -144,7 +379,7 @@ module EltenLink
         data["events"].to_a.map { |row| event_from(row) }
       end
 
-      def create_event(client, calendar, name:, description: "", starttime:, endtime:)
+      def create_event(client, calendar, name:, description: "", starttime:, endtime:, frequency: 0)
         data = client.api_data(
           "POST",
           "/api/v1/calendars/#{calendar_id(calendar)}/events",
@@ -152,18 +387,20 @@ module EltenLink
             "name" => name,
             "description" => description,
             "starttime" => time_to_i(starttime),
-            "endtime" => time_to_i(endtime)
+            "endtime" => time_to_i(endtime),
+            "frequency" => frequency.to_i
           }
         )
         data["id"].to_i
       end
 
-      def update_event(client, calendar, event, name: nil, description: nil, starttime: nil, endtime: nil)
+      def update_event(client, calendar, event, name: nil, description: nil, starttime: nil, endtime: nil, frequency: nil)
         params = {}
         params["name"] = name if name != nil
         params["description"] = description if description != nil
         params["starttime"] = time_to_i(starttime) if starttime != nil
         params["endtime"] = time_to_i(endtime) if endtime != nil
+        params["frequency"] = frequency.to_i if frequency != nil
         client.api_data("PATCH", "/api/v1/calendars/#{calendar_id(calendar)}/events/#{event_id(event)}", params)
         true
       end
@@ -234,6 +471,7 @@ module EltenLink
           author: row["author"],
           starttime: row["starttime"],
           endtime: row["endtime"],
+          frequency: row["frequency"],
           name: row["name"],
           description: row["description"],
           public_calendar: truthy?(row["public"])

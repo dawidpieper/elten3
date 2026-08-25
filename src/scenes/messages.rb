@@ -1,5 +1,5 @@
 # A part of Elten - EltenLink / Elten Network desktop client.
-# Copyright (C) 2014-2022 Dawid Pieper
+# Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
@@ -115,9 +115,12 @@ def import(arr)
   end
   def message_list_audio_url(message)
     return "" unless audio_message?(message)
-    return message.audio_url.to_s if Configuration.autoplay == :always
-    return message.audio_url.to_s if Configuration.autoplay == :without_transcription && message.transcription.to_s.strip == ""
-    ""
+    message.audio_url.to_s
+  end
+  def message_list_audio_autoplay?(message)
+    return false unless audio_message?(message)
+    return true if Configuration.autoplay == :always
+    Configuration.autoplay == :without_transcription && message.transcription.to_s.strip == ""
   end
   def message_display_text(message, date)
     [message.text, message.transcription, date].map(&:to_s).reject { |part| part.strip == "" }.join("\r\n")
@@ -579,6 +582,8 @@ end
          selt=[]
          states=[]
          audio_urls=[]
+         audio_autoplay=[]
+         audio_completion_labels=[]
     for m in @messages
       if !curids.include?(m.id)
       if complete
@@ -591,7 +596,10 @@ end
             states[selt.size-1]=message_item_statuses(m)
             audio_url=message_list_audio_url(m)
             audio_urls[selt.size-1]=audio_url
-            if audio_url==""
+            autoplay_audio=message_list_audio_autoplay?(m)
+            audio_autoplay[selt.size-1]=autoplay_audio
+            audio_completion_labels[selt.size-1]=format_date(m.date) if autoplay_audio
+            if !autoplay_audio
               text=message_list_content(m)
               subject=utf8(m.subject)
               selt[-1]+=":\r\n"+((sp!=nil and sp!="new")?(subject+":\r\n"):"")+text.split("")[0...5000].join+((text.size>5000)?"... #{p_("Messages", "Open this message to read more")}":"")+"\r\n"+format_date(m.date)+"\r\n"
@@ -607,12 +615,12 @@ end
     head=p_("Messages", "Found items") if sp=='search'
     @sel_messages=ListBox.new(selt,header: head)
     states.each_with_index{|st,i|@sel_messages.set_item_states(i, st) if st!=nil}
-    audio_urls.each_with_index{|url,i|@sel_messages.set_item_audio(i, url) if url!=nil && url.to_s!=""}
+    audio_urls.each_with_index{|url,i|@sel_messages.set_item_audio(i, url, autoplay: audio_autoplay[i]!=false, completion_label: audio_completion_labels[i]) if url!=nil && url.to_s!=""}
     @sel_messages.bind_context{|menu|context_messages(menu)}
         @form_messages=Form.new([@sel_messages,nil,nil,EditBox.new(p_("Messages", "Your reply"),type: EditBox::Flags::MultiLine,text: "",quiet: true),nil,Button.new(p_("Messages", "Compose"))],index: 0,silent: true)
   @form_messages.fields[3..5]=[nil,nil,nil] if !result.can_reply or @messages_sp=='flagged' or @messages_sp=='search'
   else
-    @sel_messages.prepend_options(selt, states, audio_urls)
+    @sel_messages.prepend_options(selt, states, audio_urls, audio_autoplay, audio_completion_labels)
     @sel_messages.index+=selt.size
   end
       end
@@ -885,11 +893,12 @@ def audiolimit
     end
      
      class Scene_Messages_New
-       def initialize(receiver="",subject="",text="",scene=false)
+       def initialize(receiver="",subject="",text="",scene=false,cursor_at_start: false)
          @receiver = receiver
          @subject = subject
          @text = text
          @scene = scene
+         @cursor_at_start = cursor_at_start
          end
        def main
          receiver=@receiver
@@ -900,7 +909,7 @@ def audiolimit
            @fields[0] = EditBox.new(p_("Messages", "Recipient"),type: 0,text: receiver,quiet: true)
            @fields[0]=nil if receiver[0..0]=="["
 @fields[1] = EditBox.new(p_("Messages", "Subject:"),type: 0,text: subject,quiet: true)
-           @fields[2] = ((@text.is_a?(EditBox))?@text:EditBox.new(p_("Messages", "Message:"),type: EditBox::Flags::MultiLine,text: text,quiet: true))
+           @fields[2] = ((@text.is_a?(EditBox))?@text:EditBox.new(p_("Messages", "Message:"),type: EditBox::Flags::MultiLine,text: (@cursor_at_start ? "" : text),quiet: true))
            @fields[3] = OpusRecordButton.new(p_("Messages", "Audio message"), EltenPath.join(Dirs.temp, "audiomessage.opus"), max_bitrate: bitratelimit, bitrate: 48, time_limit: audiolimit)
            @fields[4]=nil
            @fields[5]=ListBox.new([],header: p_("Messages", "Attachments"))
@@ -982,6 +991,7 @@ def audiolimit
            ind=1 if receiver!=""
            ind=2 if receiver!="" and subject!=""
            @form = Form.new(@fields,index: ind)
+           @fields[2].set_text(text) if @cursor_at_start
 @attachments=[]
 @polls=[]
                                  loop do                     
@@ -1033,7 +1043,7 @@ def audiolimit
                        end
                      end
                      if (key_pressed?(:key_escape) or ((key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form.index == 7)) && (@form.fields[3]==nil || @form.fields[3].delete_audio)
-                       if (@form.fields[2]==nil || @form.fields[2].text=="") || confirm(p_("Messages", "Are you sure you want to cancel creating this message?"))
+                       if ((@form.fields[2]==nil || @form.fields[2].text=="") && (@form.fields[1]==nil || @form.fields[1].text==@subject.to_s)) || confirm(p_("Messages", "Are you sure you want to cancel creating this message?"))
                                                               if @scene != false and @scene != true and @scene.is_a?(Integer)==false and @scene.is_a?(Array)==false
            $scene = @scene
          else

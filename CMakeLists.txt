@@ -407,12 +407,12 @@ elseif(UNIX AND NOT APPLE)
   # library that is only needed when embedded payloads are compressed.
   set(ELTEN_LINUX_ZSTD_ARGS)
   if(ELTEN_COMPRESS_EMBEDDED_RUBY_ZSTD)
-    if(EXISTS "${CMAKE_SOURCE_DIR}/bin/${ELTEN_RUNTIME_ARCH_DIR}/libzstd.so")
-      set(ELTEN_ZSTD_LIBRARY "${ELTEN_RUNTIME_DIR}/libzstd.so" CACHE FILEPATH "libzstd used by Linux asset compression" FORCE)
+    if(EXISTS "${CMAKE_SOURCE_DIR}/bin/${ELTEN_RUNTIME_ARCH_DIR}/libzstd.so.1")
+      set(ELTEN_ZSTD_LIBRARY "${ELTEN_RUNTIME_DIR}/libzstd.so.1" CACHE FILEPATH "libzstd used by Linux asset compression" FORCE)
     else()
       find_library(ELTEN_ZSTD_LIBRARY NAMES zstd)
       if(ELTEN_ZSTD_LIBRARY)
-        message(WARNING "Using the host libzstd (${ELTEN_ZSTD_LIBRARY}); bundle bin/${ELTEN_RUNTIME_ARCH_DIR}/libzstd.so so the shipped launcher does not depend on one being installed")
+        message(WARNING "Using the host libzstd (${ELTEN_ZSTD_LIBRARY}); bundle bin/${ELTEN_RUNTIME_ARCH_DIR}/libzstd.so.1 so the shipped launcher does not depend on one being installed")
       else()
         message(WARNING "libzstd was not found; the asset generator will try libzstd.so.1 from the loader path")
         set(ELTEN_ZSTD_LIBRARY "")
@@ -696,6 +696,37 @@ else()
     "${ELTEN_EMBEDDED_CPP}"
   )
 
+  set(ELTEN_SAPI_BRIDGE_TARGET "")
+  if(ELTEN_LAUNCHER_ARCH STREQUAL "x86")
+    set(ELTEN_SAPI_BRIDGE_TARGET EltenSapiBridge32)
+  elseif(ELTEN_LAUNCHER_ARCH STREQUAL "x64")
+    set(ELTEN_SAPI_BRIDGE_TARGET EltenSapiBridge64)
+  endif()
+  if(ELTEN_SAPI_BRIDGE_TARGET)
+    add_executable(${ELTEN_SAPI_BRIDGE_TARGET}
+      "ext/windows/EltenSapiBridge/EltenSapiBridge.cpp"
+    )
+    target_compile_definitions(${ELTEN_SAPI_BRIDGE_TARGET} PRIVATE
+      NOMINMAX
+      WIN32_LEAN_AND_MEAN
+    )
+    target_link_libraries(${ELTEN_SAPI_BRIDGE_TARGET} PRIVATE
+      ole32
+      sapi
+    )
+    set_target_properties(${ELTEN_SAPI_BRIDGE_TARGET} PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin/ext/windows"
+    )
+    add_custom_command(TARGET ${ELTEN_SAPI_BRIDGE_TARGET} POST_BUILD
+      COMMAND "${CMAKE_COMMAND}" -E make_directory "${ELTEN_PACKAGE_ROOT}/bin/ext/windows"
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "$<TARGET_FILE:${ELTEN_SAPI_BRIDGE_TARGET}>"
+        "${ELTEN_PACKAGE_ROOT}/bin/ext/windows/$<TARGET_FILE_NAME:${ELTEN_SAPI_BRIDGE_TARGET}>"
+      VERBATIM
+    )
+    add_dependencies(EltenLauncher ${ELTEN_SAPI_BRIDGE_TARGET})
+  endif()
+
   target_compile_definitions(EltenLauncher PRIVATE
     ELTEN_LAUNCHER_ARCH="${ELTEN_LAUNCHER_ARCH}"
     ELTEN_RUNTIME_DIR_NAME="${ELTEN_RUNTIME_ARCH_DIR}"
@@ -787,4 +818,11 @@ foreach(config DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
       RUNTIME_OUTPUT_DIRECTORY_${config} "${ELTEN_PACKAGE_ROOT}"
     )
   endif()
+  foreach(bridge_target EltenSapiBridge32 EltenSapiBridge64)
+    if(TARGET ${bridge_target})
+      set_target_properties(${bridge_target} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY_${config} "${CMAKE_SOURCE_DIR}/bin/ext/windows"
+      )
+    endif()
+  endforeach()
 endforeach()

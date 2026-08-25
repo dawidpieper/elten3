@@ -1,5 +1,12 @@
+# A part of Elten - EltenLink / Elten Network desktop client.
+# Copyright (C) 2014-2026 Dawid Pieper
+# Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
+# Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
+# You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
+
 class Scene_PremiumPackages
   CURRENCIES = ["PLN", "EUR", "USD", "GBP"].freeze
+  SPONSOR_MERGED_PACKAGES = ["courier", "audiophile", "scribe", "director"].freeze
 
   def main
     unless Session.logged?
@@ -39,7 +46,6 @@ show(package)
         p_("PremiumPackages", "Larger private-message attachments, up to 32 MB"),
     p_("PremiumPackages", "Attaching polls to private messages"),
     p_("PremiumPackages", "Using Markdown in forum posts"),
-    p_("PremiumPackages", "Reading transcriptions of audio posts in recommended groups"),
     ])
   end
   def get_audiophile
@@ -52,7 +58,6 @@ show(package)
     p_("PremiumPackages", "Using VST plugins in conferences"),
     p_("PremiumPackages", "Setting specific ringtones for users"),
     p_("PremiumPackages", "Attaching audio to feed entries"),
-    #p_("PremiumPackages", "Placing beacons in HRTF channels"),
     p_("PremiumPackages", "Splitting audio into chapters"),
     p_("PremiumPackages", "Creating hidden channels in conferences"),
     ])
@@ -122,11 +127,13 @@ show(package)
                 }
               end
               end
-              menu.option(p_("PremiumPackages", "Buy premium codes for use by any user")) {
-              buy(nil)
-        refresh
-        @sel.focus
-              }
+              if @packages.any?{|candidate|!candidate.special && candidate.activable}
+                menu.option(p_("PremiumPackages", "Buy premium codes for use by any user")) {
+                  buy(nil)
+                  refresh
+                  @sel.focus
+                }
+              end
             end
             menu.option(p_("PremiumPackages", "Change currency")) {
             select_currency
@@ -138,7 +145,7 @@ show(package)
     }
   end
   def select_currency
-    c = selector([p_("PremiumPackages", "Polish zloty")+" (PLN)", p_("PremiumPackages", "Euro")+" (EUR)", p_("PremiumPackages", "US dollar")+" (USD)", p_("PremiumPackages", "British pound")+" (GBP)"], header: p_("PremiumPackages", "Select your currency."))
+    c = selector([p_("PremiumPackages", "Polish zloty")+" (PLN)", p_("PremiumPackages", "Euro")+" (EUR)", p_("PremiumPackages", "US dollar")+" (USD)", p_("PremiumPackages", "British pound")+" (GBP)"], header: p_("PremiumPackages", "Select your currency."), cancel_index: -1)
     return if c < 0 || c >= CURRENCIES.size
     @currency = CURRENCIES[c]
     LocalConfig['PremiumPackagesCurrency'] = @currency
@@ -158,7 +165,8 @@ sactivate=p_("PremiumPackages", "Activate package using code")
     ], index: 0, silent: false, quiet: true)
     form.hide(btn_buycode) if package.special || !package.activable
     form.hide(btn_activate) if package.special || !package.activable
-    form.hide(btn_convert) if package.package!="sponsor"
+    form.hide(btn_buy) if !package.allowed
+    form.hide(btn_convert) if package.package!="sponsor" || !package.allowed
     form.cancel_button=btn_close
     btn_close.on(:press) {form.resume}
     btn_buy.on(:press) {
@@ -203,51 +211,69 @@ sactivate=p_("PremiumPackages", "Activate package using code")
     end
       begin
         j=EltenLink::Payments.prices(elten_link)
+        sponsor_only=sponsor_only_offer?(j)
         for k in j.keys
           for c in @packages
             if c.package==k
               c.activable=true  
               c.price=j[k]["price$#{@currency}"]
-                c.monthlyprice=j[k]["monthlyprice$#{@currency}"]
-                c.available=j[k]['available']
-                c.allowed=true if c.totime==0 || j[k]['yearlimit']>=Time.at(c.totime).year
-                c.special=j[k]['special']
-              end
+              c.monthlyprice=j[k]["monthlyprice$#{@currency}"]
+              c.available=j[k]['available']==true
+              c.allowed=c.available && (c.totime==0 || j[k]['yearlimit']>=Time.at(c.totime).year)
+              c.special=j[k]['special']
             end
           end
         end
+        end
+        apply_sponsor_only_offer if sponsor_only
+        apply_offer_availability
         @sel.rows=@packages.map{|c|
         st=p_("PremiumPackages", "Inactive")
         st=p_("PremiumPackages", "Active until %{time}")%{:time=>format_date(Time.at(c.totime))} if c.totime>0
         monthlyprice=nil
         price=nil
         conversionprice=nil
-                if c.package=="sponsor"
-          z=0
-          for g in @packages.find_all{|pc|pc.package!="sponsor"}
-            d=((g.totime-Time.now.to_f)/86400).floor
-            d=0 if d<0
-            z+=(g.price*0.9)/365.0*d
-          end
+        if c.available && c.package=="sponsor"
+          z=conversion_credit("sponsor")
           conversionprice=(c.price-z).ceil if z>0
         end
-if c.package=="orchestra"
-          z=0
-          for g in @packages.find_all{|pc|pc.package!="orchestra"}
-            d=((g.totime-Time.now.to_f)/86400).floor
-            d=0 if d<0
-            z+=(g.price*0.9)/365.0*d
-          end
+        if c.available && c.package=="orchestra" && c.price.is_a?(Numeric)
+          z=conversion_credit("orchestra")
           conversionprice=(c.price-z).ceil if z>0
-end       
-monthlyprice=c.monthlyprice.to_s+" "+@currency if c.monthlyprice!=nil
-        price=c.price.to_s+" "+@currency if c.price!=nil
+        end
+        monthlyprice=c.monthlyprice.to_s+" "+@currency if c.available && c.monthlyprice!=nil
+        price=c.price.to_s+" "+@currency if c.available && c.price!=nil
         conversionprice=nil if conversionprice!=nil && conversionprice<=0
         conversionprice=conversionprice.to_s+" "+@currency if conversionprice!=nil
           [c.name, st, price, monthlyprice, conversionprice]
         }
         @sel.reload
       rescue EltenLink::Error, JSON::ParserError
+      end
+      def sponsor_only_offer?(prices)
+        return false if !prices.is_a?(Hash)
+        prices.select{|_package, offer|offer.is_a?(Hash) && offer['available']==true}.keys.map(&:to_s).uniq==["sponsor"]
+      end
+      def apply_sponsor_only_offer
+        sponsor=@packages.find{|package|package.package=="sponsor"}
+        return if sponsor==nil
+        sponsor.profits=@packages.select{|package|SPONSOR_MERGED_PACKAGES.include?(package.package)}.flat_map(&:profits).uniq
+      end
+      def apply_offer_availability
+        @packages.each do |package|
+          next if package.available
+          package.allowed=false
+          package.activable=false
+        end
+        @packages.select!{|package|package.available || package.totime>0}
+      end
+      def conversion_credit(excluded_package)
+        @packages.sum do |package|
+          next 0 if package.package==excluded_package || !package.price.is_a?(Numeric)
+          days=((package.totime-Time.now.to_f)/86400).floor
+          days=0 if days<0
+          (package.price*0.9)/365.0*days
+        end
       end
       def buy(package, convert=false)
         return if convert && !confirm(p_("PremiumPackages", "Regardless of the remaining duration of other packages, they will be replaced by the selected package. This package will be activated for a period of one year. The remaining period for other packages will be deducted from the package price. Do you want to continue?"))
@@ -349,12 +375,7 @@ form=Form.new([
       price=package.monthlyprice if type==1 && package!=nil
       if package!=nil and package.package=="sponsor" and convert==true
         conversionprice=package.price
-          z=0
-          for g in @packages.find_all{|c|c.package!="sponsor"}
-            d=((g.totime-Time.now.to_f)/86400).floor
-            d=0 if d<0
-            z+=(g.price*0.9)/365.0*d
-          end
+          z=conversion_credit("sponsor")
           conversionprice=(package.price-z).ceil if z>0
         price=conversionprice
         payment_package='sponsor_c'
@@ -386,12 +407,7 @@ form=Form.new([
       price=package.monthlyprice if type==1 && package!=nil
       if package!=nil and package.package=="sponsor" and convert==true
         conversionprice=package.price
-          z=0
-          for g in @packages.find_all{|c|c.package!="sponsor"}
-            d=((g.totime-Time.now.to_f)/86400).floor
-            d=0 if d<0
-            z+=(g.price*0.9)/365.0*d
-          end
+          z=conversion_credit("sponsor")
           conversionprice=(package.price-z).ceil if z>0
         price=conversionprice
         payment_package='sponsor_c'

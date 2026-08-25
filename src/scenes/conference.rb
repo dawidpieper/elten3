@@ -1,5 +1,5 @@
 # A part of Elten - EltenLink / Elten Network desktop client.
-# Copyright (C) 2014-2025 Dawid Pieper
+# Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
@@ -36,14 +36,8 @@ class Scene_Conference
         $scene=Scene_Main.new
         return
       end
-          if @timeout!=nil
-            @timeoutthr=Thread.new(@timeout) {|tm|
-            sleep(tm)
-            sleep(3)
-            Conference.close if Conference.opened? && Conference.channel.users.size<=1
-            }
+      timeout=@timeout
       @timeout=nil
-      end
       @status=""
     @form = Form.new([
        lst_users = ListBox.new([], header: p_("Conference", "Channel users")),
@@ -53,6 +47,7 @@ class Scene_Conference
    btn_options = Button.new(p_("Conference", "More options")),
     btn_close = Button.new(p_("Conference", "Close"))
     ], index: @prefocus||0, silent: false, quiet: true)
+    start_timeout(timeout)
     @prefocus=nil
     st_conference.add_tip(p_("Conference", "Use the arrow keys to move around the channel space"))
     st_conference.add_tip(p_("Conference", "Use Shift+Left/Right Arrow to rotate"))
@@ -339,8 +334,10 @@ elsif channel_target?(@target)
   speak(p_("Conference", "You are already connected to another channel."))
     end
     @form.wait if Conference.channel.id!=0
+    timeout_expired=conference_timeout_expired?
+    timeout_break
             if Conference.opened?
-      if (Conference.channel.id==0 and Conference.waiting_channel_id==0) or confirm(p_("Conference", "Would you like to disconnect?"))
+      if timeout_expired || (Conference.channel.id==0 && Conference.waiting_channel_id==0) || confirm(p_("Conference", "Would you like to disconnect?"))
         Conference.close
         end
       end
@@ -1557,11 +1554,59 @@ lst_whitelist.focus
   end
   dialog_close
 end
+def cancel_outgoing_call
+  call_id=@call_id
+  @call_id=nil
+  EltenAPI::EltenSRV.cancel_call(call_id, self) if call_id!=nil
+end
+def start_timeout(seconds)
+  return if seconds==nil
+  @timeout_mutex=Mutex.new
+  @timeout_condition=ConditionVariable.new
+  @timeout_cancelled=false
+  @timeout_expired=false
+  @timeoutthr=Thread.new(seconds.to_f) do |duration|
+    Thread.current.report_on_exception=false
+    deadline=Process.clock_gettime(Process::CLOCK_MONOTONIC)+duration+3.0
+    elapsed=@timeout_mutex.synchronize do
+      while !@timeout_cancelled
+        remaining=deadline-Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        break if remaining<=0
+        @timeout_condition.wait(@timeout_mutex, remaining)
+      end
+      !@timeout_cancelled && Process.clock_gettime(Process::CLOCK_MONOTONIC)>=deadline
+    end
+    if elapsed && Conference.opened? && Conference.channel.users.size<=1
+      resume_form=@timeout_mutex.synchronize do
+        if !@timeout_cancelled
+          @timeout_expired=true
+          true
+        else
+          false
+        end
+      end
+      @form.resume if resume_form
+    end
+  rescue Exception
+    Log.error("Conference timeout: #{$!.class}: #{$!.message}")
+  end
+end
+def conference_timeout_expired?
+  return false if @timeout_mutex==nil
+  @timeout_mutex.synchronize {@timeout_expired==true}
+end
 def timeout_break
-  if @timeoutthr!=nil
-      @timeoutthr.exit
+  thread=nil
+  if @timeout_mutex!=nil
+    @timeout_mutex.synchronize do
+      @timeout_cancelled=true
+      @timeout_condition.broadcast
+      thread=@timeoutthr
       @timeoutthr=nil
     end
+  end
+  thread.join if thread!=nil && thread!=Thread.current
+  cancel_outgoing_call
   end
   def self.custom_diceroll
       d=selector((1..100).to_a.map{|d|p_("Conference", "%{count}-sided")%{:count=>d.to_s}}, header: p_("Conference", "Which dice do you want to roll?"), start_index: @@lastdiceindex, cancel_index: -1, flags: 1)
@@ -2094,7 +2139,7 @@ class Scene_Conference_VSTS
       end
       end
   def refresh
-    @vsts=Conference.vsts(@userid)
+    @vsts=Conference.vsts(@userid) || []
     selt=[]
     if @vsts!=nil
       for v in @vsts

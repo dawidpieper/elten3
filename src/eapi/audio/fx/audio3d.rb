@@ -10,6 +10,15 @@ class Audio3DEffect < SoundEffect
   DEFAULT_FREQUENCY = 48_000
   DEFAULT_FRAMESIZE = 20
   OUTPUT_CHANNELS = 2
+  POSITION_MIN = -1.0
+  POSITION_MAX = 1.0
+  ORIGIN = [0.0, 0.0, 0.0].freeze
+  FORWARD = [0.0, 0.0, -1.0].freeze
+  BACK = [0.0, 0.0, 1.0].freeze
+  LEFT = [-1.0, 0.0, 0.0].freeze
+  RIGHT = [1.0, 0.0, 0.0].freeze
+  UP = [0.0, 1.0, 0.0].freeze
+  DOWN = [0.0, -1.0, 0.0].freeze
 
   @@engine_mutex = Mutex.new
   @@engines = {}
@@ -58,7 +67,7 @@ class Audio3DEffect < SoundEffect
     end
   end
 
-  def initialize(frequency = DEFAULT_FREQUENCY, framesize = DEFAULT_FRAMESIZE)
+  def initialize(frequency = DEFAULT_FREQUENCY, framesize = DEFAULT_FRAMESIZE, position: nil, interpolation: :nearest)
     @frequency = frequency.to_i <= 0 ? DEFAULT_FREQUENCY : frequency.to_i
     @framesize = framesize.to_i <= 0 ? DEFAULT_FRAMESIZE : framesize.to_i
     @mutex = Mutex.new
@@ -69,6 +78,8 @@ class Audio3DEffect < SoundEffect
     @effect = nil
     @hrtf = nil
     @channels = nil
+    self.position = position if position != nil
+    self.interpolation = interpolation
     load_engine(@frequency)
   end
 
@@ -126,6 +137,32 @@ class Audio3DEffect < SoundEffect
     @mutex.synchronize { @z = clamp_position(value) }
   end
 
+  def position
+    @mutex.synchronize { [@x, @y, @z] }
+  end
+
+  def position=(value)
+    coordinates = Array(value)
+    position = [
+      clamp_position(coordinates[0]),
+      clamp_position(coordinates[1]),
+      clamp_position(coordinates[2])
+    ]
+    @mutex.synchronize { @x, @y, @z = position }
+    position
+  end
+
+  def interpolation
+    @mutex.synchronize { @bilinear == true ? :bilinear : :nearest }
+  end
+
+  def interpolation=(value)
+    interpolation = value.respond_to?(:to_sym) ? value.to_sym : nil
+    raise ArgumentError, "interpolation must be :nearest or :bilinear" if ![:nearest, :bilinear].include?(interpolation)
+    self.bilinear = interpolation == :bilinear
+    interpolation
+  end
+
   def bilinear=(value)
     @mutex.synchronize { @bilinear = value == true }
     @hrtf.set_bilinear(@effect, @bilinear) if @hrtf != nil && @effect != nil
@@ -159,7 +196,7 @@ class Audio3DEffect < SoundEffect
   end
 
   def clamp_position(value)
-    [[value.to_f, -1.0].max, 1.0].min
+    [[value.to_f, POSITION_MIN].max, POSITION_MAX].min
   end
 
   def stereo_silence(audio, channels)

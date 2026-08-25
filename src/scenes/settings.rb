@@ -1,5 +1,5 @@
 # A part of Elten - EltenLink / Elten Network desktop client.
-# Copyright (C) 2014-2022 Dawid Pieper
+# Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
@@ -9,6 +9,7 @@ class Scene_Settings
     @settings=[]
     @values={}
     @bound_settings={}
+    @speaker_preview_restorer=nil
   end
   def currentconfig(group, key)
     if group==:extension_setting
@@ -30,15 +31,28 @@ class Scene_Settings
   def setcurrentconfig(group,key,val)
 @values[[group,key]]=val.to_s
 end
-def speaker_waiter
- loop do
-   loop_update
-   if key_any_pressed?
-     speech_stop
-     end
-   break if speech_actived==false
-   end
+def start_speaker_preview(&restorer)
+  restore_speaker_preview
+  @speaker_preview_restorer=restorer
+end
+def restore_speaker_preview
+  restorer=@speaker_preview_restorer
+  @speaker_preview_restorer=nil
+  restorer.call if restorer!=nil
+end
+def stop_speaker_preview
+  return if @speaker_preview_restorer==nil
+  speech_stop
+  restore_speaker_preview
+end
+def update_speaker_preview
+  return if @speaker_preview_restorer==nil
+  if key_any_pressed?
+    stop_speaker_preview
+  elsif speech_actived==false
+    restore_speaker_preview
   end
+end
   def setting_category(cat)
     @settings.push([cat, nil])
     @form.fields[0].options.push(cat)
@@ -52,6 +66,11 @@ def make_setting(label, type, section, config=nil, mapping=nil, multi=false)
   mapping=mapping.map{|x|x.to_s} if mapping!=nil
   @settings.last.push([label, type, section, config, mapping, multi])
 end
+def make_order_setting(label, options, section, config, mapping)
+  return if @settings.size==0
+  raise ArgumentError, "Ordered setting options and mapping must have the same size" if options.size!=mapping.size
+  @settings.last.push([label, :order, section, config, mapping.map{|x|x.to_s}, false, options])
+end
 def make_bound_setting(label, type, key, getter, setter, mapping=nil, multi=false)
   @bound_settings[key.to_s]=[getter,setter]
   make_setting(label,type,:extension_setting,key.to_s,mapping,multi)
@@ -63,6 +82,10 @@ def save_category
     index=i-1
     field=@form.fields[index]
     next if field==nil
+    if setting[1]==:order
+      setcurrentconfig(setting[2], setting[3], field.params[:setting_order].join(","))
+      next
+    end
     val=field.value
     val=val.to_i if setting[1]==:number
     val=val ? "true" : "false" if setting[1]==:bool
@@ -81,13 +104,14 @@ def save_category
   end
 def show_category(id)
   return if @form==nil or @settings[id]==nil
+  stop_speaker_preview
   save_category if @category!=nil
   @category=id
   @form.show_all
   @form.fields[1...-3]=[]
   f=[]
 for s in @settings[id][2..-1]
-  label, type, section, config, mapping, multi = s
+  label, type, section, config, mapping, multi, order_options = s
   field=nil
   case type
   when :text
@@ -100,6 +124,8 @@ for s in @settings[id][2..-1]
         field=Button.new(label)
         proc=section
                 field.on(:press, 0, true, &proc)
+      when :order
+        field=make_order_setting_field(label, order_options, section, config, mapping)
               else
                 index=0
                 if multi==false
@@ -125,6 +151,7 @@ end
 @settings[id][1].call if @settings[id][1]!=nil
 end
 def apply_settings
+  stop_speaker_preview
   save_category
   begin
     for k in @values.keys
@@ -151,6 +178,55 @@ def make_window
   @form.fields[2]=Button.new(_("Save"))
   @form.fields[3]=Button.new(_("Cancel"))
   end
+  def normalize_setting_order(value, mapping)
+    available = mapping.map{|item|item.to_s}
+    requested = value.is_a?(Array) ? value.map{|item|item.to_s} : value.to_s.split(",")
+    normalized = []
+    requested.each do |item|
+      normalized.push(item) if available.include?(item) && !normalized.include?(item)
+    end
+    normalized.concat(available-normalized)
+  end
+  def make_order_setting_field(label, options, section, config, mapping)
+    order = normalize_setting_order(currentconfig(section, config), mapping)
+    labels = {}
+    mapping.each_with_index{|value,index|labels[value.to_s]=options[index]}
+    field = ListBox.new(order.map{|value|labels[value]}, header: label, index: 0, flags: 0)
+    field.params[:setting_order]=order
+    field.params[:setting_order_labels]=labels
+    field.add_tip(p_("Settings", "Use Shift with up/down arrows to move items"))
+    field.bind_context do |menu|
+      menu.option(p_("Settings", "Move up")){move_order_setting(field,-1)} if field.index>0
+      menu.option(p_("Settings", "Move down")){move_order_setting(field,1)} if field.index<order.size-1
+    end
+    field
+  end
+  def order_setting_field?(field)
+    field!=nil && field.respond_to?(:params) && field.params[:setting_order].is_a?(Array)
+  end
+  def move_order_setting(field, offset)
+    return false if !order_setting_field?(field)
+    order=field.params[:setting_order]
+    old_index=field.index
+    new_index=old_index+offset.to_i
+    return false if new_index<0 || new_index>=order.size
+    order[old_index],order[new_index]=order[new_index],order[old_index]
+    labels=field.params[:setting_order_labels]
+    field.options=order.map{|value|labels[value]}
+    field.index=new_index
+    field.say_option
+    true
+  end
+  def update_order_setting
+    field=@form.fields[@form.index]
+    return if !order_setting_field?(field) || !key_held?(0x10)
+    move_order_setting(field,-1) if key_pressed?(:key_up)
+    move_order_setting(field,1) if key_pressed?(:key_down)
+  end
+  def notification_type_order_labels(order)
+    helper = Object.new.extend(NotificationGroups)
+    order.map { |type| helper.category_label(type) }
+  end
   def load_general
     setting_category(p_("Settings", "General"))
         l=loadedlanguages.map{|l|l.realcode}
@@ -163,7 +239,13 @@ def make_window
       make_setting(p_("Settings", "Language"), langs, "Interface", "Language", langsmapping)
                             make_setting(p_("Settings", "Automatically minimize Elten Window to system tray"), :bool, "Interface", "HideWindow") if tray_supported?
                                         make_setting(p_("Settings", "Enable auto-login"), :bool, "Login", "EnableAutoLogin")
-        make_setting(p_("Settings", "Automatically start Elten after I log on to Windows"), :bool, "System", "AutoStart") if tray_supported?
+        make_setting(
+          p_("Settings", "Start Elten after I log on to Windows"),
+          [p_("Settings", "Do not start automatically"), p_("Settings", "Start hidden"), p_("Settings", "Start with the window visible")],
+          "System",
+          "AutoStart",
+          ["disabled", "hidden", "visible"]
+        ) if tray_supported?
         make_setting(p_("Settings", "Check for updates at startup"), :bool, "Updates", "CheckAtStartup")
         make_setting(p_("Settings", "Updates branch"), [p_("Settings", "Auto"),p_("Settings", "Stable"), p_("Settings", "RC"), p_("Settings", "Beta")], "Updates", "Branch", ["auto","stable","rc","beta"])
         make_setting(p_("Settings", "Send Elten usage reports"), :bool, "Privacy", "RegisterActivity")
@@ -183,6 +265,7 @@ def make_window
             make_setting(p_("Settings", "Automatically play audio content"), [p_("Settings", "Always"),p_("Settings", "Only when transcription is not available"), p_("Settings", "Never")], "Interface", "AutoPlay", ["always", "without_transcription", "never"])
             make_setting(p_("Settings", "Keyboard scheme"), [p_("Settings", "Default"), p_("Settings", "Windows"), p_("Settings", "macOS")], "Interface", "KeyboardScheme", ["default", "windows", "macos"])
             make_setting(p_("Settings", "Use macOS-style character navigation in text fields"), [p_("Settings", "System Default"), p_("Settings", "Disable"), p_("Settings", "Enable")], "Interface", "MacOSCharacterNavigation", ["default", "disabled", "enabled"])
+            make_setting(p_("Settings", "Manage keyboard shortcuts"), :custom, Proc.new { insert_scene(Scene_KeyboardShortcuts.new) })
             on_load {
             @form.fields[1].on(:change) {
             if @form.fields[1].checked
@@ -204,6 +287,8 @@ def make_window
         setcurrentconfig("MainWindow", "Tabs", Configuration.maintabs.join(","))
         setcurrentconfig("MainWindow", "ShowNotificationsWhenEmpty", Configuration.showemptynotifications.to_s)
         setcurrentconfig("MainWindow", "NotificationFocus", Configuration.mainnotificationfocus.to_s)
+        setcurrentconfig("MainWindow", "NotificationSort", Configuration.mainnotificationsort.to_s)
+        setcurrentconfig("MainWindow", "NotificationTypeOrder", Configuration.mainnotificationtypeorder.join(","))
         setting_category(p_("Settings", "Main window"))
         make_setting(
           p_("Settings", "Tabs visible in the main window"),
@@ -225,6 +310,21 @@ def make_window
           "NotificationFocus",
           ["keep_current", "new_notifications", "unread_notifications"]
         )
+        make_setting(
+          p_("Settings", "Notification sorting"),
+          [p_("Settings", "By time"), p_("Settings", "By type, then by time")],
+          "MainWindow",
+          "NotificationSort",
+          ["time", "type"]
+        )
+        notification_types=NotificationGroups.default_notification_type_order
+        make_order_setting(
+          p_("Settings", "Notification type order"),
+          notification_type_order_labels(notification_types),
+          "MainWindow",
+          "NotificationTypeOrder",
+          notification_types
+        )
         make_setting(p_("Settings", "Disable feed notifications"), :bool, "Interface", "DisableFeedNotifications")
         make_setting(p_("Settings", "Reset quick actions"), :custom, Proc.new {
           confirm(p_("Settings", "Are you sure you want to restore default quick actions?")) {
@@ -237,6 +337,12 @@ def make_window
             end
           }
         })
+        on_load do
+          @form.fields[4].on(:move) do
+            @form.fields[4].index == 1 ? @form.show(5) : @form.hide(5)
+          end
+          @form.fields[4].trigger(:move)
+        end
       end
       def load_voice
         setting_category(p_("Settings", "Voice"))
@@ -264,40 +370,48 @@ def make_window
         @form.fields[1].trigger(:move)
         @form.fields[1].on(:move) {
         speech_stop
+          restore_speaker_preview
           output=voice_output.call
           vc=Configuration.voice
+          start_speaker_preview {
+            Configuration.voice=vc
+            SpeechOutput.apply_current_voice
+          }
           Configuration.voice=voicesmapping[@form.fields[1].index].to_s
           output.apply_voice(Configuration.voice) if output!=nil
           @form.fields[1].say_option
-          speaker_waiter
-          Configuration.voice=vc
-          SpeechOutput.apply_current_voice
         }
         @form.fields[2].on(:move) {
         speech_stop
+        restore_speaker_preview
         output=voice_output.call
+        start_speaker_preview {
+          SpeechOutput.current_output.set_rate(Configuration.voicerate) if SpeechOutput.current_output!=nil && SpeechOutput.current_output.rate_supported?
+        }
         output.set_rate(100-@form.fields[2].index) if output!=nil && output.rate_supported?
                 @form.fields[2].say_option
-                speaker_waiter
-                SpeechOutput.current_output.set_rate(Configuration.voicerate) if SpeechOutput.current_output!=nil && SpeechOutput.current_output.rate_supported?
         }
         @form.fields[3].on(:move) {
         speech_stop
+        restore_speaker_preview
         output=voice_output.call
+        start_speaker_preview {
+          SpeechOutput.current_output.set_volume(Configuration.voicevolume) if SpeechOutput.current_output!=nil && SpeechOutput.current_output.volume_supported?
+        }
         output.set_volume(100-@form.fields[3].index) if output!=nil && output.volume_supported?
         @form.fields[3].say_option
-        speaker_waiter
-        SpeechOutput.current_output.set_volume(Configuration.voicevolume) if SpeechOutput.current_output!=nil && SpeechOutput.current_output.volume_supported?
         }
         @form.fields[4].on(:move) {
         speech_stop
+        restore_speaker_preview
         output=voice_output.call
         next if output==nil || !output.pitch_supported?
         pt=Configuration.voicepitch
+        start_speaker_preview {
+          Configuration.voicepitch=pt
+        }
         Configuration.voicepitch=100-@form.fields[4].index
         @form.fields[4].say_option
-        speaker_waiter
-        Configuration.voicepitch=pt
         }
         }
       end
@@ -399,7 +513,9 @@ def make_window
         @form.focus
         loop do
           loop_update
+          update_speaker_preview
           @form.update
+          update_order_setting
           show_category(@form.fields[0].index) if @category!=@form.fields[0].index
           if @form.fields[-3].pressed?
             speak(_("Saved")) if apply_settings
@@ -415,5 +531,7 @@ def make_window
           end
           break if $scene!=self
         end
+      ensure
+        stop_speaker_preview
       end
       end

@@ -13,7 +13,7 @@ unless defined?(Fiddle)
 end
 
 class Sapi < SpeechOutput
-  Voice = Struct.new(:id, :name, :language, :age, :gender, :vendor) do
+  Voice = Struct.new(:id, :name, :language, :age, :gender, :vendor, :backend, :bitness) do
     def voiceid
       return "" if id == nil
       id.split(/[\\\/]/).last
@@ -24,7 +24,7 @@ class Sapi < SpeechOutput
   SPF_PURGEBEFORESPEAK = 2
   SPF_IS_XML = 8
   SPF_IS_NOT_XML = 16
-  SPVPRI_OVER = 2
+  SPVPRI_NORMAL = 0
   STREAM_FORMAT_48KHZ_16BIT_MONO = 38
   STREAM_FREQUENCY = 48000
   STREAM_CHANNELS = 1
@@ -41,7 +41,9 @@ class Sapi < SpeechOutput
       return nil unless available?
       @voice ||= begin
         instance = WIN32OLE.new("SAPI.SpVoice")
-        instance.Priority = SPVPRI_OVER rescue nil
+        instance.Priority = SPVPRI_NORMAL rescue nil
+        negotiate_native_audio_format(instance)
+        @voice_id = instance.Voice.Id.to_s rescue nil
         instance
       end
     rescue Exception
@@ -49,26 +51,20 @@ class Sapi < SpeechOutput
     end
 
     def speak(text)
-      return 1 if voice == nil
-      @paused = false
-      voice.Speak(text.to_s, SPF_ASYNC | SPF_PURGEBEFORESPEAK | SPF_IS_NOT_XML)
-      0
-    rescue Exception
-      1
+      speak_with_flags(text.to_s, SPF_ASYNC | SPF_PURGEBEFORESPEAK | SPF_IS_NOT_XML)
     end
 
     def speak_ssml(text, interrupt: true)
-      return 1 if voice == nil
-      @paused = false
       flags = SPF_ASYNC | SPF_IS_XML
       flags |= SPF_PURGEBEFORESPEAK if interrupt
-      voice.Speak(text.to_s, flags)
-      0
-    rescue Exception
-      1
+      speak_with_flags(text.to_s, flags)
     end
 
     def stop
+      if @voice_backend == :bridge
+        @paused = false
+        return SapiBridge.stop ? 0 : 1
+      end
       return 1 if voice == nil
       @paused = false
       voice.Speak("", SPF_ASYNC | SPF_PURGEBEFORESPEAK | SPF_IS_NOT_XML)
@@ -78,13 +74,22 @@ class Sapi < SpeechOutput
     end
 
     def reset
-      begin
-        @voice.Speak("", SPF_ASYNC | SPF_PURGEBEFORESPEAK | SPF_IS_NOT_XML) if @voice != nil
-      rescue Exception
+      if @voice_backend != :bridge
+        begin
+          @voice.Speak("", SPF_ASYNC | SPF_PURGEBEFORESPEAK | SPF_IS_NOT_XML) if @voice != nil
+        rescue Exception
+        end
       end
       @voice = nil
+      if defined?(SapiBridge) && @voice_backend == :bridge
+        SapiBridge.release
+      end
       @paused = false
-      return 1 if voice == nil
+      @voice_backend = nil
+      native_voice = voice
+      @voice_backend = :native if native_voice != nil
+      @voice_id = native_voice.Voice.Id.to_s rescue nil if native_voice != nil
+      return 1 if native_voice == nil
       reapply_device
       set_rate(@rate) if @rate != nil
       set_volume(@volume) if @volume != nil
@@ -94,6 +99,11 @@ class Sapi < SpeechOutput
     end
 
     def set_paused(paused)
+      if @voice_backend == :bridge
+        result = paused ? SapiBridge.pause : SapiBridge.resume
+        @paused = paused if result
+        return result ? 0 : 1
+      end
       return 1 if voice == nil
       if paused
         voice.Pause
@@ -114,6 +124,10 @@ class Sapi < SpeechOutput
     end
 
     def speaking?
+      if @voice_backend == :bridge
+        status = SapiBridge.status
+        return status != nil && status[:speaking] == true
+      end
       return false if voice == nil
       status = voice.Status
       status != nil && status.RunningState.to_i == 2
@@ -123,7 +137,8 @@ class Sapi < SpeechOutput
 
     def set_rate(rate)
       @rate = rate.to_i
-      voice.Rate = (rate.to_i / 5 - 10) if voice != nil
+      voice.Rate = (rate.to_i / 5 - 10) if @voice_backend != :bridge && voice != nil
+      SapiBridge.set_rate(rate.to_i / 5 - 10) if defined?(SapiBridge) && @voice_backend == :bridge
       rate.to_i
     rescue Exception
       rate.to_i
@@ -135,7 +150,8 @@ class Sapi < SpeechOutput
 
     def set_volume(volume)
       @volume = volume.to_i
-      voice.Volume = volume.to_i if voice != nil
+      voice.Volume = volume.to_i if @voice_backend != :bridge && voice != nil
+      SapiBridge.set_volume(volume.to_i) if defined?(SapiBridge) && @voice_backend == :bridge
       volume.to_i
     rescue Exception
       volume.to_i
@@ -146,10 +162,40 @@ class Sapi < SpeechOutput
     end
 
     def set_voice(index)
-      tokens = voice_tokens
-      return 1 if voice == nil || index.to_i < 0 || index.to_i >= tokens.size
+      available = available_voices
+      return 1 if voice == nil || index.to_i < 0 || index.to_i >= available.size
+      selected = available[index.to_i]
+      previous = voice.Voice rescue nil
+      if @voice_backend == :bridge
+        SapiBridge.stop
+      else
+        voice.Speak("", SPF_ASYNC | SPF_PURGEBEFORESPEAK | SPF_IS_NOT_XML) rescue nil
+      end
+      if selected.backend == :bridge
+        return 1 unless defined?(SapiBridge) && SapiBridge.set_voice(selected.id.to_s)
+        @voice_backend = :bridge
+        Log.debug("Queued #{selected.bitness}-bit SAPI bridge activation for #{selected.id}") if defined?(Log)
+      else
+        token = voice_tokens.find { |candidate| candidate.Id.to_s.casecmp?(selected.id.to_s) }
+        return 1 if token == nil
+        begin
+          voice.Voice = token
+          negotiate_native_audio_format
+          voice.Speak("", SPF_IS_NOT_XML)
+        rescue Exception
+          unless defined?(SapiBridge) && SapiBridge.set_voice(selected.id.to_s)
+            voice.Voice = previous rescue nil if previous != nil
+            return 1
+          end
+          @voice_backend = :bridge
+          Log.debug("Queued SAPI bridge activation for #{selected.id}") if defined?(Log)
+        else
+          SapiBridge.release if defined?(SapiBridge)
+          @voice_backend = :native
+        end
+      end
       @voice_index = index.to_i
-      voice.Voice = tokens[index.to_i]
+      @voice_id = selected.id.to_s
       reapply_device
       set_rate(@rate) if @rate != nil
       set_volume(@volume) if @volume != nil
@@ -160,26 +206,42 @@ class Sapi < SpeechOutput
 
     def set_device(index)
       @device_index = index.to_i
-      return 1 if voice == nil
-      if index.to_i < 0
-        begin
-          voice.SetOutput(nil, false)
-        rescue Exception
-          begin
-            voice.AudioOutput = nil
-          rescue Exception
-          end
-        end
-        return 0
-      end
       outputs = audio_outputs
       return 2 if index.to_i >= outputs.size
-      begin
-        voice.SetOutput(outputs[index.to_i], true)
-      rescue Exception
-        voice.AudioOutput = outputs[index.to_i]
+      native_ok = false
+      bridge_ok = false
+      if index.to_i < 0
+        if @voice_backend != :bridge
+          begin
+            voice.SetOutput(nil, false) if voice != nil
+            native_ok = voice != nil
+          rescue Exception
+            begin
+              voice.AudioOutput = nil if voice != nil
+              native_ok = voice != nil
+            rescue Exception
+            end
+          end
+        end
+        bridge_ok = SapiBridge.set_output(nil) if defined?(SapiBridge) && @voice_backend == :bridge
+      else
+        output = outputs[index.to_i]
+        if @voice_backend != :bridge && voice != nil && output != nil
+          begin
+            voice.SetOutput(output, true)
+            native_ok = true
+          rescue Exception
+            begin
+              voice.AudioOutput = output
+              native_ok = true
+            rescue Exception
+            end
+          end
+        end
+        bridge_ok = SapiBridge.set_output(output.Id.to_s) if defined?(SapiBridge) && @voice_backend == :bridge && output != nil
       end
-      0
+      negotiate_native_audio_format if @voice_backend != :bridge
+      (@voice_backend == :bridge ? bridge_ok : native_ok) ? 0 : 1
     rescue Exception
       1
     end
@@ -189,6 +251,10 @@ class Sapi < SpeechOutput
     end
 
     def bookmark
+      if @voice_backend == :bridge
+        status = SapiBridge.status
+        return status == nil ? "" : status[:bookmark].to_s
+      end
       return "" if voice == nil
       voice.Status.LastBookmark.to_s
     rescue Exception
@@ -219,14 +285,54 @@ class Sapi < SpeechOutput
           token.GetAttribute("Language").to_s,
           token.GetAttribute("Age").to_s,
           token.GetAttribute("Gender").to_s,
-          token.GetAttribute("Vendor").to_s
+          token.GetAttribute("Vendor").to_s,
+          :native,
+          nil
         )
       rescue Exception
         nil
       end.compact
     end
 
+    def bridge_voices
+      @bridge_voices ||= if defined?(SapiBridge)
+        SapiBridge.voices.map do |voice|
+          Voice.new(
+            voice.id,
+            voice.name,
+            voice.language,
+            voice.age,
+            voice.gender,
+            voice.vendor,
+            :bridge,
+            voice.bitness
+          )
+        end
+      else
+        []
+      end
+    rescue Exception => e
+      Log.warning("Could not load bridged SAPI voices: #{e.class}: #{e.message}") if defined?(Log)
+      []
+    end
+
+    def available_voices
+      seen = {}
+      (native_voices + bridge_voices).each_with_object([]) do |voice, result|
+        id = voice.id.to_s.downcase
+        next if id == "" || seen[id]
+        seen[id] = true
+        result << voice
+      end
+    end
+
     def voices
+      available_voices.map do |voice|
+        SpeechOutput::Voice.new(id: voice.voiceid, name: voice.name, output: self, native: voice)
+      end
+    end
+
+    def stream_voices
       native_voices.map do |voice|
         SpeechOutput::Voice.new(id: voice.voiceid, name: voice.name, output: self, native: voice)
       end
@@ -237,7 +343,7 @@ class Sapi < SpeechOutput
     end
 
     def usable?
-      available? && voice != nil
+      voice != nil
     end
 
     def rate_supported?
@@ -261,11 +367,11 @@ class Sapi < SpeechOutput
     end
 
     def stream_output_supported?
-      available?
+      ensure_win32ole && voice != nil
     end
 
     def render_to_stream(text, voice: nil, rate: nil, volume: nil, pitch: nil)
-      raise RuntimeError, "SAPI5 is unavailable" unless available?
+      raise RuntimeError, "SAPI5 is unavailable" unless ensure_win32ole
       render_voice = WIN32OLE.new("SAPI.SpVoice")
       render_stream = WIN32OLE.new("SAPI.SpMemoryStream")
       render_format = WIN32OLE.new("SAPI.SpAudioFormat")
@@ -302,7 +408,7 @@ class Sapi < SpeechOutput
     def apply_voice(voice)
       voice = voice.to_s
       reset
-      native_voices.each_with_index do |sapi_voice, index|
+      available_voices.each_with_index do |sapi_voice, index|
         if sapi_voice.voiceid == voice
           set_voice(index)
           return true
@@ -312,7 +418,7 @@ class Sapi < SpeechOutput
     end
 
     def apply_default_voice(lcid = current_lcid)
-      native_voices.each_with_index do |sapi_voice, index|
+      available_voices.each_with_index do |sapi_voice, index|
         if sapi_voice.language.to_i(16) == lcid.to_i
           set_voice(index)
           return true
@@ -320,6 +426,7 @@ class Sapi < SpeechOutput
       end
       false
     end
+
     def speak_text(text, method: 1, spelling: false, interrupt: true, pitch: 50)
       speak_ssml(ssml_for(text, spelling, pitch), interrupt: interrupt)
     end
@@ -347,7 +454,62 @@ class Sapi < SpeechOutput
       [nil, nil]
     end
 
+    def shutdown
+      SapiBridge.shutdown if defined?(SapiBridge)
+      @voice = nil
+      @voice_id = nil
+      @voice_backend = nil
+      @paused = false
+    rescue Exception
+    end
+
+    def deactivate
+      SapiBridge.release if defined?(SapiBridge)
+      if @voice_backend != :bridge
+        begin
+          @voice.Speak("", SPF_ASYNC | SPF_PURGEBEFORESPEAK | SPF_IS_NOT_XML) if @voice != nil
+        rescue Exception
+        end
+      end
+      @voice_backend = nil
+      @paused = false
+    end
+
     private
+
+    def negotiate_native_audio_format(target=voice)
+      return if target == nil
+      target.AllowAudioOutputFormatChangesOnNextSet = true
+      target.AudioOutputStream = target.AudioOutputStream
+    rescue Exception
+    end
+
+    def speak_with_flags(text, flags)
+      @paused = false
+      if @voice_backend == :bridge
+        return 0 if SapiBridge.speak(text, flags)
+        return 1 if SapiBridge.failed?
+        return 1 unless activate_bridge(RuntimeError.new("SAPI bridge stopped"))
+        return SapiBridge.speak(text, flags) ? 0 : 1
+      end
+      return 1 if voice == nil
+      voice.Speak(text, flags)
+      0
+    rescue Exception => error
+      return 1 unless activate_bridge(error)
+      SapiBridge.speak(text, flags) ? 0 : 1
+    end
+
+    def activate_bridge(native_error)
+      return false unless defined?(SapiBridge) && @voice_id.to_s != ""
+      return false unless SapiBridge.set_voice(@voice_id)
+      @voice_backend = :bridge
+      reapply_device
+      set_rate(@rate) if @rate != nil
+      set_volume(@volume) if @volume != nil
+      Log.debug("Native SAPI failed, queued bridge activation for #{@voice_id}: #{native_error.class}: #{native_error.message}") if defined?(Log)
+      true
+    end
 
     def current_lcid
       GET_USER_DEFAULT_LCID.call

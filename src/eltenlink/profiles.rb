@@ -26,6 +26,7 @@ module EltenLink
     :visiting_card,
     :status,
     :main_honor,
+    :ban,
     keyword_init: true
   )
 
@@ -37,6 +38,8 @@ module EltenLink
         visiting_card = {} unless visiting_card.is_a?(Hash)
         status = data["status"]
         status = {} unless status.is_a?(Hash)
+        ban = data["ban"]
+        ban = nil unless ban.is_a?(Hash)
         main_honor = data["main_honor"]
 
         UserCard.new(
@@ -49,7 +52,12 @@ module EltenLink
             online: Client.truthy?(status["online"]),
             sponsor: Client.truthy?(status["sponsor"])
           ),
-          main_honor: Honors.parse(main_honor, klass: UserCardHonor)
+          main_honor: Honors.parse(main_honor, klass: UserCardHonor),
+          ban: ban == nil ? nil : BanInfo.new(
+            banned: Client.truthy?(ban["banned"]),
+            totime: ban["totime"],
+            reason: ban["reason"]
+          )
         )
       end
 

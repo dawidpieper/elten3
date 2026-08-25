@@ -3,6 +3,7 @@
 /CMakeUserPresets.json
 /private/
 /Gemfile.lock
+/bin/ext/
 
 # macOS
 .DS_Store

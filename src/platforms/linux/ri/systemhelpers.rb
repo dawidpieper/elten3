@@ -1,5 +1,5 @@
 # A part of Elten - EltenLink / Elten Network desktop client.
-# Copyright (C) 2026 Dawid Pieper
+# Copyright (C) 2014-2026 Dawid Pieper, Arkadiusz Koziol
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
 
 module LinuxSystemNative
@@ -35,6 +35,29 @@ module EltenSystemHelpers
   SYSTEM_LIBRARY_SONAMES = {
     "sdl2" => ["libSDL2-2.0.so.0", "libSDL2.so"]
   }.freeze unless const_defined?(:SYSTEM_LIBRARY_SONAMES)
+
+  # The codecs we ship are stored under their soname rather than a flat name,
+  # because the audio server's libsndfile asks for them by that name and finds
+  # our directory first through LD_LIBRARY_PATH. Naming the files anything else
+  # leaves it loading the distribution's copy alongside ours, and two versions
+  # of libopus in one process crash the moment an encoder is created. The names
+  # here are what we ask for; the files answer to what the loader asks for.
+  BUNDLED_LIBRARY_SONAMES = {
+    "ogg" => ["libogg.so.0"],
+    "libogg" => ["libogg.so.0"],
+    "opus" => ["libopus.so.0"],
+    "libopus" => ["libopus.so.0"],
+    "vorbis" => ["libvorbis.so.0"],
+    "libvorbis" => ["libvorbis.so.0"],
+    "vorbisenc" => ["libvorbisenc.so.2"],
+    "libvorbisenc" => ["libvorbisenc.so.2"],
+    "speexdsp" => ["libspeexdsp.so.1"],
+    "libspeexdsp" => ["libspeexdsp.so.1"],
+    "zstd" => ["libzstd.so.1"],
+    "libzstd" => ["libzstd.so.1"],
+    "lzma" => ["liblzma.so.5"],
+    "liblzma" => ["liblzma.so.5"]
+  }.freeze unless const_defined?(:BUNDLED_LIBRARY_SONAMES)
 
   class << self
     def current_lcid
@@ -223,6 +246,8 @@ module EltenSystemHelpers
       base = File.basename(raw)
       stem = base.sub(/\.(dll|dylib|so)\z/i, "")
       names = [base]
+      bundled = BUNDLED_LIBRARY_SONAMES[stem.downcase]
+      names.concat(bundled) if bundled != nil
       sonames = SYSTEM_LIBRARY_SONAMES[stem.downcase]
       names.concat(sonames) if sonames != nil
       names << "#{stem}.so"
@@ -325,8 +350,8 @@ module EltenSystemHelpers
       false
     end
 
-    def autostart_command(path)
-      command_line_join([path.to_s])
+    def autostart_command(path, hidden: false)
+      command_line_join([path.to_s, hidden ? "--hidden" : nil].compact)
     end
 
     def sync_autostart(_enabled, _command)

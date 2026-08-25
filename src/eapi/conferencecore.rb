@@ -1,5 +1,5 @@
 # A part of Elten - EltenLink / Elten Network desktop client.
-# Copyright (C) 2014-2020 Dawid Pieper
+# Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
@@ -59,6 +59,17 @@ end
 
 def ogg_packet_set_eos(buffer, e_o_s)
   EltenNativeStructs.set_dword(buffer, EltenNativeStructs::POINTER_SIZE == 8 ? 16 : 12, e_o_s)
+end
+
+def wake_and_join_thread(thread)
+  return if thread==nil || thread==Thread.current
+  loop do
+    begin
+      thread.wakeup if thread.alive?
+    rescue ThreadError
+    end
+    break if thread.join(0.05)!=nil
+  end
 end
 end
 
@@ -124,6 +135,7 @@ setvolume(volume)
 @starttime=Time.now.to_f
 @lasttime=Time.now.to_f
 @ogg_mutex=Mutex.new
+@closing=false
 @thread=Thread.new{thread}
 @chat_temp=""
 end
@@ -272,6 +284,7 @@ $ogg_stream_clear.call(@ogg)
 }
 end
 def put(frame, type=1, x=-1, y=-1, frame_id=0, index=-1)
+return if @closing
 @lastindex||=0
 if @thread!=nil && @thread.status!=false
 n=index
@@ -284,6 +297,9 @@ end
 end
 end
 def free
+@closing=true
+EltenAPI::Conference::Core.wake_and_join_thread(@thread)
+@thread=nil
 end_save if @ogg!=nil
 @mutex.synchronize {
 Bass::BASS_StreamFree.call(@stream)
@@ -295,7 +311,6 @@ Bass::BASS_StreamFree.call(@preprocessor) if @preprocessor!=nil
 @stream=nil
 @preprocessor = @preencoder = @predecoder = @decoder=nil
 }
-@thread.exit if @thread!=nil
 rescue Exception
 log(2, "Conference: Transmitter free error: "+$!.to_s+" "+$@.to_s)
 end
@@ -369,12 +384,13 @@ end
 private
 def thread
 last_frame_id=0
-loop {
+until @closing
 sleep(0.001)
+break if @closing
 ab=$conferencesaudiobuffer||0
 ab=0 if ab<0
 ab=400 if ab>400
-while @queue.size>ab
+while @queue.size>ab && !@closing
 key=@queue.keys.sort.first
 ar = @queue[key]
 frame, type, x, y, index, frame_id = ar
@@ -521,10 +537,10 @@ Bass::BASS_ChannelGetData.call(stream, dt, dt.bytesize)
 end
 }
 end
-Thread.stop
-}
+Thread.stop if !@closing
+end
 rescue Exception
-log(2, "Conference: Decoding error: "+$!.to_s+" "+$@.to_s)
+log(2, "Conference: Decoding error: "+$!.to_s+" "+$@.to_s) if !@closing
 end
 end
 
@@ -534,7 +550,7 @@ attr_reader :listener_x, :listener_y, :stream_x, :stream_y, :user_x, :user_y
 attr_reader :streamid, :userid, :username
 attr_accessor :name
 attr_reader :losses
-def initialize(channels, framesize, preskip, starttime, spatialization, position, x, y, streamid, name, userid, username, volume=nil)
+def initialize(channels, framesize, preskip, starttime, spatialization, position, x, y, streamid, name, userid, username, volume=nil, master_volume=100)
 @channels=channels
 @framesize=framesize
 @lastframetime=starttime
@@ -569,6 +585,7 @@ ch=2 if spatialization==1 || spatialization==2
 @hrtf_effect=nil
 @spatialization=spatialization
 @mutex = Mutex.new
+@master_volume=[[master_volume, 0].max, 100].min
 setvolume(volume)
 @sec=0
 @fsec=0
@@ -576,6 +593,7 @@ setvolume(volume)
 @starttime=Time.now.to_f
 @lasttime=Time.now.to_f
 @ogg_mutex=Mutex.new
+@closing=false
 @thread=Thread.new{thread}
 end
 def set_mixer(mixer)
@@ -589,6 +607,11 @@ else
 @volume=100
 end
 update_position
+end
+def master_volume=(volume)
+@master_volume=[[volume, 0].max, 100].min
+update_position
+@master_volume
 end
 def set_user_position(x,y)
 @user_x, @user_y = x, y
@@ -604,8 +627,14 @@ def update_position
 @listener_x=@position.x
 @listener_y=@position.y
 @listener_dir = @position.dir
-if @spatialization==0 || @spatialization==1
-if @listener_y>0 && @listener_x>0
+vl=@volume/100.0
+if @volume>100
+vl=1+(@volume-100)/10.0
+end
+vl*=@master_volume/100.0
+vol=vl
+pos=nil
+if (@spatialization==0 || @spatialization==1) && @listener_y>0 && @listener_x>0
 if @stream_x>0
 @rx=(@stream_x-@listener_x)/8.0
 @ry=(@stream_y-@listener_y)/8.0
@@ -627,22 +656,15 @@ end
 pos=@rx
 pos=-1 if pos<-1
 pos=1 if pos>1
-vl=@volume/100.0
-if @volume>100
-vl=1+(@volume-100)/10.0
-end
 vol=(1-Math::sqrt((@ry.abs*0.5)**2+(@rx.abs*0.5)**2))*vl
 vol=0 if vol<0
+end
 @mutex.synchronize {
-if @spatialization==0
+if @spatialization==0 && pos!=nil
 Bass::BASS_ChannelSetAttribute.call(@stream, 3, pos)
 end
-if @spatialization==0 || @spatialization==1
 Bass::BASS_ChannelSetAttribute.call(@stream, 2, vol)
-end
 }
-end
-end
 end
 def set_hrtf(hrtf)
 @mutex.synchronize {
@@ -725,6 +747,7 @@ $ogg_stream_clear.call(@ogg)
 }
 end
 def put(frame, frame_id=0, index=-1)
+return if @closing
 @lastindex||=0
 if @thread!=nil && @thread.status!=false
 n=index
@@ -737,6 +760,9 @@ end
 end
 end
 def free
+@closing=true
+EltenAPI::Conference::Core.wake_and_join_thread(@thread)
+@thread=nil
 end_save if @ogg!=nil
 @mutex.synchronize {
 Bass::BASS_StreamFree.call(@stream)
@@ -747,7 +773,6 @@ Bass::BASS_StreamFree.call(@preprocessor) if @preprocessor!=nil
 @stream=nil
 @preprocessor = @preencoder = @predecoder = @decoder=nil
 }
-@thread.exit if @thread!=nil
 rescue Exception
 log(2, "Conference: Transmitter free error: "+$!.to_s+" "+$@.to_s)
 end
@@ -824,12 +849,13 @@ end
 private
 def thread
 last_frame_id=0
-loop {
+until @closing
 sleep(0.001)
+break if @closing
 ab=$conferencesaudiobuffer||0
 ab=0 if ab<0
 ab=400 if ab>400
-while @queue.size>ab
+while @queue.size>ab && !@closing
 key=@queue.keys.sort.first
 ar = @queue[key]
 frame, index, frame_id = ar
@@ -950,10 +976,10 @@ Bass::BASS_ChannelGetData.call(stream, dt, dt.bytesize)
 end
 }
 end
-Thread.stop
-}
+Thread.stop if !@closing
+end
 rescue Exception
-log(2, "Conference: Decoding error: "+$!.to_s+" "+$@.to_s)
+log(2, "Conference: Decoding error: "+$!.to_s+" "+$@.to_s) if !@closing
 end
 end
 
@@ -974,6 +1000,7 @@ def initialize(id, resid, position, transmitter_x, transmitter_y, spatialization
 @hrtf_effect=nil
 @spatialization=spatialization
 @mutex = Mutex.new
+@closing=false
 update_position
 @thread=Thread.new{thread}
 end
@@ -1017,13 +1044,15 @@ def set_hrtf(hrtf)
 }
 end
 def free
+@closing=true
+EltenAPI::Conference::Core.wake_and_join_thread(@thread)
+@thread=nil
 @mutex.synchronize {
 Bass::BASS_StreamFree.call(@stream)
 Bass::BASS_StreamFree.call(@source) if @source!=nil && @source!=0
 Bass::BASS_StreamFree.call(@source_mixer)
 @stream=@source=nil
 }
-@thread.exit if @thread!=nil
 rescue Exception
 log(2, "Conference: Object free error: "+$!.to_s+" "+$@.to_s)
 end
@@ -1034,7 +1063,7 @@ Bass::BASS_Mixer_StreamAddChannel.call(@source_mixer, @source, 0)
 queue="".b
 fsize=48*@framesize*2*4
 buf="\0"*fsize
-loop {
+until @closing
 if (sz=Bass::BASS_ChannelGetData.call(@source_mixer, buf, fsize))>0
 queue += buf.byteslice(0...sz)
 end
@@ -1070,9 +1099,9 @@ sleep(0.02)
 end
 }
 end
-}
+end
 rescue Exception
-log(2, "Conference: ChannelObject error: "+$!.to_s+" "+$@.to_s)
+log(2, "Conference: ChannelObject error: "+$!.to_s+" "+$@.to_s) if !@closing
 end
 end
 
@@ -1169,12 +1198,16 @@ def playing?
 end
 def play
 return if @mixer==nil || @mixer==0
-Bass::BASS_Mixer_StreamAddChannel.call(@mixer, @stream, 0)
-@paused=false
+if @paused
+  flags = Bass::BASS_Mixer_ChannelFlags.call(@stream, 0, Bass::BASS_MIXER_CHAN_PAUSE)
+  @paused=false if flags!=-1 && flags!=0xffffffff
+else
+  @paused=false if Bass::BASS_Mixer_StreamAddChannel.call(@mixer, @stream, 0)!=0
+end
 end
 def pause
-Bass::BASS_Mixer_ChannelRemove.call(@stream)
-@paused=true
+flags = Bass::BASS_Mixer_ChannelFlags.call(@stream, Bass::BASS_MIXER_CHAN_PAUSE, Bass::BASS_MIXER_CHAN_PAUSE)
+@paused=true if flags!=-1 && flags!=0xffffffff
 end
 end
 
@@ -1259,7 +1292,7 @@ end
 class OutStream
 attr_accessor :x, :y, :frame_id, :bytes_remaining
 attr_reader :name, :id, :mutex, :buf, :channels, :output, :listener, :encoder, :sources, :locally_muted, :start_time
-def initialize(name, id, channels, x, y)
+def initialize(name, id, channels, x, y, master_volume=100)
 @name, @id, @x, @y = name.encode("UTF-8", invalid: :replace, undef: :replace), id, x, y
 @buf = ""
 @bytes_remaining=0
@@ -1278,6 +1311,8 @@ Bass::BASS_Mixer_StreamAddChannel.call(@output, @out, 0)
 @sources=[]
 @locally_muted=false
 @relvolume=1
+@master_volume=[[master_volume, 0].max, 100].min
+self.volume=100
 end
 def add_source(source)
 source.set_mixer(@mixer)
@@ -1286,16 +1321,19 @@ return source
 end
 def add_file(file)
 s=StreamSourceFile.new(file)
+s.volume=100
 add_source(s)
 return s
 end
 def add_url(url)
 s=StreamSourceURL.new(url)
+s.volume=100
 add_source(s)
 return s
 end
 def add_card(cardid)
 s=StreamSourceCard.new(cardid)
+s.volume=100
 add_source(s)
 return s
 end
@@ -1305,6 +1343,18 @@ if s!=nil
 s.free
 @sources.delete(s)
 end
+end
+def toggle_source(source)
+return nil if !@sources.include?(source)
+@mutex.synchronize {
+source.toggle
+if !active_source?
+@bytes_remaining=0
+end
+}
+end
+def active_source?
+@sources.any?{|source|!source.toggleable? || source.playing?}
 end
 def set_user_position(x, y, dir)
 rx=0
@@ -1354,9 +1404,21 @@ vol=0 if vol<0
 @mutex.synchronize {
 Bass::BASS_ChannelSetAttribute.call(@out, 2, (vol/100.0))
 if !@locally_muted
-Bass::BASS_ChannelSetAttribute.call(@listener, 2, (vol/100.0*@relvolume))
+Bass::BASS_ChannelSetAttribute.call(@listener, 2, (vol/100.0*@master_volume/100.0*@relvolume))
 end
 }
+vol
+end
+def master_volume=(vol)
+vol=100 if vol>100
+vol=0 if vol<0
+@master_volume=vol
+unless @locally_muted
+current_volume=volume
+@mutex.synchronize {
+Bass::BASS_ChannelSetAttribute.call(@listener, 2, (current_volume/100.0*@master_volume/100.0*@relvolume))
+}
+end
 vol
 end
 def locally_muted=(mt)
@@ -1367,7 +1429,7 @@ Bass::BASS_ChannelSetAttribute.call(@listener, 2, 0)
 else
 vol=volume
 @mutex.synchronize {
-Bass::BASS_ChannelSetAttribute.call(@listener, 2, (vol/100.0*@relvolume))
+Bass::BASS_ChannelSetAttribute.call(@listener, 2, (vol/100.0*@master_volume/100.0*@relvolume))
 }
 end
 @locally_muted = (mt==true)
@@ -1388,6 +1450,9 @@ end
 end
 
 def initialize(nick=nil)
+@closing=false
+@freed=false
+@free_mutex=Mutex.new
 @whisper=0
 @channels=0
 @position = ChannelPosition.new
@@ -1500,6 +1565,12 @@ end
 def get_source(ind, sub)
 return nil if @outstreams[ind]==nil
 return @outstreams[ind].sources[sub]
+end
+def toggle_source(source)
+outstream=@outstreams.find{|stream|stream.sources.include?(source)}
+return outstream.toggle_source(source) if outstream!=nil
+return nil if !@sources.include?(source)
+source.toggle
 end
 def pushtotalk
 return @pushtotalk
@@ -1640,21 +1711,21 @@ end
 end
 def add_file(file)
 s=StreamSourceFile.new(file)
-s.volume=@stream_volume
+s.volume=100
 @sources.push(s)
 s.set_mixer(@stream_mixer)
 return s
 end	
 def add_url(url)
 s=StreamSourceURL.new(url)
-s.volume=@stream_volume
+s.volume=100
 @sources.push(s)
 s.set_mixer(@stream_mixer)
 return s
 end	
 def add_card(cardid)
 s=StreamSourceCard.new(cardid)
-s.volume=@stream_volume
+s.volume=100
 @sources.push(s)
 s.set_mixer(@stream_mixer)
 return s
@@ -1675,7 +1746,7 @@ if file!=nil
 remove_stream if filestream!=nil
 @stream_mutex.synchronize {
 s=StreamSourceFile.new(file)
-s.volume=@stream_volume
+s.volume=100
 @sources.push(s)
 s.set_mixer(@stream_mixer)
 }
@@ -1759,30 +1830,23 @@ set_stream
 end
 end
 def stream_volume
-return @stream_volume if filestream==nil
-vol=0
-@stream_mutex.synchronize {
-vl=[0].pack("f")
-Bass::BASS_ChannelGetAttribute.call(filestream.stream, 2, vl)
-vol=(vl.unpack("f").first*100).round
-}
-return vol
+@stream_volume
 end
 def stream_volume=(vol)
-return if filestream==nil
 vol=100 if vol>100
 vol=0 if vol<0
-@stream_mutex.synchronize {
-Bass::BASS_ChannelSetAttribute.call(filestream.stream, 2, (vol/100.0))
 @stream_volume=vol
+@stream_mutex.synchronize {
+Bass::BASS_ChannelSetAttribute.call(@stream_mixer_listener, 2, (vol/100.0))
 }
+@streams.each_value{|stream|stream.master_volume=vol}
+@outstreams.each{|stream|stream.master_volume=vol}
 vol
 end
 def stream_add_empty(name="", x=0, y=0)
 id=@voip.stream_add(name, 2, x, y)
 return nil if id==nil
-s=OutStream.new(name, id, 2, x, y)
-s.volume=@stream_volume
+s=OutStream.new(name, id, 2, x, y, @stream_volume)
 streams_callback
 return s
 end
@@ -2076,28 +2140,51 @@ def dir=(d)
 d
 end
 def free(subs=true)
-calling_stop
-@output_thread.exit if @output_thread!=nil
+@free_mutex.synchronize do
+return if @freed
+@closing=true
 begin
-@recorder_thread.exit if @recorder_thread!=nil
+calling_stop
+rescue Exception
+log(2, "Conference: calling stop error: "+$!.to_s+" "+$@.to_s)
+end
 if subs
-for t in @transmitters.values
-t.free
+begin
+@voip.free
+rescue Exception
+log(2, "Conference: VoIP shutdown error: "+$!.to_s+" "+$@.to_s)
 end
-for s in @streams.values
-s.free
 end
-for s in @sources
-s.free
+workers=[@output_thread, @recorder_thread, @saver_thread, @processor_thread]
+workers.each do |thread|
+begin
+EltenAPI::Conference::Core.wake_and_join_thread(thread)
+rescue Exception
+log(2, "Conference: worker shutdown error: "+$!.to_s+" "+$@.to_s)
 end
-for o in @objects.keys
-@objects[o].free
 end
+@output_thread=@recorder_thread=@saver_thread=@processor_thread=nil
+if subs
+begin
+end_save if @saver_file!=nil
+rescue Exception
+log(2, "Conference: save close error: "+$!.to_s+" "+$@.to_s)
+end
+end
+begin
+if subs
+@transmitters.each_value{|transmitter|transmitter.free}
+@streams.each_value{|stream|stream.free}
+@sources.each{|source|source.free}
+@objects.each_value{|object|object.free}
+@transmitters.clear
+@streams.clear
+@sources.clear
+@objects.clear
 end
 rescue Exception
 log(2, "Conference: subs error: "+$!.to_s+" "+$@.to_s)
 end
-@saver_thread.exit if @saver_thread!=nil
 begin
 shoutcast_stop
 Bass::BASS_ChannelStop.call(@record)
@@ -2106,19 +2193,18 @@ Bass::BASS_StreamFree.call(@recordstream)
 Bass::BASS_StreamFree.call(@outstreams_mixer)
 Bass::BASS_StreamFree.call(@channel_mixer)
 Bass::BASS_StreamFree.call(@whisper_mixer)
-for s in @outstreams
-s.free
-@outstreams.delete(s)
-end
+@outstreams.each{|stream|stream.free}
+@outstreams.clear
 if subs
-@encoder_mutex.synchronize {
+@encoder_mutex.synchronize do
 @encoder.free if @encoder!=nil
 @speexdsp.free if @speexdsp!=nil
 @speexdsp_echo.free if @speexdsp_echo!=nil
 @hrtf.free if @hrtf!=nil
-}
 end
-Bass::BASS_StreamFree.call(@whisper_sound) if @whisper_sound!=nil
+end
+Bass.free_stream(@whisper_sound) if @whisper_sound!=nil
+@whisper_sound=nil
 rescue Exception
 log(2, "Conference: Free error: "+$!.to_s+" "+$@.to_s)
 end
@@ -2132,9 +2218,7 @@ Bass::BASS_StreamFree.call(@output_mixer)
 rescue Exception
 log(2, "Conference: Free error: "+$!.to_s+" "+$@.to_s)
 end
-@voip.free if subs
-if subs
-end_save if @saver_file!=nil
+@freed=true
 end
 end
 def list_channels
@@ -2420,6 +2504,7 @@ Bass::BASS_ChannelSetAttribute.call(@stream_mixer, 13, 0.1)
 @stream_mixer_listener = Bass::BASS_Split_StreamCreate.call(@stream_mixer, 0x200000, nil)
 Bass::BASS_ChannelSetAttribute.call(@stream_mixer_listener, 5, 1)
 Bass::BASS_ChannelSetAttribute.call(@stream_mixer_listener, 13, 0.1)
+Bass::BASS_ChannelSetAttribute.call(@stream_mixer_listener, 2, (@stream_volume/100.0))
 @stream_mixer_uploader = Bass::BASS_Split_StreamCreate.call(@stream_mixer, 0x200000, nil)
 Bass::BASS_ChannelSetAttribute.call(@stream_mixer_uploader, 5, 1)
 Bass::BASS_ChannelSetAttribute.call(@stream_mixer_uploader, 13, 0.1)
@@ -2480,6 +2565,7 @@ end
 return r
 end
 def onreceive(userid, type, message, p1, p2, p3, p4, index)
+return if @closing
 if type==1
 pos_x=p1
 pos_y=p2
@@ -2585,6 +2671,7 @@ end
 end
 end
 def onstatus(latency,sendbytes,receivedbytes,curlost,curpackets,time)
+return if @closing
 if @fec_enabled && Time.now.to_f-@fec_last_update>=10.0
 measured_loss=packetloss
 @fec_loss=@fec_loss*0.7+measured_loss*0.3
@@ -2606,6 +2693,7 @@ status['time']=time
 @status_hooks.each{|h|h.call(status)} if @status_hooks!=nil
 end
 def onping(t)
+return if @closing
 @ping_hooks.each{|h|h.call(t)}
 end
 def round_table_direction(index, listener_index, count)
@@ -2618,6 +2706,7 @@ length=Math.sqrt(x*x+y*y)
 end
 private :round_table_direction
 def onparams(params)
+return if @closing
 @position.mutex.synchronize {
 @encoder_mutex.synchronize {
 if params['channel'].is_a?(Hash)
@@ -2786,7 +2875,7 @@ else
 log(-1, "Conference: registering new stream #{s['name']}")
 username=""
 username=@transmitters[s['user']].username if @transmitters[s['user']]!=nil
-@streams[sid] = Stream.new(s['channels'], params['channel']['stream_framesize'], @encoder.preskip, @starttime, params['channel']['spatialization'], @position, s['x'], s['y'], s['id'], s['name'], s['user'], username)
+@streams[sid] = Stream.new(s['channels'], params['channel']['stream_framesize'], @encoder.preskip, @starttime, params['channel']['spatialization'], @position, s['x'], s['y'], s['id'], s['name'], s['user'], username, nil, @stream_volume)
 @streams[sid].set_hrtf(@hrtf) if params['channel']['spatialization']==1 || params['channel']['spatialization']==2
 @streams[sid].set_mixer(@channel_mixer)
 @streams[sid].set_user_position(@transmitters[s['user']].transmitter_x, @transmitters[s['user']].transmitter_y) if @transmitters[s['user']]!=nil and @transmitters[s['user']].transmitter_x>0
@@ -2863,15 +2952,7 @@ return true if $disableconferencemiconrecord==1 && $recording==true
 return false if @whisper!=0
 if @pushtotalk==true
 return true if @pushtotalk_keys.size==0
-suc=true
-$neededkeys = @pushtotalk_keys
-for k in @pushtotalk_keys
-if $conference_key_state[k]==false
-suc=false
-break
-end
-end
-return !suc
+return $conference_pushtotalk_held != true
 end
 return false
 end
@@ -2880,8 +2961,9 @@ bufsize = 384000
 buf="\0"*bufsize
 queued = "".b
 vorqueued="".b
-loop {
+until @closing
 sleep(@sltime)
+break if @closing
 sf=@framesize
 sf=2.5 if sf==0 || sf==nil
 sf=@speexdsp_framesize if @speexdsp_framesize!=nil and @speexdsp_framesize>0
@@ -2936,15 +3018,16 @@ else
 vorqueued="".b
 end
 reset if sz>96000
-}
+end
 end
 def output_thread
 bufsize = 384000
 buf="\0"*bufsize
 audio=""
 packets=[]
-loop {
+until @closing
 sleep(0.01)#@sltime)
+break if @closing
 maxBytes=0
 if @output!=nil && (sz=Bass::BASS_ChannelGetData.call(@output, buf, bufsize))>0
 maxBytes=sz
@@ -3008,14 +3091,14 @@ end
 end
 for s in @outstreams
 if s.encoder!=nil && !s.encoder.closed? && @bitrate!=0 && @stream_bitrate!=0
-mb=maxBytes
-mb*=(s.channels.to_f/@channels)
-mb+=s.bytes_remaining
+s.mutex.synchronize {
+if s.active_source? && s.output!=nil && s.output!=0 && s.channels>0 && @channels!=nil && @channels>0
+mb=(maxBytes*(s.channels.to_f/@channels)).to_i+s.bytes_remaining
+if mb>0
 buf="\0"*mb if mb>buf.bytesize
 sz=Bass::BASS_ChannelGetData.call(s.output, buf, mb)
-s.bytes_remaining=mb-sz
-if s.output!=nil && s.channels>0 && sz>0
-s.mutex.synchronize {
+s.bytes_remaining=sz>0 ? [mb-sz, 0].max : 0
+if sz>0
 if @stream_framesize>0 and s.channels!=nil
 fs=@stream_framesize*48*2*s.channels
 au=(s.buf||"").b+buf.byteslice(0...sz).b
@@ -3044,25 +3127,34 @@ s.buf.replace(au.byteslice(index..-1))
 else
 s.buf.clear
 end
-}
 end
+else
+s.bytes_remaining=0
+end
+else
+s.bytes_remaining=0
+end
+}
 end
 end
 if packets.size>0
 @voip.send_multi(packets)
 packets.clear
 end
-}
+end
 rescue Exception
+if !@closing
 log(2, "Conference, output error: #{$!.to_s}, #{$@.to_s}")
 retry
+end
 end
 def saver_thread
 begin
 bufsize = 2097152
 buf="\0"*bufsize
-loop {
+until @closing
 sleep(1.2)
+break if @closing
 @saver_mutex.synchronize {
 if @saver!=nil && (sz=Bass::BASS_ChannelGetData.call(@saver, buf, bufsize))>0
 if @saver_file!=nil
@@ -3080,10 +3172,12 @@ Bass::BASS_Encode_Write.call(@shoutcast, buf, sz)
 end
 end
 }
-}
+end
 rescue Exception
+if !@closing
 log(2, "Conference saver: "+$!.to_s+" "+$@.to_s)
 retry
+end
 end
 end
 def processor_thread
@@ -3091,8 +3185,9 @@ bufsize = 2097152
 buf="\0"*bufsize
 audio=""
 audiobuf="".b
-loop {
+until @closing
 sleep(0.01)
+break if @closing
 sf=2.5
 sf=@speexdsp_framesize if @speexdsp_framesize!=nil and @speexdsp_framesize>0
 sf*=48*2*2
@@ -3105,6 +3200,6 @@ audiobuf=audiobuf.byteslice(-sf..-1) if audiobuf.bytesize>sf
 }
 end
 end
-}
+end
 end
 end

@@ -1,5 +1,5 @@
 # A part of Elten - EltenLink / Elten Network desktop client.
-# Copyright (C) 2026 Dawid Pieper
+# Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
 
 module OSXSystemNative
@@ -535,8 +535,8 @@ module EltenSystemHelpers
       false
     end
 
-    def autostart_command(path)
-      command_line_join([path.to_s])
+    def autostart_command(path, hidden: false)
+      command_line_join([path.to_s, hidden ? "--hidden" : nil].compact)
     end
 
     def sync_autostart(_enabled, _command)

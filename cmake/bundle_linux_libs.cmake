@@ -57,6 +57,26 @@ set(EXCLUDED_PATTERNS
   "^libgcc_s\\.so"
 )
 
+# Sonames the package already carries, stored in bin under exactly these names so
+# that everything in the process - including the audio server's libsndfile, which
+# searches LD_LIBRARY_PATH before its own RUNPATH - resolves to our copy. Copying
+# the host's file in beside ours would put a second, differently versioned library
+# under a name only one of the two can hold, so those are skipped below.
+#
+# Renaming our sonames to something private was tried and reverted: measured in a
+# Debian container, it guarantees the distribution loads its own copy alongside
+# ours, and two versions of libopus in one process segfault inside
+# opus_encoder_create. One copy shared by everyone is what works.
+set(COLLIDING_SONAMES
+  "libogg.so.0"
+  "libopus.so.0"
+  "libvorbis.so.0"
+  "libvorbisenc.so.2"
+  "libspeexdsp.so.1"
+  "libzstd.so.1"
+  "liblzma.so.5"
+)
+
 # Everything already staged in the package: the gem extensions the prepare-only
 # pass copied here, plus BASS and libruby copied in beside them.
 file(GLOB_RECURSE runtime_objects "${RUNTIME_DIR}/*.so")
@@ -98,6 +118,16 @@ foreach(object ${runtime_objects})
       endif()
     endforeach()
     if(excluded)
+      continue()
+    endif()
+
+    # We ship this one ourselves and rename it below so that nothing outside the
+    # package can pick it up. Copying the host's versioned file in beside ours
+    # would undo that in the same run: the runtime directory is on
+    # LD_LIBRARY_PATH, so the system's libsndfile would find a file answering to
+    # the colliding name right here and go back to mixing the build host's
+    # codecs into the machine's audio stack.
+    if(soname IN_LIST COLLIDING_SONAMES)
       continue()
     endif()
 
@@ -149,7 +179,13 @@ endif()
 
 # Re-glob: the copies made above are new files that need the same treatment,
 # since they depend on each other (libssl on libcrypto, brotli on brotlicommon).
-file(GLOB_RECURSE patch_targets "${RUNTIME_DIR}/*.so")
+# The pattern has to reach past ".so": those copies are named after their soname,
+# so they end in ".so.3" and the like. Missed here, a bundled libssl carries no
+# RUNPATH and looks for its libcrypto in system directories - pairing our copy of
+# one with the host's copy of the other, which is the mismatch this file exists
+# to prevent. Anything matched that turns out not to be an ELF object simply
+# fails below and is reported.
+file(GLOB_RECURSE patch_targets "${RUNTIME_DIR}/*.so*")
 
 set(patched 0)
 foreach(object ${patch_targets})
@@ -165,3 +201,4 @@ foreach(object ${patch_targets})
   endif()
 endforeach()
 message(STATUS "Set RUNPATH on ${patched} runtime objects")
+

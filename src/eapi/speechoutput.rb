@@ -81,14 +81,16 @@ class SpeechOutput
 
     def apply_current_voice
       output = current_output
+      outputs.each { |candidate| candidate.deactivate if candidate != output }
       apply_configured_voice(output)
       apply_output_settings(output)
       output
     end
 
     def apply_current_settings
-      outputs.each { |output| apply_output_settings(output) }
-      apply_current_voice
+      current = apply_current_voice
+      outputs.each { |output| apply_output_settings(output) if output != current }
+      current
     end
 
     def apply_output_settings(output)
@@ -200,6 +202,9 @@ class SpeechOutput
 
     def stop
       1
+    end
+
+    def deactivate
     end
 
     def speak_text(_text, method: 1, spelling: false, interrupt: true, pitch: 50)

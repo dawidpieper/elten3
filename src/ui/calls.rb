@@ -11,6 +11,7 @@ class CallWindow
       attr_reader :id, :caller, :channel, :password
       def initialize(id, caller, channel, password)
         @id, @caller, @channel, @password = id, caller, channel, password
+        @handled = false
         @form = Form.new([
         @st_caller = Static.new(p_("EAPI_UI", "%{user} is calling you")%{:user=>@caller}),
         @btn_answer = Button.new(p_("EAPI_UI", "Answer")),
@@ -19,11 +20,18 @@ class CallWindow
       end
       def update
         @form.update
-          cancel if @btn_reject.pressed?
+          if @btn_reject.pressed?
+            @handled = true
+            cancel
+          end
           if @btn_answer.pressed?
+            @handled = true
             cancel
             voicecall(@channel, @password)
             end
+        end
+        def handled?
+          @handled == true
         end
         def cancel
           EltenAPI::UI.call_sound_stop

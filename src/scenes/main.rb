@@ -76,25 +76,18 @@ class Scene_Main
       if $main_notifications_changed == true || notifications_changed
         $main_notifications_changed = false
         previous_section = current_main_section
-        focused_notifications = previous_section == :notifications
-        had_notifications = notifications_visible?
-        active = main_window_active?
         minimized = main_window_minimized?
-        notifications_load(false)
-        @focus_notifications_when_active = true if !had_notifications && notifications_visible? && !active
-        if focused_notifications
-          if @skip_next_notifications_change_say == true
-            @skip_next_notifications_change_say = false
-          elsif minimized
-            @focus_notifications_when_active = true
-          else
-            announce_after_notifications_reload(previous_section)
+        notifications_load(false, focus_policy: Configuration.mainnotificationfocus)
+        if minimized
+          current_section = current_main_section
+          if previous_section != :notifications && current_section == :notifications
+            @announce_notifications_after_restore = true
+          elsif previous_section == :notifications && current_section != :notifications
+            @announce_notifications_after_restore = false
           end
-        elsif active && current_main_section != previous_section
-          focus_current_control
         end
       end
-      focus_deferred_notifications_if_active
+      announce_notifications_after_restore_if_active
       feeds_load if Session.feeds_updated?
       update_current_main_control
       if key_pressed?(0x9)
@@ -234,14 +227,14 @@ rescue Exception
   false
 end
 
-def focus_deferred_notifications_if_active
-  return if @focus_notifications_when_active != true
-  return if !notifications_visible? || @notifications_sel == nil
+def announce_notifications_after_restore_if_active
+  return if @announce_notifications_after_restore != true
   return if main_window_minimized?
   return if !main_window_active?
 
-  @focus_notifications_when_active = false
-  @@focus = :notifications
+  @announce_notifications_after_restore = false
+  return if current_main_section != :notifications || @notifications_sel == nil
+
   @notifications_sel.focus
 end
 def update_current_main_control
@@ -264,6 +257,7 @@ end
 
 def notifications_load(fc=false, focus_policy: :keep_current)
   previous_visible_time = @@notifications_last_visible_time.to_i
+  selected_notification_key = current_notification_group&.key
   @@notification_index=@notifications_sel.index if @notifications_sel!=nil
   if !main_tab_enabled?(:notifications)
     @notification_groups = []
@@ -273,9 +267,7 @@ def notifications_load(fc=false, focus_policy: :keep_current)
     return
   end
   notifications = fetch_main_notifications
-  groups = build_notification_groups(notifications, include_revoked: false)
-  append_virtual_notification_groups(groups, collect_virtual_notification_groups, include_revoked: false)
-  @notification_groups = sort_notification_groups(groups)
+  @notification_groups = build_active_main_notification_groups(notifications)
   latest_time = latest_notification_group_time(@notification_groups)
   jump_to_notifications = focus_notifications_on_entry?(focus_policy, latest_time, previous_visible_time)
   @@notifications_last_visible_time = [previous_visible_time, notification_visibility_time(latest_time), latest_time].max
@@ -285,9 +277,8 @@ def notifications_load(fc=false, focus_policy: :keep_current)
     focus_current_control if fc
     return
   end
-  @@notification_index = [[@@notification_index.to_i, 0].max, [@notification_groups.size - 1, 0].max].min
+  @@notification_index = notification_reload_index(@notification_groups, selected_notification_key, @@notification_index)
   @notifications_sel = TableBox.new(notification_columns, notification_rows(@notification_groups), index: @@notification_index, header: p_("Notifications", "Notifications"), quiet: true)
-  apply_notification_group_states(@notifications_sel, @notification_groups)
   @notifications_sel.bind_context { |menu| notifications_context(menu) }
   if jump_to_notifications
     @@focus = :notifications
@@ -328,6 +319,12 @@ def current_notification_group
   @notification_groups[@notifications_sel.index]
 end
 
+def notification_reload_index(groups, selected_key, fallback_index)
+  matched_index = groups.to_a.index { |group| selected_key != nil && group.key == selected_key }
+  index = matched_index == nil ? fallback_index.to_i : matched_index
+  [[index, 0].max, [groups.to_a.size - 1, 0].max].min
+end
+
 def notifications_update
   return if @notifications_sel==nil
   if @notifications_sel.selected? || @notifications_sel.expanded?
@@ -345,7 +342,6 @@ def notifications_open
       previous_section = current_main_section
       notifications_load(false)
       announce_after_notifications_reload(previous_section)
-      @skip_next_notifications_change_say = true
     end
   end
 end
@@ -360,7 +356,6 @@ def notifications_revoke_current
       previous_section = current_main_section
       notifications_load(false)
       announce_after_notifications_reload(previous_section)
-      @skip_next_notifications_change_say = true
     end
   end
 end
@@ -388,7 +383,6 @@ def notifications_revoke_all
       previous_section = current_main_section
       notifications_load(false)
       announce_after_notifications_reload(previous_section)
-      @skip_next_notifications_change_say = true
     end
   end
 end

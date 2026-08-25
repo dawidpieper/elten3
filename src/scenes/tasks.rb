@@ -136,12 +136,16 @@ module TasksSceneHelpers
     end
     accepted = false
     plantime = nil
+    init_name = edt_name.text.to_s
+    init_desc = edt_description.text.to_s
     dialog_open
     loop do
       loop_update
       form.update
-      break if key_pressed?(:key_escape) ||
-        ((key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 7)
+      if key_pressed?(:key_escape) ||
+          ((key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 7)
+        break if (edt_name.text.to_s == init_name && edt_description.text.to_s == init_desc) || confirm(p_("Tasks", "Are you sure you want to close without saving?"))
+      end
       if (key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 6
         if edt_name.text.to_s.strip.empty?
           alert(p_("Tasks", "Enter a task name"))
@@ -327,12 +331,15 @@ class Scene_Tasks_Projects
     ]
     form = Form.new(fields)
     accepted = false
+    init_name = edt_name.text.to_s
     dialog_open
     loop do
       loop_update
       form.update
-      break if key_pressed?(:key_escape) ||
-        ((key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 2)
+      if key_pressed?(:key_escape) ||
+          ((key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 2)
+        break if edt_name.text.to_s == init_name || confirm(p_("Tasks", "Are you sure you want to close without saving?"))
+      end
       if (key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 1
         if edt_name.text.to_s.strip.empty?
           alert(p_("Tasks", "Enter a project name"))
