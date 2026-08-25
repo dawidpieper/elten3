@@ -54,7 +54,13 @@ stdownload
           }
           menu.option(p_("SoundThemes", "Delete"), nil, :del) {
                           confirm(p_("SoundThemes", "Are you sure you want to delete the sound theme %{soundtheme}?")%{ :soundtheme => @soundthemes[@sel.index].name}) {
-                File.delete(@soundthemes[@sel.index].file)
+                theme=@soundthemes[@sel.index]
+                File.delete(theme.file)
+                if Configuration.soundtheme!=nil && File.basename(theme.file, ".elsnd")==Configuration.soundtheme
+                  Configuration.soundtheme=nil
+                  use_soundtheme("")
+                  writeconfig("Interface", "SoundTheme", Configuration.soundtheme)
+                end
                 @return=true
                 main
                 }
