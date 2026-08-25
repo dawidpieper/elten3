@@ -8,7 +8,7 @@ msgstr ""
 "Project-Id-Version: Elten 3.0\n"
 "Report-Msgid-Bugs-To: dawidpieper@o2.pl\n"
 "POT-Creation-Date: 2026-08-24 15:02+0200\n"
-"PO-Revision-Date: 2026-08-25 18:04+0500\n"
+"PO-Revision-Date: 2026-08-25 18:24+0500\n"
 "Last-Translator: Danil Kostenkov <danilkostenkov38@gmail.com>\n"
 "Language-Team: monstricek, russiandan2019\n"
 "Language: ru\n"
@@ -13000,7 +13000,7 @@ msgstr "Лента обновлена"
 #: src/scenes/sounds.rb:62
 msgctxt "Sounds"
 msgid "Mentioned in a feed"
-msgstr "Упоминании в ленте"
+msgstr "Упоминание в ленте"
 
 #: src/scenes/sounds.rb:63
 msgctxt "Sounds"
