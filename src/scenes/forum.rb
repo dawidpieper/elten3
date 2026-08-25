@@ -4746,6 +4746,7 @@ class Scene_Forum_Trash
     return if thread == nil
 
     menu.option(p_("Forum", "Open")) { open_thread(thread) }
+    menu.option(p_("Forum", "Mass Actions"), nil, "\\") { mass_threads }
     if !thread.trashed && thread.contains_trashed_posts
       menu.option(p_("Forum", "Delete all trashed posts permanently")) {
         mutate(
@@ -4805,6 +4806,7 @@ class Scene_Forum_Trash
     return if post == nil
 
     menu.option(p_("Forum", "Show post")) { show_post }
+    menu.option(p_("Forum", "Mass Actions"), nil, "\\") { mass_posts }
     unless @page.trashed
       menu.option(p_("Forum", "Restore")) {
         mutate(
@@ -4840,6 +4842,129 @@ class Scene_Forum_Trash
         EltenLink::Forum.delete_post(elten_link, post_id: post.id, permanent: true)
       }
     }
+  end
+
+  def mass_threads
+    trashed = @threads.select(&:trashed)
+    if trashed.empty?
+      alert(p_("Forum", "No deleted threads to manage."))
+      return
+    end
+    form = Form.new([
+      lst_threads = ListBox.new(
+        trashed.map { |thread| thread.name },
+        header: p_("Forum", "Trash: %{group}") % { group: @group.name },
+        flags: ListBox::Flags::MultiSelection
+      ),
+      btn_restore = Button.new(p_("Forum", "Restore")),
+      btn_delete = Button.new(p_("Forum", "Delete permanently")),
+      btn_cancel = Button.new(_("Cancel"))
+    ])
+    form.cancel_button = btn_cancel
+    btn_cancel.on(:press) {
+      form.resume
+      @thread_list.focus
+    }
+    proceed = Proc.new { |action|
+      selected = lst_threads.multiselections.map { |i| trashed[i] }
+      if mass_threads_proceed(selected, action)
+        form.resume
+        refresh_threads
+      else
+        form.focus
+      end
+    }
+    btn_restore.on(:press) { proceed.call(:restore) }
+    btn_delete.on(:press) { proceed.call(:delete) }
+    form.wait
+  end
+
+  def mass_threads_proceed(threads, action)
+    if threads.empty?
+      alert(p_("Forum", "No threads selected"))
+      return false
+    end
+    case action
+    when :restore
+      question = np_("Forum", "Restore %{count} thread together with all its posts?", "Restore %{count} threads together with all their posts?", threads.size) % { count: threads.size }
+      success = p_("Forum", "The threads have been restored.")
+      operation = ->(thread) { EltenLink::Forum.restore_thread(elten_link, thread_id: thread.id) }
+    when :delete
+      question = np_("Forum", "Permanently delete %{count} thread together with all its posts? This cannot be undone.", "Permanently delete %{count} threads together with all their posts? This cannot be undone.", threads.size) % { count: threads.size }
+      success = p_("Forum", "The threads have been permanently deleted.")
+      operation = ->(thread) { EltenLink::Forum.delete_thread(elten_link, thread_id: thread.id, permanent: true) }
+    else
+      return false
+    end
+    ret = false
+    confirm(question) do
+      ret = forum_attempt(success) { threads.each { |thread| operation.call(thread) } }
+    end
+    ret
+  end
+
+  def mass_posts
+    return if @posts.empty?
+    fields = [
+      lst_posts = ListBox.new(
+        @posts.map { |post| post_label(post) },
+        header: p_("Forum", "Deleted posts in %{thread}") % { thread: @current_thread.name },
+        index: @post_list.index,
+        flags: ListBox::Flags::MultiSelection
+      )
+    ]
+    @posts.each_with_index do |post, post_index|
+      lst_posts.set_item_audio(post_index, post.audio_url) unless post.audio_url.to_s.empty?
+    end
+    btn_restore = nil
+    unless @page.trashed
+      btn_restore = Button.new(p_("Forum", "Restore"))
+      fields.push(btn_restore)
+    end
+    fields.push(btn_delete = Button.new(p_("Forum", "Delete permanently")))
+    fields.push(btn_cancel = Button.new(_("Cancel")))
+    form = Form.new(fields)
+    form.cancel_button = btn_cancel
+    btn_cancel.on(:press) {
+      form.resume
+      @post_list.focus
+    }
+    proceed = Proc.new { |action|
+      selected = lst_posts.multiselections.map { |i| @posts[i] }
+      if mass_posts_proceed(selected, action)
+        form.resume
+        refresh_posts
+      else
+        form.focus
+      end
+    }
+    btn_restore.on(:press) { proceed.call(:restore) } if btn_restore != nil
+    btn_delete.on(:press) { proceed.call(:delete) }
+    form.wait
+  end
+
+  def mass_posts_proceed(posts, action)
+    if posts.empty?
+      alert(p_("Forum", "No posts selected"))
+      return false
+    end
+    case action
+    when :restore
+      question = np_("Forum", "Restore %{count} post?", "Restore %{count} posts?", posts.size) % { count: posts.size }
+      success = p_("Forum", "The posts have been restored.")
+      operation = ->(post) { EltenLink::Forum.restore_post(elten_link, post_id: post.id) }
+    when :delete
+      question = np_("Forum", "Permanently delete %{count} post? This cannot be undone.", "Permanently delete %{count} posts? This cannot be undone.", posts.size) % { count: posts.size }
+      success = p_("Forum", "The posts have been permanently deleted.")
+      operation = ->(post) { EltenLink::Forum.delete_post(elten_link, post_id: post.id, permanent: true) }
+    else
+      return false
+    end
+    ret = false
+    confirm(question) do
+      ret = forum_attempt(success) { posts.each { |post| operation.call(post) } }
+    end
+    ret
   end
 
   def mutate(question, success_message, refresh_method)
