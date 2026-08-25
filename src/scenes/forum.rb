@@ -2839,12 +2839,12 @@ form.wait
     confirm_missing_tag = lambda {
       missing_tag_field = current_tag_fields.find { |field| field.index == 0 }
       return true if missing_tag_field == nil
-      if confirm(p_("Forum", "You haven't selected all tags. Do you want to select the missing tags?"))
+      if confirm(p_("Forum", "You haven't selected all tags. Do you want to send the thread anyway?"))
+        true
+      else
         form.index = form.fields.index(missing_tag_field)
         form.focus
         false
-      else
-        true
       end
     }
     confirm_closed_forum = lambda {
