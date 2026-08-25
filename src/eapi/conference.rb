@@ -116,6 +116,8 @@ class Channel
     @@channels=nil
 @@volumes={}
 @@streamid_mutes={}
+@@chat_mutes_local=[]
+@@dice_mutes_local=[]
 @@mystreams=Streams.new
 @@streams=[]
 @@channel=Channel.new
@@ -361,10 +363,12 @@ def self.attach_core_callbacks(conf)
   conf.on_waitinguser {|joined, username| announce_user(joined ? "conference_userknock" : "conference_userleave", username)}
   conf.on_speaker {|status, username, _userid| announce_speaker(status, username)}
   conf.on_text {|username, userid, message|
+    next if chat_muted_local?(username)
     settext(username, userid, message)
     announce_text(username, message, "conference_message")
   }
   conf.on_diceroll {|username, userid, value, count|
+    next if dice_muted_local?(username)
     setdiceroll(username, userid, value, count)
     announce_text(username, value.to_s, "conference_diceroll")
   }
@@ -868,6 +872,26 @@ def self.setvstbank(prm)
   def self.texts
   return @@texts
 end
+def self.chat_muted_local?(user)
+  @@chat_mutes_local.include?(user)
+end
+def self.dice_muted_local?(user)
+  @@dice_mutes_local.include?(user)
+end
+def self.set_chat_mute_local(user, mute)
+  if mute
+    @@chat_mutes_local.push(user) if !@@chat_mutes_local.include?(user)
+  else
+    @@chat_mutes_local.delete(user)
+  end
+end
+def self.set_dice_mute_local(user, mute)
+  if mute
+    @@dice_mutes_local.push(user) if !@@dice_mutes_local.include?(user)
+  else
+    @@dice_mutes_local.delete(user)
+  end
+end
 def self.waiting_channel_id
   @@waiting_channel_id
   end
@@ -966,6 +990,8 @@ end
             @@channels=nil
 @@volumes={}
 @@streamid_mutes={}
+@@chat_mutes_local=[]
+@@dice_mutes_local=[]
 @@mystreams=Streams.new
 @@streams=[]
 @@channel=Channel.new

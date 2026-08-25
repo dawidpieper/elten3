@@ -98,14 +98,24 @@ class Scene_Conference
               speak(p_("Conference", "User unmuted"))
               end
       }
-      s=p_("Conference", "Mute user's chat messages and dice rolls")
-      s=p_("Conference", "Unmute user's chat messages and dice rolls") if vol.chat_muted==true
+      s=p_("Conference", "Mute user's chat messages")
+      s=p_("Conference", "Unmute user's chat messages") if Conference.chat_muted_local?(user.name)
       menu.option(s, nil, "e") {
-            Conference.setvolume(user.name, vol.volume, vol.muted, !vol.chat_muted, vol.streams_muted)
-            if !vol.chat_muted
+            Conference.set_chat_mute_local(user.name, !Conference.chat_muted_local?(user.name))
+            if Conference.chat_muted_local?(user.name)
               speak(p_("Conference", "User's chat muted"))
             else
               speak(p_("Conference", "User's chat unmuted"))
+              end
+      }
+      s=p_("Conference", "Mute user's dice rolls")
+      s=p_("Conference", "Unmute user's dice rolls") if Conference.dice_muted_local?(user.name)
+      menu.option(s, nil, "E") {
+            Conference.set_dice_mute_local(user.name, !Conference.dice_muted_local?(user.name))
+            if Conference.dice_muted_local?(user.name)
+              speak(p_("Conference", "User's dice rolls muted"))
+            else
+              speak(p_("Conference", "User's dice rolls unmuted"))
               end
       }
       s=p_("Conference", "Mute user's streams")
