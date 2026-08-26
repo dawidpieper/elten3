@@ -4747,7 +4747,7 @@ class Scene_Forum_Trash
 
     menu.option(p_("Forum", "Open")) { open_thread(thread) }
     if !thread.trashed && thread.contains_trashed_posts
-      menu.option(p_("Forum", "Delete all trashed posts permanently")) {
+      menu.option(p_("Forum", "Delete all trashed posts permanently"), nil, "-") {
         mutate(
           p_("Forum", "Permanently delete all posts from thread %{thread} that are currently in the trash? This cannot be undone.") % {
             thread: thread.name
@@ -4787,7 +4787,7 @@ class Scene_Forum_Trash
         }
       end
     }
-    menu.option(p_("Forum", "Delete permanently")) {
+    menu.option(p_("Forum", "Delete permanently"), nil, "-") {
       mutate(
         p_("Forum", "Permanently delete thread %{thread} together with all its posts? This cannot be undone.") % {
           thread: thread.name
@@ -4831,7 +4831,7 @@ class Scene_Forum_Trash
         }
       end
     }
-    menu.option(p_("Forum", "Delete permanently")) {
+    menu.option(p_("Forum", "Delete permanently"), nil, "-") {
       mutate(
         p_("Forum", "Permanently delete this post by %{user}? This cannot be undone.") % { user: post.author },
         p_("Forum", "The post has been permanently deleted."),
