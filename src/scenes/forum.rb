@@ -2359,6 +2359,19 @@ threadopen(@thrsel.index)
         threadopen(@thrsel.index)
       }
       thread = @sthreads[@thrsel.index]
+      if (@forum == -7 || @forum == -11) && thread.mention != nil
+        menu.option(p_("Forum", "Delete mention"), nil, "-") {
+          if confirm(p_("Forum", "Do you really want to delete this mention from %{user}?")%{ :user => thread.mention.author })
+            if forum_attempt(nil) {
+              EltenLink::Forum.delete_mention(elten_link, mention_id: thread.mention.id)
+            }
+              alert(p_("Forum", "The mention has been deleted."))
+              @lastthreadindex = @thrsel.index
+              threadsmain(@forum)
+            end
+          end
+        }
+      end
       if thread.readposts < thread.posts
         menu.option(p_("Forum", "Mark this thread as read"), nil, "w") {
           unread = thread.posts - thread.readposts
@@ -2476,7 +2489,7 @@ threadopen(@thrsel.index)
             end
           end
         }
-        m.option(p_("Forum", "Delete thread"), nil, "-") {
+        m.option(p_("Forum", "Delete thread"), nil, (@forum == -7 || @forum == -11) ? "" : "-") {
           confirm(p_("Forum", "Do you really want to delete thread %{thrname}?")%{ :thrname => @sthreads[@thrsel.index].name }) do
             if forum_attempt(nil) {
               EltenLink::Forum.delete_thread(elten_link, thread_id: @sthreads[@thrsel.index].id)
