@@ -83,6 +83,7 @@ class Scene_Sounds
 'notification_message' => p_("Sounds", "Notification: new message"),
 'notification_monitor' => p_("Sounds", "Notification: online monitor"),
 'notification_userjoin' => p_("Sounds", "Notification: a new user joined a conference channel you follow"),
+'conference_someoneonchannel' => p_("Sounds", "Someone on a conference channel"),
 'conference_userjoin' => p_("Sounds", "New user joined conference"),
 'conference_userleave' => p_("Sounds", "User left conference"),
 'conference_userknock' => p_("Sounds", "User knocking to the conference"),

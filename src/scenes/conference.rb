@@ -391,6 +391,7 @@ def list_channels(user=nil)
       lst_channels.rows=selt
       lst_channels.reload
       lst_channels.clear_row_states
+      channels.each_with_index{|ch,i|lst_channels.set_row_status(i, "conference_someoneonchannel", "", "") if ch.users.size>0}
       }
       locha.call(@chans)
       lst_channels.focus
