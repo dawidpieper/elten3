@@ -215,7 +215,7 @@ class Scene_Forum
       mention = thread.mention
       name_parts << " . #{p_("Forum", "Mentioned by")}: #{mention.author} (#{mention.message})" if mention!=nil
     end
-    if list_id == -3 or list_id == -6 or list_id == -7
+    if list_id == -1 or list_id == -3 or list_id == -6 or list_id == -7 or list_id == -10
       name_parts << " (#{thread.forum.fullname}, #{thread.forum.group.name})"
     end
     name_parts.size==1 ? name_parts[0] : EltenAPI::SpeechSequence.new(name_parts)
