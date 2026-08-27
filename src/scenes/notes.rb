@@ -89,8 +89,9 @@ sharest=shares+[]
 @form=Form.new(@fields)
 @form.bind_context{|menu|
 if note.author==Session.name
-menu.option(p_("Notes", "Share")) {
+menu.option(p_("Notes", "Share"), nil, "n") {
         inpt=EditBox.new(p_("Notes", "Who do you want to share this note with?"))
+    inpt.focus
     loop do
       loop_update
       inpt.update
