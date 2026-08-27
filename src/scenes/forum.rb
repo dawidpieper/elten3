@@ -146,7 +146,7 @@ class Scene_Forum
     { "type" => "group_reports", "groupid" => group_id.to_i, "reportid" => report_id.to_i }
   end
 
-  def initialize(pre = nil, preparam = nil, cat = 0, query = "", tc=nil, tag=nil)
+  def initialize(pre = nil, preparam = nil, cat = 0, query = "", tc=nil, tag=nil, return_scene: nil)
     @pre = pre
     @preparam = preparam
     @lastlist = @cat = cat
@@ -155,6 +155,7 @@ class Scene_Forum
     @close=false
     @tc=tc
   @tag=tag
+    @return_scene=return_scene
     end
 
   def forum_target?(target)
@@ -2296,6 +2297,7 @@ break
       @thrsel.update
       LocalConfig["ForumColumnThread"] = @thrsel.column if LocalConfig["ForumColumnThread", type: :numeric] != @thrsel.column
       if (key_pressed?(:key_left) and !key_held?(0x10)) or key_pressed?(:key_escape)
+        return $scene=@return_scene if @return_scene!=nil
         return $scene=Scene_Main.new if @pre==nil && forum_target?(@preparam)
         if forum_id?(id)
           @frmsetid = id
@@ -2316,13 +2318,21 @@ threadopen(@thrsel.index)
   def threadopen(index)
     g=@sthreads[index].forum.group
     groupmotddlg(g, false) if g.hasnewmotd && (g.role == 1 || g.role == 2)
+            return_scene = nil
+            if @return_scene!=nil
+              return_scene = Scene_Forum.new(
+                @sthreads[index].id,
+                Scene_Forum.forum_target(@sthreads[index].forum.id),
+                return_scene: @return_scene
+              )
+            end
             if @group == -5 && @forum != -3
-          $scene = Scene_Forum_Thread.new(@sthreads[index], -5, @cat, @query, nil, nil, @thrsel.tag)
+          $scene = Scene_Forum_Thread.new(@sthreads[index], -5, @cat, @query, nil, return_scene, @thrsel.tag)
         else
           if @forum == -7 or @forum==-11
-            $scene = Scene_Forum_Thread.new(@sthreads[index], @forum, @cat, @query, @sthreads[@thrsel.index].mention, nil, @thrsel.tag)
+            $scene = Scene_Forum_Thread.new(@sthreads[index], @forum, @cat, @query, @sthreads[@thrsel.index].mention, return_scene, @thrsel.tag)
           else
-                        $scene = Scene_Forum_Thread.new(@sthreads[index], @forum, @cat, @query, nil, nil, @thrsel.tag)
+                        $scene = Scene_Forum_Thread.new(@sthreads[index], @forum, @cat, @query, nil, return_scene, @thrsel.tag)
           end
         end
     end
@@ -2839,12 +2849,12 @@ form.wait
     confirm_missing_tag = lambda {
       missing_tag_field = current_tag_fields.find { |field| field.index == 0 }
       return true if missing_tag_field == nil
-      if confirm(p_("Forum", "You haven't selected all tags. Do you want to select the missing tags?"))
+      if confirm(p_("Forum", "You haven't selected all tags. Do you want to send the thread anyway?"))
+        true
+      else
         form.index = form.fields.index(missing_tag_field)
         form.focus
         false
-      else
-        true
       end
     }
     confirm_closed_forum = lambda {
@@ -3608,6 +3618,13 @@ if post.edited && !post.locked
     end
   end
     menu.submenu(p_("Forum", "Navigation")) { |m|
+      m.option(p_("Forum", "Show this thread in its forum"), nil, "P") {
+        $scene = Scene_Forum.new(
+          @thread,
+          Scene_Forum.forum_target(@threadclass.forum.id),
+          return_scene: @scene
+        )
+      }
     m.option(p_("Forum", "Bookmarks"), nil, "b") {
     if requires_premiumpackage("courier")
     showbookmarks
@@ -4747,7 +4764,7 @@ class Scene_Forum_Trash
 
     menu.option(p_("Forum", "Open")) { open_thread(thread) }
     if !thread.trashed && thread.contains_trashed_posts
-      menu.option(p_("Forum", "Delete all trashed posts permanently")) {
+      menu.option(p_("Forum", "Delete all trashed posts permanently"), nil, "-") {
         mutate(
           p_("Forum", "Permanently delete all posts from thread %{thread} that are currently in the trash? This cannot be undone.") % {
             thread: thread.name
@@ -4787,7 +4804,7 @@ class Scene_Forum_Trash
         }
       end
     }
-    menu.option(p_("Forum", "Delete permanently")) {
+    menu.option(p_("Forum", "Delete permanently"), nil, "-") {
       mutate(
         p_("Forum", "Permanently delete thread %{thread} together with all its posts? This cannot be undone.") % {
           thread: thread.name
@@ -4831,7 +4848,7 @@ class Scene_Forum_Trash
         }
       end
     }
-    menu.option(p_("Forum", "Delete permanently")) {
+    menu.option(p_("Forum", "Delete permanently"), nil, "-") {
       mutate(
         p_("Forum", "Permanently delete this post by %{user}? This cannot be undone.") % { user: post.author },
         p_("Forum", "The post has been permanently deleted."),

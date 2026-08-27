@@ -6,6 +6,21 @@
 
 module EltenAPI
   private
+def execute_scene_main(scene)
+  if defined?(Program) && scene.is_a?(Program) && scene.respond_to?(:program_main, true)
+    begin
+      result = scene.__send__(:program_main)
+    rescue StandardError
+      scene.finalize(reason: :error)
+      raise
+    else
+      scene.finalize(result, reason: :normal)
+    end
+  else
+    scene.main
+  end
+end
+
 def insert_scene(scene, must=false, return_to_main: false)
   return if (($scenes[0]!=nil and $scenes[0].is_a?(scene.class)) or $scene.is_a?(scene.class)) and !must
   scene.instance_variable_set(:@insert_scene_return_to_main, true) if return_to_main && scene != nil

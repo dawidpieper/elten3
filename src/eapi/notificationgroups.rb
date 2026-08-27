@@ -331,7 +331,9 @@ module NotificationGroups
   end
 
   def program_updates_notification(updates)
-    app_updates = updates == nil ? [] : updates.apps.to_a
+    app_updates = updates == nil ? [] : updates.apps.to_a.select do |app|
+      Programs.api_version_compatible?(app.elten_api_version)
+    end
     return nil if app_updates.empty?
 
     key = "virtual:update:programs:#{app_updates.map { |app| "#{app.id}:#{app.build_id.to_s}" }.sort.join("|")}"

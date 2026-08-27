@@ -314,7 +314,7 @@ module EltenRecorderRuntime
     def pump_channel(channel, url, session, buffer_size, source_channel: channel, interactive: true)
       buffer = "\0" * buffer_size
       total = 0
-      while (size = Bass::BASS_ChannelGetData.call(channel, buffer, buffer_size)) > 0 || (url && Bass::BASS_StreamGetFilePosition.call(source_channel, 4) == 1)
+      while (size = Bass::BASS_ChannelGetData.call(channel, buffer, buffer_size)) > 0 || (url && Bass::BASS_StreamGetFilePosition.call(source_channel, Bass::BASS_FILEPOS_CONNECTED) == 1)
         loop_update if interactive
         if size != nil && size > 0
           session.process_pcm(buffer.byteslice(0, size))

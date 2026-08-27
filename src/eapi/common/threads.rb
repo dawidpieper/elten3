@@ -44,7 +44,7 @@ module EltenAPI
                                                                   while $scene != nil and $scene.is_a?(Scene_Main) == false and $exit!=true
 Log.debug("Loading parallel scene: #{$scene.class.to_s}")
 prepare_keyboard_scene_transition if defined?(EltenAPI::KeyboardState)
-$scene.main
+execute_scene_main($scene)
                       end
                       $scene = return_to_main ? Scene_Main.new : sc
 $scene=Scene_Main.new if $scene.is_a?(Scene_Main) or $scene == nil

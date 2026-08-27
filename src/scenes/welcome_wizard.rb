@@ -1191,7 +1191,10 @@ class Scene_WelcomeWizard
 
   def available_app(kind)
     uuid = APP_IDS[kind].to_s.downcase
-    @remote_apps.find { |app| app.respond_to?(:id) && app.id.to_s.downcase == uuid }
+    @remote_apps.find do |app|
+      app.respond_to?(:id) && app.id.to_s.downcase == uuid &&
+        app.respond_to?(:elten_api_version) && Programs.api_version_compatible?(app.elten_api_version)
+    end
   end
 
   def forum_groups

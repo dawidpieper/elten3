@@ -3,7 +3,7 @@
 
 module EltenLink
   class MessageUser
-    attr_accessor :user, :read, :lastdate, :lastuser, :lastsubject, :lastid, :muted, :name
+    attr_accessor :user, :read, :lastdate, :lastuser, :lastsubject, :lastid, :muted, :name, :is_user
 
     def initialize(user = "")
       @user = user
@@ -14,6 +14,7 @@ module EltenLink
       @lastid = 0
       @muted = false
       @name = ""
+      @is_user = false
     end
   end
 
@@ -30,13 +31,14 @@ module EltenLink
   end
 
   class Message
-    attr_accessor :id, :receiver, :sender, :subject, :mread, :marked, :date, :attachments,
+    attr_accessor :id, :receiver, :sender, :sender_is_user, :subject, :mread, :marked, :date, :attachments,
       :text, :transcription, :audio_url, :attachments_names, :protected, :polls, :polls_names
 
     def initialize(id = 0)
       @id = id.to_i
       @receiver = Session.name
       @sender = Session.name
+      @sender_is_user = false
       @subject = ""
       @mread = 0
       @marked = 0
@@ -277,6 +279,7 @@ module EltenLink
           user.lastid = row["id"].to_i
           user.muted = truthy?(row["muted"])
           user.name = utf8(row["name"])
+          user.is_user = truthy?(row["is_user"])
           user
         end
       end
@@ -301,6 +304,7 @@ module EltenLink
         messages = data["messages"].to_a.map do |row|
           message = Message.new(row["id"].to_i)
           message.sender = utf8(row["sender"])
+          message.sender_is_user = truthy?(row["sender_is_user"])
           message.receiver = message.sender == Session.name ? user : Session.name
           message.subject = utf8(row["subject"])
           message.date = Time.at(row["date"].to_i)

@@ -606,6 +606,7 @@ module EltenAPI
             version: row["version"].to_s,
             build_id: EltenLink::System.normalize_build_id(row["build_id"]),
             current_build_id: EltenLink::System.normalize_build_id(row["current_build_id"]),
+            elten_api_version: row["elten_api_version"].to_s,
             author: row["author"].to_s,
             size: row["size"].to_i,
             url: row["url"].to_s

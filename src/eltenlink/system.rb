@@ -44,7 +44,7 @@ module EltenLink
     end
   end
 
-  AppUpdateInfo = Struct.new(:id, :path, :name, :version, :build_id, :current_build_id, :author, :size, :url, keyword_init: true)
+  AppUpdateInfo = Struct.new(:id, :path, :name, :version, :build_id, :current_build_id, :elten_api_version, :author, :size, :url, keyword_init: true)
 
   SystemUpdateInfo = Struct.new(:client, :apps, keyword_init: true) do
     def client_update?
@@ -105,6 +105,7 @@ module EltenLink
             version: row["version"].to_s,
             build_id: normalize_build_id(row["build_id"]),
             current_build_id: normalize_build_id(row["current_build_id"]),
+            elten_api_version: row["elten_api_version"].to_s,
             author: row["author"].to_s,
             size: row["size"].to_i,
             url: row["url"].to_s

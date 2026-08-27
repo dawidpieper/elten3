@@ -235,7 +235,7 @@ Elten ist in der Sprache Ruby geschrieben. Teile des Programms sind auch in C++ 
 ## Kann ich Elten etwas von mir selbst hinzufügen?
 Wir würden uns sehr freuen, wenn Sie das tun.
 Alle Informationen sind auf dem GitHub des Projekts verfügbar:
-[https://github.com/dawidpieper/elten2](https://github.com/dawidpieper/elten2)
+[https://github.com/dawidpieper/elten3](https://github.com/dawidpieper/elten3)
 
 ## Wo finde ich die Elten API-Dokumentation?
 Eine offizielle Dokumentation gibt es nicht, aber es ist möglich, sie über rdoc aus dem Code zu generieren.

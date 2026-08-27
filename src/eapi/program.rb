@@ -7,12 +7,13 @@
 require_relative "programsigning" if !defined?(Programs::ProgramSigning)
 require "fileutils"
 require "json"
+require "monitor"
 require "ostruct"
 require "stringio"
 
 module Programs
   MAGIC = "Elten3AppPackage".b
-  ELTEN_API_VERSION = "3.0".freeze
+  ELTEN_API_VERSION = "3.0.1".freeze
   ELTENLINK_CONTRACT_VERSION = "3.0".freeze
   MANIFEST_BEGIN = /^\=begin[ \t]+Elten3AppInfo[ \t]*\r?\n/.freeze
   MANIFEST_END = /^\=end[ \t]+Elten3AppInfo[ \t]*$/m.freeze
@@ -29,6 +30,170 @@ module Programs
   @@apps_registry_cache = nil
 
   class ProgramError < StandardError
+  end
+
+  class UnsupportedAPIVersionError < ProgramError
+    attr_reader :program, :required, :current
+
+    def initialize(program:, required:, current: ELTEN_API_VERSION)
+      @program = program.to_s
+      @required = required.to_s
+      @current = current.to_s
+      super("Program #{@program} requires unsupported Elten API #{@required}")
+    end
+  end
+
+  class UnsupportedEltenLinkContractError < ProgramError
+    attr_reader :program, :required, :current
+
+    def initialize(program:, required:, current: ELTENLINK_CONTRACT_VERSION)
+      @program = program.to_s
+      @required = required.to_s
+      @current = current.to_s
+      super("Program #{@program} requires unsupported EltenLink contract #{@required}")
+    end
+  end
+
+  class UnsupportedPlatformError < ProgramError
+    attr_reader :program, :required, :current
+
+    def initialize(program:, required:, current:)
+      @program = program.to_s
+      @required = Array(required).map(&:to_s)
+      @current = current.to_s
+      super("Program #{@program} does not support platform #{@current}")
+    end
+  end
+
+  class ServerAppDefinition
+    attr_reader :uuid, :tables
+
+    def initialize(uuid:, tables:, protected:)
+      value = uuid == nil ? nil : uuid.to_s.strip
+      value = nil if value == ""
+      raise ProgramError, "Invalid server application UUID #{uuid.inspect}" if value != nil && value !~ UUID_PATTERN
+      raise ProgramError, "Server application tables must be a hash" if !tables.is_a?(Hash)
+      raise ProgramError, "Server application protection must be a boolean" if protected != true && protected != false
+
+      @uuid = value
+      @tables = immutable_copy(tables)
+      @protected = protected
+      freeze
+    end
+
+    def protected?
+      @protected
+    end
+
+    def with_uuid(uuid)
+      self.class.new(uuid: uuid, tables: @tables, protected: @protected)
+    end
+
+    private
+
+    def immutable_copy(value)
+      case value
+      when Hash
+        value.each_with_object({}) { |(key, entry), result| result[immutable_copy(key)] = immutable_copy(entry) }.freeze
+      when Array
+        value.map { |entry| immutable_copy(entry) }.freeze
+      when String
+        value.dup.freeze
+      else
+        value
+      end
+    end
+  end
+
+  class Leaderboard
+    DEFAULT_RETRY_DELAYS = [5.0, 30.0, 120.0].freeze
+
+    attr_reader :last_error
+
+    def initialize(table, order: nil, retry_delays: DEFAULT_RETRY_DELAYS, log_label: "Leaderboard")
+      raise ArgumentError, "Leaderboard table must support select and insert" if !table.respond_to?(:select) || !table.respond_to?(:insert)
+
+      @table = table
+      @order = order
+      @retry_delays = Array(retry_delays).map(&:to_f)
+      raise ArgumentError, "Leaderboard retry delays cannot be empty" if @retry_delays.empty?
+      raise ArgumentError, "Leaderboard retry delays cannot be negative" if @retry_delays.any?(&:negative?)
+
+      @log_label = log_label.to_s
+      @available = nil
+      @failure_count = 0
+      @retry_at = nil
+      @last_error = nil
+      @state_mutex = Mutex.new
+    end
+
+    def available?
+      return true if state_available?
+      return false if !request_allowed?
+
+      @table.select(limit: 1)
+      mark_success
+      true
+    rescue EltenLink::Error => error
+      handle_error(error)
+      false
+    end
+
+    def top(where: nil, order: nil, limit: 25, offset: nil)
+      return [] if !request_allowed?
+
+      rows = @table.select(where: where, order: order || @order, limit: limit, offset: offset)
+      mark_success
+      rows.to_a
+    rescue EltenLink::Error => error
+      handle_error(error)
+      []
+    end
+
+    def submit(values)
+      return false if !request_allowed?
+
+      @table.insert(values)
+      mark_success
+      true
+    rescue EltenLink::Error => error
+      handle_error(error)
+      false
+    end
+
+    private
+
+    def state_available?
+      @state_mutex.synchronize { @available == true }
+    end
+
+    def request_allowed?
+      @state_mutex.synchronize do
+        @available != false || Process.clock_gettime(Process::CLOCK_MONOTONIC) >= @retry_at
+      end
+    end
+
+    def mark_success
+      @state_mutex.synchronize do
+        @available = true
+        @failure_count = 0
+        @retry_at = nil
+        @last_error = nil
+      end
+    end
+
+    def handle_error(error)
+      return if error.code.to_s == "cancelled"
+
+      @state_mutex.synchronize do
+        delay = @retry_delays[[@failure_count, @retry_delays.size - 1].min]
+        @failure_count += 1
+        @available = false
+        @retry_at = Process.clock_gettime(Process::CLOCK_MONOTONIC) + delay
+        @last_error = error
+      end
+      Log.warning("#{@log_label} unavailable: #{error.class}: #{error.message}")
+    end
   end
 
   class EventListener
@@ -156,9 +321,11 @@ module Programs
       raise ProgramError, "Missing program version in #{@source}" if @version == ""
       raise ProgramError, "Missing program build_id in #{@source}" if @build_id == nil
       raise ProgramError, "Missing EltenAPIVersion in #{@source}" if @elten_api_version == ""
-      raise ProgramError, "Program #{@name} requires unsupported Elten API #{@elten_api_version}" if !Programs.api_version_compatible?(@elten_api_version)
+      if !Programs.api_version_compatible?(@elten_api_version)
+        raise UnsupportedAPIVersionError.new(program: @name, required: @elten_api_version)
+      end
       if @eltenlink_contract_version != "" && !Programs.eltenlink_contract_version_compatible?(@eltenlink_contract_version)
-        raise ProgramError, "Program #{@name} requires unsupported Elten API #{@eltenlink_contract_version}"
+        raise UnsupportedEltenLinkContractError.new(program: @name, required: @eltenlink_contract_version)
       end
       raise ProgramError, "Missing program main_class in #{@source}" if @main_class == ""
       raise ProgramError, "Missing program platforms in #{@source}" if @platforms.empty?
@@ -489,6 +656,8 @@ module Programs
       @sound_assets = {}
       @sound_pool = nil
       @managed_resources = EltenAPI::Resources::Registry.new
+      @json_file_monitors = {}
+      @json_file_monitors_guard = Monitor.new
       @language_files = {}
       language_files.each { |code, data| @language_files[normalize_language_code(code)] = data.to_s.b }
       @namespace = Programs.namespace_for(manifest)
@@ -603,14 +772,25 @@ module Programs
 
     def read_json(path, default: nil)
       file = data_path(path)
-      return default if !File.file?(file)
-      JSON.parse(File.binread(file))
+      json_file_monitor(file).synchronize { read_json_file(file) { default } }
     rescue Exception
       default
     end
 
     def write_json(path, data)
-      write_text(path, JSON.generate(data))
+      file = data_path(path)
+      json_file_monitor(file).synchronize { write_json_file(file, data) }
+    end
+
+    def update_json(path, default: nil)
+      raise ArgumentError, "update_json requires a block" if !block_given?
+      file = data_path(path)
+      json_file_monitor(file).synchronize do
+        value = read_json_file(file) { duplicate_json_value(default) }
+        yield value
+        write_json_file(file, value)
+        value
+      end
     end
 
     def read_text(path, default: "")
@@ -635,12 +815,7 @@ module Programs
 
     def write_binary(path, data)
       file = data_path(path)
-      tmp = file + ".tmp-#{$$}-#{Thread.current.object_id}"
-      File.binwrite(tmp, data.to_s.b)
-      FileUtils.mv(tmp, file)
-      true
-    ensure
-      File.delete(tmp) if tmp != nil && File.file?(tmp) rescue nil
+      write_binary_file(file, data)
     end
 
     def add_sound_asset(logical_path, data: nil, physical_path: nil)
@@ -814,6 +989,40 @@ module Programs
     end
 
     private
+
+    def json_file_monitor(file)
+      @json_file_monitors_guard.synchronize do
+        @json_file_monitors[file] ||= Monitor.new
+      end
+    end
+
+    def read_json_file(file)
+      return yield if !File.file?(file)
+      begin
+        JSON.parse(File.binread(file))
+      rescue Exception
+        yield
+      end
+    end
+
+    def write_json_file(file, data)
+      payload = JSON.generate(data)
+      payload = payload.to_s.encode(Encoding::UTF_8, invalid: :replace, undef: :replace)
+      write_binary_file(file, payload)
+    end
+
+    def duplicate_json_value(value)
+      JSON.parse(JSON.generate(value))
+    end
+
+    def write_binary_file(file, data)
+      tmp = file + ".tmp-#{$$}-#{Thread.current.object_id}"
+      File.binwrite(tmp, data.to_s.b)
+      FileUtils.mv(tmp, file)
+      true
+    ensure
+      File.delete(tmp) if tmp != nil && File.file?(tmp) rescue nil
+    end
 
     def collect_physical_sound_assets
       audio = physical_path("Audio")
@@ -1264,7 +1473,7 @@ module Programs
       runtime = runtime_from_error(error, scene)
       return false if runtime == nil
       begin
-        close_scene_after_error(scene) if scene != nil && runtime_for(scene).equal?(runtime)
+        finalize_scene_after_error(scene) if scene != nil && runtime_for(scene).equal?(runtime)
         report_execution_error(scene || error.class, error, runtime: runtime)
       rescue Exception => handler_error
         Log.error("Cannot handle program error: #{handler_error.class}: #{handler_error.message}") if defined?(Log)
@@ -1272,9 +1481,13 @@ module Programs
       true
     end
 
-    def close_scene_after_error(scene)
-      return if scene == nil || !scene.respond_to?(:close, true)
-      scene.__send__(:close)
+    def finalize_scene_after_error(scene)
+      return if scene == nil
+      if defined?(Program) && scene.is_a?(Program)
+        scene.finalize(reason: :error)
+      elsif scene.respond_to?(:close, true)
+        scene.__send__(:close)
+      end
     rescue Exception => error
       Log.error("Program cleanup failed: #{error.class}: #{error.message}\n#{Array(error.backtrace).join("\n")}")
     end
@@ -1954,7 +2167,7 @@ module Programs
       nil
     end
 
-    def load_sig(entry, persist: true, installation_source: nil)
+    def load_sig(entry, persist: true, installation_source: nil, raise_errors: false)
       Log.info("Loading program #{entry}")
       return true if @@runtimes.key?(entry)
       runtime = nil
@@ -1965,6 +2178,9 @@ module Programs
       @@configs[entry] = manifest.to_config(source[:main])
       if !manifest.supports_current_platform?
         Log.info("Skipping program #{manifest.name}: unsupported platform #{platform_target}")
+        if raise_errors
+          raise UnsupportedPlatformError.new(program: manifest.name, required: manifest.platforms, current: platform_target)
+        end
         return false
       end
       runtime = Runtime.new(
@@ -1993,6 +2209,7 @@ module Programs
     rescue Exception => e
       rollback_program_load(entry, runtime)
       Log.error("Failed to load program #{entry}: #{e.class}: #{e.message}, #{e.backtrace}")
+      raise if raise_errors
       false
     end
 
@@ -2320,6 +2537,10 @@ class Program
       @app_runtime != nil && @app_runtime.write_json(path, data)
     end
 
+    def update_json(path, default: nil, &block)
+      @app_runtime != nil && @app_runtime.update_json(path, default: default, &block)
+    end
+
     def read_text(path, default: "")
       @app_runtime == nil ? default : @app_runtime.read_text(path, :default => default)
     end
@@ -2434,25 +2655,76 @@ class Program
       @app_info == nil ? const_get(:AppID).to_s : @app_info.id.to_s
     end
 
+    def server_app(uuid: nil, tables: {}, protected: false)
+      @server_app_definition = Programs::ServerAppDefinition.new(uuid: uuid, tables: tables, protected: protected)
+    end
+
+    def server_app_definition
+      @server_app_definition
+    end
+
+    def server_app_uuid
+      definition = server_app_definition
+      definition == nil ? app_uuid : definition.uuid.to_s
+    end
+
     def register_server_app(name: nil, data: nil, tables: nil, tables_protected: false)
       EltenLink::Apps.register(EltenLink.client(self), :name => (name || self.name), :data => data, :tables => tables, :tables_protected => tables_protected)
+    end
+
+    def register_server_app!
+      definition = required_server_app_definition
+      raise Programs::ProgramError, "Server application is already registered as #{definition.uuid}" if definition.uuid != nil
+
+      uuid = register_server_app(tables: definition.tables, tables_protected: definition.protected?)
+      raise Programs::ProgramError, "Server application registration returned an invalid UUID" if uuid.to_s !~ Programs::UUID_PATTERN
+
+      @server_app_definition = definition.with_uuid(uuid)
+      uuid
     end
 
     def update_server_app(uuid = nil, name: nil, data: nil, tables: nil, tables_protected: nil)
       EltenLink::Apps.update(EltenLink.client(self), uuid || app_uuid, :name => (name || self.name), :data => data, :tables => tables, :tables_protected => tables_protected)
     end
 
+    def update_server_schema!
+      definition = required_server_app_definition
+      raise Programs::ProgramError, "Server application UUID is not set" if definition.uuid == nil
+
+      update_server_app(definition.uuid, tables: definition.tables, tables_protected: definition.protected?)
+    end
+
     def server_table(name, uuid = nil)
-      EltenLink::Apps.table(EltenLink.client(self), uuid || app_uuid, name)
+      EltenLink::Apps.table(EltenLink.client(self), server_app_identifier(uuid), name)
+    end
+
+    def leaderboard(name, order: nil, retry_delays: Programs::Leaderboard::DEFAULT_RETRY_DELAYS, log_label: "Leaderboard")
+      Programs::Leaderboard.new(server_table(name), order: order, retry_delays: retry_delays, log_label: log_label)
     end
 
     def server_resources(uuid = nil)
-      EltenLink::Apps.resources(EltenLink.client(self), uuid || app_uuid)
+      EltenLink::Apps.resources(EltenLink.client(self), server_app_identifier(uuid))
     end
 
     def delete_server_app(uuid = nil)
-      EltenLink::Apps.delete(EltenLink.client(self), uuid || app_uuid)
+      EltenLink::Apps.delete(EltenLink.client(self), server_app_identifier(uuid))
     end
+
+    def required_server_app_definition
+      server_app_definition || raise(Programs::ProgramError, "Server application is not declared")
+    end
+
+    def server_app_identifier(uuid)
+      return uuid if uuid != nil
+
+      definition = server_app_definition
+      return app_uuid if definition == nil
+      raise Programs::ProgramError, "Server application UUID is not set" if definition.uuid == nil
+
+      definition.uuid
+    end
+
+    private :required_server_app_definition, :server_app_identifier
 
     def on(event, &proc)
       Programs.register_event_listener(event, self, proc)
@@ -2477,8 +2749,96 @@ class Program
     self.class.app_runtime
   end
 
+  def name
+    self.class.name
+  end
+
+  def version
+    self.class.version
+  end
+
+  def build_id
+    self.class.build_id
+  end
+
+  def elten_api_version
+    self.class.elten_api_version
+  end
+
+  def author
+    self.class.author
+  end
+
+  def menu_label
+    self.class.menu_label
+  end
+
+  def hidden?
+    self.class.hidden?
+  end
+
+  def user_menu_options
+    self.class.user_menu_options
+  end
+
+  def app_uuid
+    self.class.app_uuid
+  end
+
+  def asset_path(path)
+    self.class.asset_path(path)
+  end
+
+  def data_path(path = "")
+    self.class.data_path(path)
+  end
+
+  def cache_path(path = "")
+    self.class.cache_path(path)
+  end
+
+  def read_json(path, default: nil)
+    self.class.read_json(path, default: default)
+  end
+
+  def write_json(path, data)
+    self.class.write_json(path, data)
+  end
+
+  def update_json(path, default: nil, &block)
+    self.class.update_json(path, default: default, &block)
+  end
+
+  def read_text(path, default: "")
+    self.class.read_text(path, default: default)
+  end
+
+  def write_text(path, text)
+    self.class.write_text(path, text)
+  end
+
+  def read_binary(path, default: "".b)
+    self.class.read_binary(path, default: default)
+  end
+
+  def write_binary(path, data)
+    self.class.write_binary(path, data)
+  end
+
+  def server_app_definition
+    self.class.server_app_definition
+  end
+
+  def server_app_uuid
+    self.class.server_app_uuid
+  end
+
   def server_table(name, uuid = nil)
     self.class.server_table(name, uuid)
+  end
+
+  def leaderboard(name, order: nil, retry_delays: Programs::Leaderboard::DEFAULT_RETRY_DELAYS, log_label: "Leaderboard")
+    Programs::Leaderboard.new(server_table(name), order: order, retry_delays: retry_delays, log_label: log_label)
   end
 
   def server_resources(uuid = nil)
@@ -2583,17 +2943,36 @@ class Program
     resources.close
   end
 
-  def finish(v = nil)
-    begin
-      close
-    ensure
-      close_managed_resources
-      self.class.close_sound_pool
+  def finalize(v = nil, reason: :normal)
+    raise ArgumentError, "Invalid program finalization reason #{reason.inspect}" if reason != :normal && reason != :error
+    return v if @program_finalized == true
+    @program_finalized = true
+
+    cleanup_error = nil
+    {
+      "close hook" => proc { close },
+      "managed resources" => proc { close_managed_resources },
+      "sound pool" => proc { self.class.close_sound_pool }
+    }.each do |label, action|
+      begin
+        action.call
+      rescue Exception => error
+        cleanup_error ||= error
+        Log.error("Program #{self.class} #{label} cleanup failed: #{error.class}: #{error.message}\n#{Array(error.backtrace).join("\n")}") if defined?(Log)
+      end
     end
+
+    raise cleanup_error if cleanup_error != nil && reason == :normal
+    return v if reason == :error
+
     Log.info("Program exited #{self.class}")
     alert(p_("Program", "The program has been closed."))
     $scene = Scene_Main.new
     v
+  end
+
+  def finish(v = nil)
+    finalize(v, reason: :normal)
   end
 
   def close

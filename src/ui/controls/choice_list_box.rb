@@ -25,6 +25,8 @@ module EltenAPI
         @flags = flags.to_i
         @header = text_utf8(header)
         @rows = normalize_rows(rows)
+        @wait_for_choice_quiet = quiet
+        @wait_for_choice_started = false
         list_flags = @flags & LIST_BOX_FLAGS
         @sel = ListBox.new(format_rows, header: @header, index: index, flags: list_flags, quiet: quiet)
         @sel.on(:move) { |args| trigger(:move, args) }
@@ -131,6 +133,20 @@ module EltenAPI
 
       def selected?
         @sel.selected?
+      end
+
+      # Runs this control as a standalone choice dialog.
+      # @return [Array(Integer, Array<Integer>), nil] the active row and values,
+      #   or nil when cancelled
+      def wait_for_choice
+        focus if @wait_for_choice_started || @wait_for_choice_quiet != false
+        @wait_for_choice_started = true
+        loop do
+          loop_update
+          update
+          return nil if key_pressed?(:key_escape) || key_pressed?(:key_alt)
+          return [index, values] if selected? && row_at(index) != nil
+        end
       end
 
       def collapsed?

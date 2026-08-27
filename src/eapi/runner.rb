@@ -6,6 +6,19 @@ class Runner
 
   ACTION_PHASES = [:start, :update, :finish].freeze
 
+  def self.wait(seconds, cancel_keys: [])
+    raise ArgumentError, "wait duration must be numeric" if !seconds.is_a?(Numeric) || seconds.is_a?(Complex)
+    duration = seconds.to_f
+    raise ArgumentError, "wait duration must be a non-negative finite number" if !duration.finite? || duration < 0.0
+
+    runner = new
+    runner.after(duration) { |current| current.stop(:elapsed) }
+    Array(cancel_keys).flatten.compact.uniq.each do |key|
+      runner.on_key(key) { |current| current.stop(:cancelled) }
+    end
+    runner.run
+  end
+
   class Timer
     attr_reader :interval, :repeat, :phase
 
@@ -116,6 +129,124 @@ class Runner
       return symbol if name.start_with?("key_")
       return "key_#{name}".to_sym if name.length != 1
       name.upcase.ord
+    end
+  end
+
+  class HoldGesture
+    DEFAULT_DIRECTIONS = {
+      :left => :key_left,
+      :right => :key_right,
+      :up => :key_up,
+      :down => :key_down
+    }.freeze
+
+    attr_reader :runner, :name, :modifier, :directions, :state
+
+    def initialize(runner, name, modifier:, directions:, start:, move:, finish:, cancel: nil)
+      raise ArgumentError, "gesture runner is required" if runner == nil
+      raise ArgumentError, "gesture name must be convertible to a symbol" if !name.respond_to?(:to_sym)
+      raise ArgumentError, "gesture modifier is required" if modifier == nil
+      raise ArgumentError, "gesture directions must be a non-empty hash" if !directions.is_a?(Hash) || directions.empty?
+      raise ArgumentError, "gesture start callback must be callable" if !start.respond_to?(:call)
+      raise ArgumentError, "gesture move callback must be callable" if !move.respond_to?(:call)
+      raise ArgumentError, "gesture finish callback must be callable" if !finish.respond_to?(:call)
+      raise ArgumentError, "gesture cancel callback must be callable" if cancel != nil && !cancel.respond_to?(:call)
+
+      @runner = runner
+      @name = name.to_sym
+      @modifier = modifier
+      @directions = normalize_directions(directions)
+      @start_callback = start
+      @move_callback = move
+      @finish_callback = finish
+      @cancel_callback = cancel
+      @state = nil
+      @active = false
+      @blocked = false
+    end
+
+    def active?
+      @active == true
+    end
+
+    def blocked?
+      @blocked == true
+    end
+
+    def start
+      return false if active? || blocked?
+      captured = @start_callback.call(self)
+      if captured == nil || captured == false
+        @blocked = true
+        return false
+      end
+      @state = captured
+      @active = true
+      true
+    end
+
+    def move(direction)
+      start if !active? && !blocked? && modifier_held?
+      return false if !active?
+      @move_callback.call(self, direction.to_sym)
+    end
+
+    def release
+      if !active?
+        @blocked = false
+        return false
+      end
+
+      accepted = @finish_callback.call(self)
+      accepted == nil || accepted == false ? cancel(:rejected) : commit
+    rescue Exception => error
+      begin
+        cancel(:finish_error)
+      rescue Exception => cancel_error
+        Log.warning("Runner gesture cancellation failed after #{error.class}: #{cancel_error.class}: #{cancel_error.message}") if defined?(Log)
+      end
+      raise error
+    end
+
+    def cancel(reason = :cancelled)
+      return false if !active?
+      blocked = modifier_held?
+      begin
+        @cancel_callback.call(self, reason) if @cancel_callback != nil
+      ensure
+        clear(blocked: blocked)
+      end
+      true
+    end
+
+    private
+
+    def commit
+      clear(blocked: modifier_held?)
+      true
+    end
+
+    def clear(blocked:)
+      @state = nil
+      @active = false
+      @blocked = blocked == true
+    end
+
+    def modifier_held?
+      @runner.action_held?(@name)
+    end
+
+    def normalize_directions(directions)
+      normalized = {}
+      directions.each do |direction, key|
+        raise ArgumentError, "gesture direction must be convertible to a symbol" if !direction.respond_to?(:to_sym)
+        raise ArgumentError, "gesture direction key is required" if key == nil
+        direction = direction.to_sym
+        raise ArgumentError, "gesture directions must be unique" if normalized.key?(direction)
+        raise ArgumentError, "gesture direction keys must be unique" if normalized.value?(key)
+        normalized[direction] = key
+      end
+      normalized.freeze
     end
   end
 
@@ -306,6 +437,29 @@ class Runner
   end
 
   alias on_key_up on_key_released
+
+  def hold_gesture(name, modifier:, directions: HoldGesture::DEFAULT_DIRECTIONS, repeat: true, start:, move:, finish:, cancel: nil)
+    gesture = HoldGesture.new(
+      self,
+      name,
+      modifier: modifier,
+      directions: directions,
+      start: start,
+      move: move,
+      finish: finish,
+      cancel: cancel
+    )
+    action(name, hold: [modifier])
+    on_action(name, phase: :start) { gesture.start }
+    on_action(name, phase: :finish) do |current|
+      current.running? ? gesture.release : gesture.cancel(:runner_stopped)
+    end
+    gesture.directions.each do |direction, key|
+      on_key(key, repeat: repeat) { gesture.move(direction) }
+    end
+    on_stop { gesture.cancel(:runner_stopped) }
+    gesture
+  end
 
   def action(name, hold: [], press: [], keys: nil)
     key = name.to_sym

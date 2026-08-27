@@ -6,9 +6,9 @@ require "date"
 
 module EltenLink
   class Calendar
-    attr_accessor :id, :author, :creation, :name, :public, :lang, :personal, :moderator
+    attr_accessor :id, :author, :creation, :name, :public, :lang, :personal, :moderator, :subscribers_count
 
-    def initialize(id: 0, author: nil, creation: nil, name: "", public_state: false, lang: nil, personal: false, moderator: false)
+    def initialize(id: 0, author: nil, creation: nil, name: "", public_state: false, lang: nil, personal: false, moderator: false, subscribers_count: 0)
       @id = id.to_i
       @author = author.to_s
       @creation = creation.is_a?(Time) ? creation : Time.at(creation.to_i)
@@ -17,6 +17,7 @@ module EltenLink
       @lang = lang == nil ? nil : lang.to_s
       @personal = personal == true || @id == 0
       @moderator = moderator == true
+      @subscribers_count = [subscribers_count.to_i, 0].max
     end
 
     def personal?
@@ -358,6 +359,14 @@ module EltenLink
         data["id"].to_i
       end
 
+      def update(client, calendar, name: nil, public_state: nil)
+        params = {}
+        params["name"] = name if name != nil
+        params["public"] = public_state if public_state != nil
+        client.api_data("PATCH", "/api/v1/calendars/#{calendar_id(calendar)}", params)
+        true
+      end
+
       def delete(client, calendar)
         client.api_data("DELETE", "/api/v1/calendars/#{calendar_id(calendar)}")
         true
@@ -460,7 +469,8 @@ module EltenLink
           public_state: truthy?(row["public"]),
           lang: row["lang"],
           personal: truthy?(row["personal"]),
-          moderator: truthy?(row["moderator"])
+          moderator: truthy?(row["moderator"]),
+          subscribers_count: row["subscribers_count"]
         )
       end
 

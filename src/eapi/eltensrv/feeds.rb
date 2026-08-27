@@ -101,7 +101,7 @@ module EltenAPI
           audio=nil
           if recorder!=nil && !recorder.empty?
             duration=recorder.source_duration
-            if duration!=nil && duration>audio_max_duration
+            if duration!=nil && duration>audio_max_duration+1
               choice=selector(
                 [
                   p_("FeedViewer", "Shorten the audio to %{limit} seconds") % {:limit=>audio_max_duration},

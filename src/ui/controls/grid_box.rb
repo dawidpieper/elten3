@@ -86,6 +86,44 @@ module EltenAPI
              end
            end
 
+           def set_cells(rows)
+             replace_cells(rows, resize: false)
+           end
+
+           def replace_cells(rows, resize: false)
+             labels, width, height = normalize_cell_rows(rows)
+             if resize
+               @width = width
+               @height = height
+               @x = [[@x.to_i, 0].max, @width - 1].min
+               @y = [[@y.to_i, 0].max, @height - 1].min
+             elsif width != @width || height != @height
+               raise ArgumentError, "cell rows must match the current grid dimensions"
+             end
+             @labels = labels
+             self
+           end
+
+           def update_cells(positions)
+             raise ArgumentError, "update_cells requires a block" if !block_given?
+             raise ArgumentError, "cell positions must be enumerable" if !positions.respond_to?(:each)
+
+             seen = {}
+             updates = []
+             positions.each do |position|
+               x, y = position
+               next if x == nil || y == nil
+               x = x.to_i
+               y = y.to_i
+               next if x < 0 || y < 0 || x >= @width || y >= @height
+               next if seen[[x, y]]
+               seen[[x, y]] = true
+               updates.push([x, y, text_utf8(yield(x, y))])
+             end
+             updates.each { |x, y, label| @labels[y][x] = label }
+             self
+           end
+
            def set_cell(x, y, label)
              return if x == nil || y == nil
              return if x.to_i < 0 || y.to_i < 0 || x.to_i >= @width || y.to_i >= @height
@@ -189,6 +227,23 @@ module EltenAPI
            end
 
            private
+
+           def normalize_cell_rows(rows)
+             raise ArgumentError, "cell rows must be enumerable" if !rows.respond_to?(:to_a)
+             source = rows.to_a
+             raise ArgumentError, "cell rows cannot be empty" if source.empty?
+
+             source = source.map do |row|
+               raise ArgumentError, "each cell row must be enumerable" if !row.respond_to?(:to_a)
+               row.to_a
+             end
+             width = source[0].size
+             raise ArgumentError, "cell rows cannot be empty" if width == 0
+             raise ArgumentError, "cell rows must be rectangular" if source.any? { |row| row.size != width }
+
+             labels = source.map { |row| row.map { |label| text_utf8(label) } }
+             [labels, width, labels.size]
+           end
 
            def pressed_action_binding
              bindings = @action_bindings.to_a

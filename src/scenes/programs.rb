@@ -323,7 +323,9 @@ when 1
 
      def server_status_label(program)
        installed=installed_program_for(program)
-       if installed==nil
+       if !remote_program_api_compatible?(program)
+         p_("Programs", "requires Elten API %{version}")%{:version=>program.elten_api_version.to_s}
+       elsif installed==nil
          p_("Programs", "not installed")
        elsif update_available?(installed, program)
          p_("Programs", "update available")
@@ -384,6 +386,7 @@ when 1
 
      def update_available?(installed, remote)
        return false if installed==nil || remote==nil
+       return false if !remote_program_api_compatible?(remote)
        if installed.respond_to?(:build_id) && remote.respond_to?(:build_id) && build_id_present?(installed.build_id) && build_id_present?(remote.build_id)
          normalize_build_id(installed.build_id)!=normalize_build_id(remote.build_id)
        else
@@ -404,31 +407,42 @@ when 1
        normalize_build_id(value)!=nil
      end
 
+     def remote_program_api_compatible?(program)
+       program!=nil && program.respond_to?(:elten_api_version) && Programs.api_version_compatible?(program.elten_api_version)
+     end
+
      def install_remote_program(program, ask: true)
        return false if program==nil
+       if !remote_program_api_compatible?(program)
+         alert(p_("Programs", "This program requires Elten API %{required}. The current Elten API version is %{current}.")%{
+           :required=>program.elten_api_version.to_s,
+           :current=>Programs.elten_api_version
+         }) if ask
+         return false
+       end
        if ask
-         installed=false
-         confirm(install_details(program, format_size(program.size), nil)) do
-           installed=install_remote_program(program, ask: false)
-         end
-         return installed
+         confirmed=false
+         confirm(install_details(program, format_size(program.size), nil)) { confirmed=true }
+         return false if !confirmed
        end
        tempfile=nil
        installed_entry=nil
+       install_error=nil
+       cancelled=false
        begin
          waiting
          tempfile=EltenPath.join(Dirs.temp, safe_install_base(program.path)+".eltsetup")
          package_url=EltenLink::Apps.package_url(program)
          download_file(package_url, tempfile, use_waiting: false, can_cancel: true, override: true)
          if !FileTest.exists?(tempfile)
+           cancelled=true
+         else
            waiting_end
-           alert(p_("Programs", "Installation cancelled.")) if ask
-           return false
+           installed_entry=install_downloaded_package(tempfile, program, installation_source: "server")
          end
-         waiting_end
-         installed_entry=install_downloaded_package(tempfile, program, installation_source: "server")
        rescue Exception => e
          Log.warning("Program installation failed: #{e.class}: #{e.message}")
+         install_error=e
        ensure
          waiting_end rescue nil
          begin
@@ -441,8 +455,11 @@ when 1
          alert(p_("Programs", "Installation completed.")) if ask
          setlocale(Configuration.language)
          true
+       elsif install_error!=nil
+         alert(program_install_error_message(install_error)) if ask
+         false
        else
-         alert(p_("Programs", "Installation cancelled.")) if ask
+         alert(p_("Programs", "Installation cancelled.")) if ask && cancelled
          false
        end
      end
@@ -464,14 +481,14 @@ when 1
        file=get_file(p_("Programs", "Select program package"), path: EltenPath.with_separator(Dirs.documents), save: false, extensions: [".eltsetup"])
        return if file==nil || file==""
        if File.extname(file).downcase!=".eltsetup"
-         alert(p_("Programs", "Invalid program package."))
+         alert(p_("Programs", "The selected file is not an Elten program package."))
          return
        end
        begin
          info=Programs.setup_package_info(file)
        rescue Exception => e
          Log.warning("Program package read failed: #{e.class}: #{e.message}")
-         alert(p_("Programs", "Invalid program package."))
+         alert(program_install_error_message(e))
          return
        end
        confirm(install_details(info[:manifest], format_size(info[:size]), File.basename(file))) {
@@ -482,6 +499,7 @@ when 1
      def install_package_file(file, info=nil)
        waiting
        installed_entry=nil
+       install_error=nil
        begin
          info=Programs.setup_package_info(file) if info==nil
          existing=installed_entry_for_setup_info(info)
@@ -489,6 +507,7 @@ when 1
          installed_entry=install_setup_package(file,destination,existing,info,installation_source: "file")
        rescue Exception => e
          Log.warning("Program local installation failed: #{e.class}: #{e.message}")
+         install_error=e
        ensure
          waiting_end
        end
@@ -496,6 +515,8 @@ when 1
          alert(p_("Programs", "Installation completed."))
          setlocale(Configuration.language)
          @refresh=true
+       elsif install_error!=nil
+         alert(program_install_error_message(install_error))
        else
          alert(p_("Programs", "Installation cancelled."))
        end
@@ -514,6 +535,60 @@ when 1
        lines.push(p_("Programs", "Package: %{file}")%{:file=>package_file.to_s}) if package_file!=nil && package_file.to_s!=""
        lines.push(p_("Programs", "Size: %{size}")%{:size=>size.to_s})
        lines.join("\n")
+     end
+
+     def program_install_error_message(error)
+       if (specific=program_install_error_cause(error, Programs::UnsupportedAPIVersionError))!=nil
+         return p_("Programs", "This program requires Elten API %{required}. The current Elten API version is %{current}.")%{
+           :required=>specific.required,
+           :current=>specific.current
+         }
+       end
+       if (specific=program_install_error_cause(error, Programs::UnsupportedEltenLinkContractError))!=nil
+         return p_("Programs", "This program requires EltenLink contract %{required}. The current contract version is %{current}.")%{
+           :required=>specific.required,
+           :current=>specific.current
+         }
+       end
+       if (specific=program_install_error_cause(error, Programs::UnsupportedPlatformError))!=nil
+         return p_("Programs", "This program does not support the current platform %{current}. Supported platforms: %{required}.")%{
+           :current=>specific.current,
+           :required=>specific.required.join(", ")
+         }
+       end
+       if program_install_error_cause(error, Programs::ProgramSigning::VerificationUnavailableError)!=nil
+         return p_("Programs", "The program package signature cannot be verified because trusted signing information is unavailable.")
+       end
+       if program_install_error_cause(error, Programs::ProgramSigning::MissingSignatureError)!=nil
+         return p_("Programs", "The program package is not signed.")
+       end
+       if (specific=program_install_error_cause(error, Programs::ProgramSigning::SignatureError))!=nil
+         return p_("Programs", "The program package signature could not be verified: %{reason}")%{
+           :reason=>program_install_error_detail(specific)
+         }
+       end
+       p_("Programs", "The program could not be installed: %{reason}")%{
+         :reason=>program_install_error_detail(error)
+       }
+     end
+
+     def program_install_error_cause(error, klass)
+       current=error
+       seen={}
+       while current!=nil && !seen[current.object_id]
+         return current if current.is_a?(klass)
+         seen[current.object_id]=true
+         current=current.respond_to?(:cause) ? current.cause : nil
+       end
+       nil
+     end
+
+     def program_install_error_detail(error)
+       detail=error.respond_to?(:message) ? error.message.to_s : error.to_s
+       detail=error.class.to_s if detail=="" && error!=nil
+       detail.encode(Encoding::UTF_8, invalid: :replace, undef: :replace)
+     rescue Exception
+       p_("Programs", "Unknown error")
      end
 
      def format_size(size)
@@ -559,7 +634,7 @@ when 1
        rescue Exception => e
          Log.warning("Program setup installation failed: #{e.class}: #{e.message}")
          rollback_install(destination,backups,existing_entry,replaced)
-         nil
+         raise
        ensure
          remove_install_path(staging)
        end
@@ -576,7 +651,7 @@ when 1
          install_eltenapp_package(staging,destination,existing_entry,installation_source: installation_source)
        rescue Exception => e
          Log.warning("Program single-file setup installation failed: #{e.class}: #{e.message}")
-         nil
+         raise
        ensure
          remove_install_path(staging)
        end
@@ -597,7 +672,7 @@ when 1
        rescue Exception => e
          Log.warning("Program eltenapp installation failed: #{e.class}: #{e.message}")
          rollback_install(destination,backups,existing_entry,replaced)
-         nil
+         raise
        end
      end
 
@@ -611,15 +686,9 @@ when 1
      def activate_installed_entry(entry,existing_entry,destination,backups,installation_source: nil)
        Programs.delete(existing_entry, :reason => :reload) if existing_entry!=nil
        Programs.delete(entry, :reason => :reload) if existing_entry==nil || existing_entry!=entry
-       if Programs.load_sig(entry, installation_source: installation_source)
-         cleanup_install_backups(backups)
-         entry
-       else
-         Log.warning("Program registration failed after installation: #{entry}")
-         Programs.delete(entry)
-         rollback_install(destination,backups,existing_entry,true)
-         nil
-       end
+       Programs.load_sig(entry, installation_source: installation_source, raise_errors: true)
+       cleanup_install_backups(backups)
+       entry
      end
 
      def rollback_install(destination,backups,existing_entry=nil,replaced=false)

@@ -106,6 +106,7 @@ src/eapi/audio/bass.rb
 src/eapi/audio/sound.rb
 src/eapi/audio/soundpool.rb
 src/eapi/audio/fx/audio3d.rb
+src/eapi/audio/fx/effects.rb
 src/scenes/debug.rb
 src/scenes/users_recentlyregistered.rb
 src/scenes/users_recentlyactived.rb

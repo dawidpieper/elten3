@@ -15,15 +15,16 @@ module EltenLink
   end
 
   class AppPackage
-    attr_accessor :id, :name, :size, :version, :build_id, :author, :path, :url
+    attr_accessor :id, :name, :size, :version, :build_id, :elten_api_version, :author, :path, :url
     attr_reader :realpath
 
-    def initialize(path:, name:, version:, author:, size:, realpath: nil, url: "", build_id: nil, id: "")
+    def initialize(path:, name:, version:, author:, size:, realpath: nil, url: "", build_id: nil, elten_api_version: "", id: "")
       @id = id.to_s
       @path = path
       @name = name
       @version = version
       @build_id = Apps.normalize_build_id(build_id)
+      @elten_api_version = elten_api_version.to_s
       @author = author
       @size = size.to_i
       @realpath = realpath
@@ -154,6 +155,7 @@ module EltenLink
             name: row["name"].to_s,
             version: row["version"].to_s,
             build_id: normalize_build_id(row["build_id"]),
+            elten_api_version: row["elten_api_version"].to_s,
             author: row["author"].to_s,
             size: row["size"].to_i,
             url: row["url"].to_s

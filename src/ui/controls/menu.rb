@@ -202,6 +202,7 @@ class Menu
       elsif opt[1]==:quickaction
         @on_action.each {|c| c.call}
         opt[2].call
+        restore_action_focus(sel)
       else
         @on_action.each {|c| c.call}
       if opt[2]!=nil or @instance==0
@@ -209,11 +210,17 @@ class Menu
     else
       @caller.instance_eval(&opt[1])
       end
+      restore_action_focus(sel)
     end
     end
       end
     }
   end
+  def restore_action_focus(control)
+    return if @closing || $focus==true
+    control.focus
+  end
+  private :restore_action_focus
   def close
     if @type==:menubar || @type==:menu
     play_sound("menu_close")

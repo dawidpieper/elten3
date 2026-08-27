@@ -29,7 +29,7 @@ end
 bufsize = 2097152
 buf="\0"*bufsize
 t=0
-while (sz=Bass::BASS_ChannelGetData.call(cha, buf, bufsize))>0 || ((file[0..4]=="http:" || file[0..5]=="https:") && Bass::BASS_StreamGetFilePosition.call(cha, 4)==1)
+while (sz=Bass::BASS_ChannelGetData.call(cha, buf, bufsize))>0 || ((file[0..4]=="http:" || file[0..5]=="https:") && Bass::BASS_StreamGetFilePosition.call(cha, Bass::BASS_FILEPOS_CONNECTED)==1)
   loop_update
     @tempfile.write(buf[0...sz])
   t+=sz

@@ -134,7 +134,32 @@ end
       input_text(header, flags: flags, text: text.to_s, escapable: escapable)
     end
 
-    def display_table(columns, rows, header: "", start_index: 0, quiet: false, flags: 0)
+    def display_list(options, header: "", start_index: 0, quiet: false, flags: 0, empty_label: nil)
+      options = Array(options)
+      dialog_open
+      begin
+        list = EltenAPI::Controls::ListBox.new(
+          options,
+          index: start_index,
+          header: header,
+          quiet: quiet,
+          flags: flags,
+          empty_label: empty_label
+        )
+        list.focus
+        loop do
+          loop_update
+          list.update
+          return options.empty? ? nil : list.index if key_pressed?(:key_enter)
+          return nil if key_pressed?(:key_escape) || key_pressed?(:key_alt)
+        end
+      ensure
+        dialog_close
+        loop_update
+      end
+    end
+
+    def display_table(columns, rows, header: "", start_index: 0, quiet: false, flags: 0, empty_label: nil)
       columns = Array(columns)
       rows = Array(rows).map { |row| Array(row) }
       raise ArgumentError, "columns cannot be empty" if columns.empty?
@@ -146,7 +171,8 @@ end
           index: start_index,
           header: header,
           quiet: quiet,
-          flags: flags
+          flags: flags,
+          empty_label: empty_label
         )
         table.focus
         loop do

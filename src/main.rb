@@ -53,7 +53,7 @@ $toscene = false
         $notifications_callback = nil
         Log.debug("Loading scene: #{$scene.class.to_s}")
         prepare_keyboard_scene_transition if defined?(EltenAPI::KeyboardState)
-                              $scene.main
+                              execute_scene_main($scene)
   else
     break
     end

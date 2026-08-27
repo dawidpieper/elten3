@@ -593,6 +593,7 @@ class Scene_Calendar_Management
         $scene = Scene_Calendar.new(calendar.id, @return_date)
       end
       if calendar.owned_by?(Session.name)
+        menu.option(p_("Calendar", "Edit calendar")) { edit_calendar(calendar) }
         menu.option(p_("Calendar", "Share calendar"), nil, "s") { share_calendar(calendar) }
         menu.option(p_("Calendar", "Manage calendar shares")) { manage_shares(calendar) }
         menu.option(p_("Calendar", "Delete calendar"), nil, :del) { delete_calendar(calendar) }
@@ -695,6 +696,56 @@ class Scene_Calendar_Management
     request_reload(id)
   rescue EltenLink::Error => error
     Log.warning("Calendar create failed: #{error.message}")
+    alert(_("Error"))
+  end
+
+  def edit_calendar(calendar)
+    fields = [
+      edt_name = EditBox.new(p_("Calendar", "Calendar name"), text: calendar.name, quiet: true),
+      chk_public = CheckBox.new(p_("Calendar", "Public calendar"), checked: calendar.public),
+      Button.new(_("Save")),
+      Button.new(_("Cancel"))
+    ]
+    form = Form.new(fields)
+    initial_state = [edt_name.text.to_s, chk_public.checked]
+    accepted = false
+    dialog_open
+    loop do
+      loop_update
+      form.update
+      current_state = [edt_name.text.to_s, chk_public.checked]
+      if key_pressed?(:key_escape) || ((key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 3)
+        break if current_state == initial_state || confirm(p_("Calendar", "Are you sure you want to close without saving?"))
+      end
+      next unless (key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 2
+
+      if edt_name.text.to_s.strip == ""
+        alert(p_("Calendar", "Enter a calendar name"))
+        next
+      end
+      if chk_public.checked != calendar.public
+        warning = if chk_public.checked
+                    p_("Calendar", "Changing this calendar to public will remove all existing shares and pending invitations. Do you want to continue?")
+                  else
+                    p_("Calendar", "Changing this calendar to private will remove all subscriptions. Do you want to continue?")
+                  end
+        next unless confirm(warning)
+      end
+      accepted = true
+      break
+    end
+    dialog_close
+    return if !accepted
+
+    EltenLink::Calendars.update(
+      elten_link,
+      calendar,
+      name: edt_name.text,
+      public_state: chk_public.checked
+    )
+    request_reload(calendar.id)
+  rescue EltenLink::Error => error
+    Log.warning("Calendar update failed: #{error.message}")
     alert(_("Error"))
   end
 
@@ -822,7 +873,7 @@ class Scene_Calendar_Public
     apply_language_filter
     index = @calendars.index { |calendar| calendar.id == calendar_id } || 0
     @sel = ListBox.new(
-      @calendars.map { |calendar| calendar_label(calendar) },
+      @calendars.map { |calendar| public_calendar_label(calendar) },
       header: p_("Calendar", "Public calendars"),
       index: index,
       quiet: false
@@ -861,10 +912,17 @@ class Scene_Calendar_Public
     @calendars[@sel.index]
   end
 
+  def public_calendar_label(calendar)
+    count = calendar.subscribers_count.to_i
+    subscribers = np_("Calendar", "%{count} subscriber", "%{count} subscribers", count) % { count: count }
+    "#{calendar_label(calendar)}, #{subscribers}"
+  end
+
   def subscribe(calendar)
     EltenLink::Calendars.subscribe(elten_link, calendar)
     @subscribed_ids << calendar.id
     @subscribed_ids.uniq!
+    calendar.subscribers_count += 1
     alert(p_("Calendar", "The calendar has been subscribed"))
     build_list(calendar.id)
   rescue EltenLink::Error => error
@@ -877,6 +935,7 @@ class Scene_Calendar_Public
 
     EltenLink::Calendars.delete_membership(elten_link, calendar)
     @subscribed_ids.delete(calendar.id)
+    calendar.subscribers_count = [calendar.subscribers_count - 1, 0].max
     alert(p_("Calendar", "The calendar has been unsubscribed"))
     build_list(calendar.id)
   rescue EltenLink::Error => error

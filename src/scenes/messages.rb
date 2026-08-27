@@ -187,6 +187,7 @@ def update_users
 end
 def context_users(menu)
   if @users.size >0 and @sel_users.index<@users.size
+menu.useroption(@users[@sel_users.index].user) if @users[@sel_users.index].is_user
 menu.option(p_("Messages", "Reply"), nil, "o") {
   $scene = Scene_Messages_New.new(@users[@sel_users.index].user,"","",export)
 }
@@ -741,6 +742,9 @@ if (key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form_messages.ind
       end
   def context_messages(menu)
     return if @sel_messages==nil
+    if @sel_messages.index<@messages.size and @messages[@sel_messages.index].sender_is_user
+      menu.useroption(@messages[@sel_messages.index].sender)
+    end
     unread_index=@messages.find_index{|message|message.receiver==Session.name && message.mread==0}
     if unread_index!=nil
       menu.option(p_("Messages", "Go to first unread message"), nil, "u") {

@@ -72,9 +72,51 @@ module Bass
   F_DOUBLE = Fiddle::TYPE_DOUBLE
   F_QWORD = Fiddle::TYPE_LONG_LONG
   BASS_UNICODE = 0x80000000
+  BASS_SAMPLE_8BITS = 1
+  BASS_SAMPLE_FLOAT = 0x100
   BASS_STREAM_DECODE = 0x200000
   BASS_STREAM_AUTOFREE = 0x40000
+  STREAMPROC_PUSH = -1
+  BASS_STREAMPROC_END = 0x80000000
   BASS_MIXER_CHAN_PAUSE = 0x20000
+  BASS_SLIDE_LOG = 0x1000000
+  BASS_FILEPOS_DOWNLOAD = 1
+  BASS_FILEPOS_START = 3
+  BASS_FILEPOS_CONNECTED = 4
+  BASS_FILEPOS_BUFFER = 5
+  BASS_FILEPOS_SIZE = 8
+  BASS_FILEPOS_BUFFERING = 9
+  BASS_ATTRIB_FREQ = 1
+  BASS_ATTRIB_VOL = 2
+  BASS_ATTRIB_PAN = 3
+  BASS_ATTRIB_CPU = 7
+  BASS_ATTRIB_SRC = 8
+  BASS_ATTRIB_NET_RESUME = 9
+  BASS_ATTRIB_NORAMP = 11
+  BASS_ATTRIB_BITRATE = 12
+  BASS_ATTRIB_BUFFER = 13
+  BASS_ATTRIB_GRANULE = 14
+  BASS_ATTRIB_TAIL = 16
+  BASS_ATTRIB_VOLDSP = 19
+  BASS_ATTRIB_VOLDSP_PRIORITY = 20
+  BASS_ATTRIB_TEMPO = 0x10000
+  BASS_ATTRIB_TEMPO_PITCH = 0x10001
+  BASS_ATTRIB_TEMPO_FREQ = 0x10002
+  BASS_ATTRIB_TEMPO_OPTION_USE_QUICKALGO = 0x10012
+  BASS_ATTRIB_TEMPO_OPTION_SEQUENCE_MS = 0x10013
+  BASS_BFX_CHANALL = -1
+  BASS_FX_BFX_ROTATE = 0x10000
+  BASS_FX_BFX_PEAKEQ = 0x10004
+  BASS_FX_BFX_DAMP = 0x10008
+  BASS_FX_BFX_AUTOWAH = 0x10009
+  BASS_FX_BFX_PHASER = 0x1000b
+  BASS_FX_BFX_CHORUS = 0x1000d
+  BASS_FX_BFX_DISTORTION = 0x10010
+  BASS_FX_BFX_COMPRESSOR2 = 0x10011
+  BASS_FX_BFX_BQF = 0x10013
+  BASS_FX_BFX_ECHO4 = 0x10014
+  BASS_FX_BFX_FREEVERB = 0x10016
+  BASS_BFX_FREEVERB_MODE_FREEZE = 1
 
   def self.optional_dlopen(lib)
     EltenRuntimePaths.dlopen(lib)
@@ -151,7 +193,15 @@ module Bass
   BASS_ChannelSetPosition = Fiddle::Function.new(BASSDLL["BASS_ChannelSetPosition"], [F_UINT, F_QWORD, F_UINT], F_INT, BASS_ABI)
   BASS_ChannelSet3DPosition = Fiddle::Function.new(BASSDLL["BASS_ChannelSet3DPosition"], [F_UINT, F_PTR, F_PTR, F_PTR], F_INT, BASS_ABI)
   BASS_StreamGetFilePosition = Fiddle::Function.new(BASSDLL["BASS_StreamGetFilePosition"], [F_UINT, F_UINT], F_QWORD, BASS_ABI)
+  BASS_ChannelSetFX = Fiddle::Function.new(BASSDLL["BASS_ChannelSetFX"], [F_UINT, F_UINT, F_INT], F_UINT, BASS_ABI)
+  BASS_ChannelRemoveFX = Fiddle::Function.new(BASSDLL["BASS_ChannelRemoveFX"], [F_UINT, F_UINT], F_INT, BASS_ABI)
+  BASS_FXFree = optional_fiddle(BASSDLL, "BASS_FXFree", [F_UINT], F_INT)
+  BASS_FXGetParameters = Fiddle::Function.new(BASSDLL["BASS_FXGetParameters"], [F_UINT, F_PTR], F_INT, BASS_ABI)
+  BASS_FXReset = Fiddle::Function.new(BASSDLL["BASS_FXReset"], [F_UINT], F_INT, BASS_ABI)
+  BASS_FXSetBypass = optional_fiddle(BASSDLL, "BASS_FXSetBypass", [F_UINT, F_INT], F_INT)
+  BASS_FXSetParameters = Fiddle::Function.new(BASSDLL["BASS_FXSetParameters"], [F_UINT, F_PTR], F_INT, BASS_ABI)
   BASS_FXSetPriority = optional_fiddle(BASSDLL, "BASS_FXSetPriority", [F_UINT, F_INT], F_INT)
+  BASS_FX_GetVersion = optional_fiddle(BASSFX, "BASS_FX_GetVersion", [], F_UINT)
   BASS_Mixer_StreamCreate = Fiddle::Function.new(BASSMIX["BASS_Mixer_StreamCreate"], [F_UINT, F_UINT, F_UINT], F_UINT, BASS_ABI)
   BASS_Mixer_StreamAddChannel = Fiddle::Function.new(BASSMIX["BASS_Mixer_StreamAddChannel"], [F_UINT, F_UINT, F_UINT], F_INT, BASS_ABI)
   BASS_Mixer_ChannelRemove = Fiddle::Function.new(BASSMIX["BASS_Mixer_ChannelRemove"], [F_UINT], F_INT, BASS_ABI)
@@ -612,6 +662,23 @@ prewarm_url_loader
     else
       [source, source]
     end
+  end
+
+  def self.create_push_stream_channel(frequency, channels, flags = 0)
+    flags = flags.to_i
+    source_flags = flags
+    source_flags |= BASS_STREAM_DECODE if Configuration.usefx == true
+    source = BASS_StreamCreate.call(frequency.to_i, channels.to_i, source_flags, STREAMPROC_PUSH, nil)
+    return [0, 0] if source == 0
+    return [source, source] if Configuration.usefx != true
+
+    @@BASS_FX_TempoCreate ||= Bass.optional_fiddle(BASSFX, "BASS_FX_TempoCreate", [F_UINT, F_UINT], F_UINT)
+    channel = @@BASS_FX_TempoCreate.call(source, 0)
+    return [source, channel] if channel != 0
+
+    BASS_StreamFree.call(source)
+    source = BASS_StreamCreate.call(frequency.to_i, channels.to_i, flags, STREAMPROC_PUSH, nil)
+    [source, source]
   end
 
   def self.create_sample_channel(filename, max = 1)

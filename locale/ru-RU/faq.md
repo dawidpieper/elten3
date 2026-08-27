@@ -239,7 +239,7 @@ Elten написан на языке Ruby. Некоторые модули пр�
 ## Могу ли я добавить что-то от себя в Elten?
 Мы будем очень рады, если вы это сделаете.
 Вся информация доступна на GitHub проекта:
-[https://github.com/dawidpieper/elten2](https://github.com/dawidpieper/elten2)
+[https://github.com/dawidpieper/elten3](https://github.com/dawidpieper/elten3)
 
 ## Где я могу найти документацию по API Elten?
 Официальной документации не существует, но её можно сгенерировать с помощью rdoc из кода.

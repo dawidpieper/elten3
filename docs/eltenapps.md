@@ -56,7 +56,7 @@ A development directory normally starts with `__app.rb`. The file contains exact
 =end Elten3AppInfo
 
 class ExampleApplication < Program
-  def main
+  def program_main
     information = EditBox.new(
       _("Example application"),
       type: EditBox::Flags::ReadOnly | EditBox::Flags::MultiLine,
@@ -68,14 +68,15 @@ class ExampleApplication < Program
     form.cancel_button = close_button
     close_button.on(:press) { form.resume }
     form.wait
-    finish
   end
 end
 ```
 
 Do not add the generated `EltenPrograms` namespace yourself. The runtime evaluates the file inside the namespace assigned to the manifest UUID, then resolves `main_class` relative to it. The resolved class must inherit from `Program`.
 
-`Program` is scene-compatible: the main menu can use the application class as a destination and instantiate it when selected. Its instance `main` method therefore owns the launched interaction. Use the same `Form#wait`, `Tasks.run`, `Runner`, `$scene` and `insert_scene` rules described in the [architecture guide](architecture.md#owning-an-interaction).
+`Program` is scene-compatible: the main menu can use the application class as a destination and instantiate it when selected. Define `program_main` for a Core-managed launch. Returning from it, or raising an application error from it, always finalises the instance. If `program_main` is absent, the dispatcher falls back to `main` and leaves lifecycle management to the application for compatibility with existing programs. When both methods exist, `program_main` takes precedence. This lookup applies only to scenes which inherit from `Program`.
+
+The launched interaction follows the same `Form#wait`, `Tasks.run`, `Runner`, `$scene` and `insert_scene` rules described in the [architecture guide](architecture.md#owning-an-interaction).
 
 ## Manifest
 
@@ -138,16 +139,33 @@ The application class and its launched instances have different lifetimes:
 | Load | Manifest and package validation | Checks identity, API version, platform, signature policy and required assets before activation. |
 | Class registration | `self.activate` | Runs synchronously when the class is registered, with its runtime associated. Use it for short class-level registrations. |
 | Background initialisation | `self.init` | Runs on a worker thread after registration. It may prepare non-UI state, but must not mutate forms or navigation directly. Exceptions are logged. |
-| Launch | `main` on a new instance | Owns the user interaction when the application is selected from the menu. |
-| Instance exit | `finish` | Calls the instance `close` hook, releases instance-managed resources, closes the application sound pool and returns to `Scene_Main`. |
+| Managed launch | `program_main` on a new instance | Owns the user interaction. Core guarantees instance finalisation when the method returns or raises an application error. |
+| Manual launch | `main` on a new instance | Compatibility path used only when `program_main` is absent. The application remains responsible for calling `finish`. |
+| Instance finalisation | `finalize` | Idempotently calls the instance `close` hook, releases instance-managed resources and closes the application sound pool. Normal completion also announces the exit and returns to `Scene_Main`; exceptional completion leaves recovery navigation to the scene dispatcher. |
 | Runtime unload | `Programs.unregister_runtime` | Closes runtime-managed resources and sound state, stops extensions, removes loader mappings and removes the generated namespace. |
 
-Override `close` for cleanup which belongs to one launched instance. Call `finish` rather than calling `close` directly when the application is leaving its main interaction:
+Override `close` for custom cleanup which belongs to one launched instance. In `program_main`, simply return when the interaction ends; Core invokes `finalize` even when the application raises. Managed resources and the application sound pool therefore do not require a manual `ensure` block:
 
 ```ruby
 class ExampleApplication < Program
+  def program_main
+    run_application
+  end
+
   def close
     @subscription.close if @subscription != nil
+  end
+end
+```
+
+Existing applications may retain a manually managed `main`. In that mode, use `finish` rather than calling `close` or `finalize` directly. `finish` performs normal finalisation and remains safe to call repeatedly:
+
+```ruby
+class LegacyApplication < Program
+  def main
+    run_application
+  ensure
+    finish
   end
 end
 ```
@@ -189,6 +207,16 @@ raw = app.read_binary("state.bin", default: "".b)
 
 Here `app` is the runtime returned by the instance helper. The same read and write helpers are available as application class methods, which is convenient in `self.activate` or `self.init`.
 
+Use `update_json` when a change depends on the current contents of a file:
+
+```ruby
+scores = app.update_json("scores.json", default: { "records" => [] }) do |data|
+  data["records"] << record
+end
+```
+
+Updates of the same resolved data file are serialised within the application runtime. `read_json` and `write_json` participate in the same per-file lock, so another JSON operation cannot run between the transaction's single read and atomic replacement. A missing, unreadable or invalid file starts from a deep JSON copy of `default`; mutating it never changes the caller's default object. The block mutates the yielded root value, and its incidental return value is ignored. After a successful write, `update_json` returns that root value. If the block or write raises, the original file is left unchanged. The application remains responsible for validating the parsed structure before mutating it. Like the other JSON helpers, `update_json` is also available as an application class method.
+
 Uninstalling an application normally leaves its data available for a later reinstall. The Programs screen offers a separate operation which removes both the application and its data. An application must not use its cache for anything whose loss would surprise the user.
 
 ## Packaged assets
@@ -201,6 +229,9 @@ manage(sound) if sound != nil
 sound.play if sound != nil
 
 play_sound_from_asset("notification", volume: 0.8)
+
+sound = play_sound_from_asset("success")
+sound.wait if sound != nil
 ```
 
 `play_sound_from_asset` uses the runtime's managed `SoundPool`, which limits simultaneous voices and closes completed sounds. Use `create_sound_from_asset` when the application needs direct control over the sound lifetime, and register the resulting object with `manage`.
@@ -224,16 +255,15 @@ Only declare an asset as required when the application genuinely cannot start wi
 
 `manage` attaches an object to a resource registry and normally calls its `close` method when that registry ends. Registries close in last-in, first-out order and make repeated cleanup safe.
 
-Calling `manage` on a `Program` instance gives the resource the lifetime of that launch; `finish` releases it. Calling the class method `manage` gives it the lifetime of the loaded runtime; it is released when the application is unloaded. Choose the narrower lifetime whenever possible:
+Calling `manage` on a `Program` instance gives the resource the lifetime of that launch; automatic finalisation after `program_main` releases it. Calling the class method `manage` gives it the lifetime of the loaded runtime; it is released when the application is unloaded. Choose the narrower lifetime whenever possible:
 
 ```ruby
 class ExampleApplication < Program
-  def main
+  def program_main
     sound = create_sound_from_asset("introduction")
     @sound = manage(sound) if sound != nil
     @sound.play if @sound != nil
     # ...
-    finish
   end
 end
 ```
@@ -267,9 +297,9 @@ class ExampleApplication < Program
           label: _("Announce updates"),
           get: proc { read_json("settings.json", default: {})["announcements"] == true },
           set: proc do |value|
-            state = read_json("settings.json", default: {})
-            state["announcements"] = value
-            write_json("settings.json", state)
+            update_json("settings.json", default: {}) do |state|
+              state["announcements"] = value
+            end
           end
         )
       end
@@ -281,6 +311,50 @@ end
 Extension names and setting keys use lower-case letters, numbers and underscores and must start with a letter. An extension may define at most one `start`, `tick`, `stop` and `settings` callback. Its stop callback receives a reason such as unload, reload rollback or client shutdown. Extensions are stopped in reverse registration order when their runtime is removed.
 
 The tick callback is synchronous and runs from `loop_update` on `$mainthread`. It must not wait for a network response, display a modal interaction or perform substantial parsing. Keep persistent work in an owned worker or service and use the tick only to inspect or apply ready results.
+
+## Server applications and leaderboards
+
+An application can bind its server-side registration and table schema to its `Program` class:
+
+```ruby
+SERVER_TABLES = {
+  "scores" => {
+    "visibility" => "public",
+    "columns" => {
+      "points" => "int",
+      "level" => "int"
+    }
+  }
+}.freeze
+
+server_app(
+  uuid: "12345678-1234-4123-8123-123456789abc",
+  tables: SERVER_TABLES,
+  protected: true
+)
+```
+
+`server_table("scores")`, `server_resources` and `delete_server_app` then use the declared UUID unless an explicit UUID is passed. `update_server_schema!` updates the declared tables and protection setting. The existing argument-based helpers remain available for applications which manage their server registration themselves.
+
+For an initial registration, declare `uuid: nil` and call `register_server_app!`. It returns the generated UUID and keeps it for the current process. Put that UUID into the declaration before distributing the application. To prevent accidental duplicate registrations, `register_server_app!` refuses to run when the declaration already contains a UUID.
+
+Rankings can use the optional `Leaderboard` wrapper instead of duplicating availability checks and error handling:
+
+```ruby
+scores = leaderboard(
+  "scores",
+  order: [["points", "desc"], ["level", "desc"]],
+  log_label: "Example scores"
+)
+
+scores.available?
+rows = scores.top(limit: 25)
+scores.submit("points" => 1200, "level" => 8)
+```
+
+Keep the returned leaderboard object for as long as its availability state should be shared. `top` also accepts `where`, `order`, `limit` and `offset`. A successful operation restores availability. After an EltenLink failure, subsequent operations are held for 5, 30 and then 120 seconds; later failures continue to use the 120-second delay. These delays can be replaced with `retry_delays:`. `top` returns an empty array and `submit` returns `false` while unavailable, and `last_error` exposes the last failure.
+
+`submit` makes at most one insertion attempt per call. The cooldown only permits a later explicit call to try again; it never resends a mutating request in the background. Cancellation does not mark the leaderboard unavailable, and exceptions outside EltenLink are not converted into network failures.
 
 ## Other integration points
 
