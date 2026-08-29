@@ -644,6 +644,7 @@ def espellcheck
   form.fields[1...-2]=[]
   form.show_all
   errors=SpellCheck.check(langs[lst_languages.index], @text)
+  errors=errors.reject{|e|dictionary_match?(splt[e.index...(e.index+e.length)])}
   for error in errors
         phr=splt[error.index...(error.index+error.length)]
         frgb=-1
@@ -668,17 +669,17 @@ def espellcheck
       options.push(opt)
     end
     label=phr+" "+letphr+": "+frg
-    lst = ListBox.new([p_("EAPI_Form", "Ignore")]+options+[p_("EAPI_Form", "Use custom text")], header: label)
+    lst = ListBox.new([p_("EAPI_Form", "Ignore"), p_("EAPI_Form", "Add to dictionary")]+options+[p_("EAPI_Form", "Use custom text")], header: label)
 edt = EditBox.new(label, type: 0, text: phr)
 lst.on(:move) {
 for i in 0...errors.size
   l=form.fields[1+i*2]
   e=form.fields[1+i*2+1]
   next if l==nil || e==nil
-  if l.index<l.options.size-1
-    form.hide(e)
-  else
+  if l.index==l.options.size-1
     form.show(e)
+  else
+    form.hide(e)
     end
   end
 }
@@ -693,11 +694,17 @@ for i in 0...errors.size
   btn_replace.on(:press) {
   chindex=0
   repls=0
+  added=0
   for i in 0...errors.size
-    if form.fields[1+i*2].index>0
+    l=form.fields[1+i*2]
+    idx=l.index
+    if idx==1
+      word=(@text||"")[errors[i].index, errors[i].length]||""
+      added+=1 if dictionary_add_dialog(word)
+    elsif idx>1
       corr=""
-      if form.fields[1+i*2].index<form.fields[1+i*2].options.size-1
-      corr=errors[i].suggestions[form.fields[1+i*2].index-1]
+      if idx<l.options.size-1
+      corr=errors[i].suggestions[idx-2]
     else
       corr=form.fields[1+i*2+1].text
       end
@@ -707,15 +714,116 @@ for i in 0...errors.size
       repls+=1
       end
     end
-    set_text(splt)
-    alert(np_("EAPI_Form", "%{count} word replaced", "%{count} words replaced", repls)%{:count=>repls.to_s})
-    form.resume
+    if repls>0
+      set_text(splt)
+      alert(np_("EAPI_Form", "%{count} word replaced", "%{count} words replaced", repls)%{:count=>repls.to_s})
+      alert(np_("EAPI_Form", "%{count} entry added to the dictionary", "%{count} entries added to the dictionary", added)%{:count=>added.to_s}, false) if added>0
+      form.resume
+    elsif added>0
+      alert(np_("EAPI_Form", "%{count} entry added to the dictionary", "%{count} entries added to the dictionary", added)%{:count=>added.to_s})
+      lst_languages.trigger(:move)
+    else
+      form.resume
+      end
   }
   form.accept_button = btn_replace
   form.wait
   focus
   loop_update
   end
+def dictionary_add_dialog(word)
+  result=false
+  begin
+    dialog_open
+    loop_update
+    dform = Form.new([
+      dpat = EditBox.new(p_("EAPI_Form", "Pattern"), type: 0, text: word, quiet: true),
+      dtype = ListBox.new([p_("EAPI_Form", "Whole word"), p_("EAPI_Form", "Match anywhere"), p_("EAPI_Form", "Regular expression")], header: p_("EAPI_Form", "Match type")),
+      dcase = CheckBox.new(p_("EAPI_Form", "Case sensitive"), checked: false),
+      btn_save = Button.new(p_("EAPI_Form", "Save to dictionary")),
+      btn_cancel = Button.new(_("Cancel"))
+    ], index: 0, silent: false, quiet: true)
+    dform.cancel_button=btn_cancel
+    btn_cancel.on(:press) {dform.resume}
+    btn_save.on(:press) {
+      case dictionary_add(dpat.text, match_type: dtype.index, case_sensitive: dcase.value)
+      when :added
+        result=true
+        dform.resume
+      when :duplicate
+        alert(p_("EAPI_Form", "This entry is already in the dictionary."))
+      when :invalid
+        alert(p_("EAPI_Form", "Invalid regular expression."))
+      when :empty
+        alert(p_("EAPI_Form", "Please enter a pattern."))
+        end
+    }
+    dform.accept_button=btn_save
+    dform.wait
+  ensure
+    dialog_close
+    loop_update
+  end
+  result
+  end
+def dictionary_parse(entry, default_type)
+  entry=entry.to_s
+  if entry=~/\A([01])([war])\|(.*)\z/m
+    [$1=="1", $2, $3]
+  elsif entry=~/\A([01])\|(.*)\z/m
+    [$1=="1", default_type, $2]
+  else
+    [true, default_type, entry]
+  end
+end
+def dictionary_add(pattern, match_type: 0, case_sensitive: false)
+  type=["w","a","r"][match_type]||"w"
+  pattern=pattern.to_s
+  pattern=pattern.strip unless type=="r"
+  return :empty if pattern==""
+  if type=="r"
+    begin
+      Regexp.new(pattern)
+    rescue Exception
+      return :invalid
+    end
+  end
+  ic=case_sensitive!=true
+  entry=(ic ? "1" : "0")+type+"|"+pattern
+  list=LocalConfig["SpellCheckCustomWords", [], type: :array_of_strings]
+  return :duplicate if list.include?(entry)
+  list.push(entry)
+  LocalConfig["SpellCheckCustomWords"]=list
+  :added
+end
+def dictionary_match_entry?(entry, default_type, word)
+  ic, type, val = dictionary_parse(entry, default_type)
+  return false if val==""
+  case type
+  when "a"
+    ic ? word.downcase.include?(val.downcase) : word.include?(val)
+  when "r"
+    begin
+      re = ic ? Regexp.new(val, Regexp::IGNORECASE) : Regexp.new(val)
+      re.match?(word)
+    rescue Exception
+      false
+    end
+  else
+    ic ? val.casecmp?(word) : val==word
+  end
+end
+def dictionary_match?(word)
+  word=word.to_s
+  return false if word==""
+  LocalConfig["SpellCheckCustomWords", [], type: :array_of_strings].each do |entry|
+    return true if dictionary_match_entry?(entry, "w", word)
+  end
+  LocalConfig["SpellCheckCustomRegexps", [], type: :array_of_strings].each do |entry|
+    return true if dictionary_match_entry?(entry, "r", word)
+  end
+  false
+end
 def copy
       Clipboard.text = get_check.gsub("\n","\r\n")
     alert(p_("EAPI_Form", "copied"), false)
