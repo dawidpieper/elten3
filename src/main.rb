@@ -155,7 +155,7 @@ terminate_process_handle(o)
         speak("Critical error occurred: "+$!.message)
     speech_wait
     sleep(0.5)
-    speak("Do you want to send the errror report?")
+    speak("Do you want to send the error report?")
     speech_wait
     if selector(["No","Yes"])== 1
       sleep(0.15)
