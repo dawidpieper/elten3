@@ -701,6 +701,10 @@ return result
       end
     else
       g = @sgroups[index - @grpheadindex]
+      if g.role == 5 && !allThreads
+        groupinvitationdlg(g)
+        return
+      end
       groupmotddlg(g, false) if g.hasnewmotd && (g.role == 1 || g.role == 2)
       if g.role == 1 or g.role == 2 or g.public
         if allThreads
@@ -715,6 +719,118 @@ return result
         alert(p_("Forum", "You cannot access this group."))
       end
     end
+  end
+
+  def groupinvitationdlg(group)
+    action = nil
+    form = Form.new([
+      EditBox.new(p_("Forum", "Group summary"), type: EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly, text: groupsummary(group)),
+      lst_action = ListBox.new([p_("Forum", "Accept invitation"), p_("Forum", "Refuse invitation")], header: p_("Forum", "Awaiting group invitation")),
+      btn_cancel = Button.new(_("Cancel"))
+    ])
+    form.cancel_button = btn_cancel
+    lst_action.on(:select) { |params| action = params[0]; form.resume }
+    btn_cancel.on(:press) { form.resume }
+    form.wait
+    groupjoin(group) if action == 0
+    groupleave(group) if action == 1
+    @grpsel.focus
+  end
+
+  def groupsummary(g)
+    s = g.name + "\r\n\n"
+    s += p_("Forum", "Language") + ": " + g.lang + "\n"
+    type=p_("Forum", "Hidden")
+    type=p_("Forum", "Public") if g.public
+    jointype=""
+    if !g.public
+      if !g.open
+        jointype=p_("Forum", "closed (only invited users can join)")
+      else
+        jointype=p_("Forum", "Moderated (everyone can request)")
+      end
+    else
+      if !g.open
+        jointype=p_("Forum", "Moderated (everyone can request)")
+      else
+        jointype=p_("Forum", "open (everyone can join)")
+      end
+    end
+    if g.recommended
+      type=p_("Forum", "Recommended")
+    end
+    s+=p_("Forum", "Group type")+": "+type+"\n"
+    s+=p_("Forum", "Group join type")+": "+jointype+"\n"
+    s += p_("Forum", "Members") + ": " + g.acmembers.to_s + "\n"
+    s += p_("Forum", "Founder") + ": " + g.founder + "\n"
+    if g.created > 0
+      t = Time.at(g.created)
+      s += p_("Forum", "Founded on") + ": " + format_date(t, true) + "\n"
+    end
+    acs = forum_fetch([], nil) { EltenLink::Forum.group_most_active_members(elten_link, group_id: g.id) }
+    s += p_("Forum", "The most active members") + ": " + acs.map { |x| x.to_s.delete("\r\n") }.join(", ") + "\n" if acs.size > 0
+    s += "\r\n\n"
+    group_size = forum_fetch(nil, nil) { EltenLink::Forum.group_size(elten_link, group_id: g.id) }
+    if group_size != nil
+      s += p_("Forum", "Group size") + "\n"
+      {
+        p_("Forum", "Audio posts") => group_size.audio,
+        p_("Forum", "Attachments") => group_size.attachments,
+        p_("Forum", "Text") => group_size.text,
+        p_("Forum", "Overall size") => group_size.total
+      }.each do |label, size|
+        a = size.to_i
+        if a > 0
+          s += label + ": "
+          if a >= 1048576
+            s += ((a / 1048576.0 * 10.0).round / 10.0).to_s + "MB"
+          elsif a < 1048576 and a >= 1024
+            s += ((a / 1024.0 * 10.0).round / 10.0).to_s + "kB"
+          else
+            s += a.to_s + "B"
+          end
+          s += "\n"
+        end
+      end
+    end
+    s += "\n\n" + g.description if g.description != nil && g.description != ""
+    s
+  end
+
+  def groupjoin(group)
+    if canjoin(group)
+      if group.role == 0 && ((group.public && !group.open) || (group.open && !group.public))
+        s = p_("Forum", "Do you want to request to join %{groupname}?")
+      else
+        s = p_("Forum", "Are you sure you want to join %{groupname}?")
+      end
+      confirm(s % { :groupname => group.name }) {
+        if forum_attempt(nil) {
+          EltenLink::Forum.join_group(elten_link, group_id: group.id)
+        }
+          if group.role == 0 && ((group.public && !group.open) || (group.open && !group.public))
+            alert(p_("Forum", "Request sent"))
+            group.role = 4
+          else
+            alert(p_("Forum", "You've just joined the group"))
+            group.role = 1
+          end
+        end
+      }
+    end
+    @grpsel.focus
+  end
+
+  def groupleave(group)
+    confirm(p_("Forum", "Are you sure you want to leave %{groupname}?") % { :groupname => group.name }) {
+      if forum_attempt(nil) {
+        EltenLink::Forum.leave_group(elten_link, group_id: group.id)
+      }
+        alert(p_("Forum", "You've just left the group"))
+        group.role = 0
+      end
+    }
+    @grpsel.focus
   end
 
   def context_groups(menu, type)
@@ -795,63 +911,7 @@ return result
           end
       menu.option(p_("Forum", "Group summary"), nil, "d") {
         g = @sgroups[@grpsel.index - @grpheadindex]
-        s = g.name + "\r\n\n"
-        s += p_("Forum", "Language") + ": " + g.lang + "\n"
-        type=p_("Forum", "Hidden")
-        type=p_("Forum", "Public") if g.public
-        jointype=""
-        if !g.public
-          if !g.open
-            jointype=p_("Forum", "closed (only invited users can join)")
-          else
-            jointype=p_("Forum", "Moderated (everyone can request)")
-          end
-        else
-          if !g.open
-            jointype=p_("Forum", "Moderated (everyone can request)")
-          else
-            jointype=p_("Forum", "open (everyone can join)")
-            end
-          end
-          if g.recommended
-            type=p_("Forum", "Recommended")
-            end
-        s+=p_("Forum", "Group type")+": "+type+"\n"
-        s+=p_("Forum", "Group join type")+": "+jointype+"\n"
-        s += p_("Forum", "Members") + ": " + g.acmembers.to_s + "\n"
-        s += p_("Forum", "Founder") + ": " + g.founder + "\n"
-        if g.created > 0
-          t = Time.at(g.created)
-          s += p_("Forum", "Founded on") + ": " + format_date(t, true) + "\n"
-        end
-        acs = forum_fetch([], nil) { EltenLink::Forum.group_most_active_members(elten_link, group_id: g.id) }
-        s += p_("Forum", "The most active members") + ": " + acs.map { |x| x.to_s.delete("\r\n") }.join(", ") + "\n" if acs.size > 0
-        s += "\r\n\n"
-        group_size = forum_fetch(nil, nil) { EltenLink::Forum.group_size(elten_link, group_id: g.id) }
-        if group_size != nil
-          s += p_("Forum", "Group size") + "\n"
-          {
-            p_("Forum", "Audio posts") => group_size.audio,
-            p_("Forum", "Attachments") => group_size.attachments,
-            p_("Forum", "Text") => group_size.text,
-            p_("Forum", "Overall size") => group_size.total
-          }.each do |label, size|
-            a = size.to_i
-            if a > 0
-              s += label + ": "
-              if a >= 1048576
-                s += ((a / 1048576.0 * 10.0).round / 10.0).to_s + "MB"
-              elsif a < 1048576 and a >= 1024
-                s += ((a / 1024.0 * 10.0).round / 10.0).to_s + "kB"
-              else
-                s += a.to_s + "B"
-              end
-              s += "\n"
-            end
-          end
-        end
-        s += "\n\n" + g.description if g.description != nil && g.description != ""
-        input_text(p_("Forum", "Group summary"), flags: EditBox::Flags::ReadOnly, text: s, escapable: true)
+        input_text(p_("Forum", "Group summary"), flags: EditBox::Flags::ReadOnly, text: groupsummary(g), escapable: true)
         loop_update
       }
       if @sgroups[@grpsel.index - @grpheadindex].hasregulations or @sgroups[@grpsel.index - @grpheadindex].role==2
@@ -887,27 +947,7 @@ if (((@sgroups[@grpsel.index - @grpheadindex].role==1 || (@sgroups[@grpsel.index
       s = p_("Forum", "Request to join this group") if @sgroups[@grpsel.index - @grpheadindex].role == 0 && ((@sgroups[@grpsel.index - @grpheadindex].public && !@sgroups[@grpsel.index - @grpheadindex].open) || (@sgroups[@grpsel.index - @grpheadindex].open && !@sgroups[@grpsel.index - @grpheadindex].public))
       if s != ""
         menu.option(s, nil, "j") {
-        if canjoin(@sgroups[@grpsel.index - @grpheadindex])
-          if @sgroups[@grpsel.index - @grpheadindex].role == 0 && ((@sgroups[@grpsel.index - @grpheadindex].public && !@sgroups[@grpsel.index - @grpheadindex].open) || (@sgroups[@grpsel.index - @grpheadindex].open && !@sgroups[@grpsel.index - @grpheadindex].public))
-            s = p_("Forum", "Do you want to request to join %{groupname}?")
-          else
-            s = p_("Forum", "Are you sure you want to join %{groupname}?")
-          end
-          confirm(s%{ :groupname => @sgroups[@grpsel.index - @grpheadindex].name }) {
-            if forum_attempt(nil) {
-              EltenLink::Forum.join_group(elten_link, group_id: @sgroups[@grpsel.index - @grpheadindex].id)
-            }
-              if @sgroups[@grpsel.index - @grpheadindex].role == 0 && ((@sgroups[@grpsel.index - @grpheadindex].public && !@sgroups[@grpsel.index - @grpheadindex].open) || (@sgroups[@grpsel.index - @grpheadindex].open && !@sgroups[@grpsel.index - @grpheadindex].public))
-                alert(p_("Forum", "Request sent"))
-                @sgroups[@grpsel.index - @grpheadindex].role = 4
-              else
-                alert(p_("Forum", "You've just joined the group"))
-                @sgroups[@grpsel.index - @grpheadindex].role = 1
-              end
-            end
-          }
-          end
-          @grpsel.focus
+          groupjoin(@sgroups[@grpsel.index - @grpheadindex])
         }
       end
       if @sgroups[@grpsel.index - @grpheadindex].role == 1 or @sgroups[@grpsel.index - @grpheadindex].role == 2 or @sgroups[@grpsel.index-@grpheadindex].public or @sgroups[@grpsel.index-@grpheadindex].open
@@ -924,15 +964,7 @@ if (((@sgroups[@grpsel.index - @grpheadindex].role==1 || (@sgroups[@grpsel.index
       s = p_("Forum", "Refuse invitation") if @sgroups[@grpsel.index - @grpheadindex].role == 5
       if s != ""
         menu.option(s, nil, "l") {
-          confirm(p_("Forum", "Are you sure you want to leave %{groupname}?")%{ :groupname => @sgroups[@grpsel.index - @grpheadindex].name }) {
-            if forum_attempt(nil) {
-              EltenLink::Forum.leave_group(elten_link, group_id: @sgroups[@grpsel.index - @grpheadindex].id)
-            }
-              alert(p_("Forum", "You've just left the group"))
-              @sgroups[@grpsel.index - @grpheadindex].role = 0
-            end
-          }
-          @grpsel.focus
+          groupleave(@sgroups[@grpsel.index - @grpheadindex])
         }
       end
             menu.option(p_("Forum", "Mark this group as read"), nil, "w") {
