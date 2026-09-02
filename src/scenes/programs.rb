@@ -17,7 +17,16 @@ class Scene_Programs
     @initial_action=initial_action
   end
 
+  def self.program_target(uuid)
+    {"type"=>"program","uuid"=>uuid.to_s}
+  end
+
   def main
+    if program_launch_target?(@initial_action)
+      target=@initial_action
+      @initial_action=nil
+      return launch_program(target)
+    end
     @installed=Programs.local_entries
     @programs=[]
     @all=@installed
@@ -92,6 +101,15 @@ when 1
            }
          end
        }
+       if program_uuid(program)!=""
+         menu.option(p_("Programs", "Add this program to quick actions"), nil, "q") {
+           if QuickActions.create(Scene_Programs, program.name.to_s+" (#{p_("Programs", "Program")})", [Scene_Programs.program_target(program_uuid(program))])
+             alert(p_("Programs", "Program added to quick actions"), false)
+           else
+             alert(_("Error"))
+           end
+         }
+       end
        add_install_options(menu)
      end
 
@@ -102,6 +120,47 @@ when 1
        menu.option(p_("Programs", "Install new program from file"), nil, "I") {
          install_from_file
        }
+     end
+
+     def program_launch_target?(value)
+       value.is_a?(Hash) && value["type"].to_s=="program" && value["uuid"].to_s!=""
+     end
+
+     def launch_program(target)
+       uuid=target["uuid"].to_s.downcase
+       program=uuid=="" ? nil : Programs.installed_entry_for_id(uuid)
+       if program==nil
+         alert(p_("Programs", "This program is no longer installed."))
+         return finish_launch
+       end
+       if !program_loaded?(program)
+         if program_loadable?(program)
+           entry=program_realpath(program)
+           if entry=="" || !Programs.load_sig(entry)
+             alert(p_("Programs", "The program could not be launched."))
+             return finish_launch
+           end
+         else
+           alert(p_("Programs", "The program could not be launched."))
+           return finish_launch
+         end
+       end
+       cls=program_class_for_uuid(uuid)
+       if cls==nil
+         alert(p_("Programs", "The program could not be launched."))
+         return finish_launch
+       end
+       $scene=cls.new
+     end
+
+     def program_class_for_uuid(uuid)
+       uuid=uuid.to_s.downcase
+       return nil if uuid==""
+       Programs.list.find{|cls| cls.respond_to?(:app_uuid) && cls.app_uuid.to_s.downcase==uuid}
+     end
+
+     def finish_launch
+       $scene=Scene_Main.new if $scene==self
      end
 
      def installed_row(program)
