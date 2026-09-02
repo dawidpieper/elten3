@@ -195,7 +195,12 @@ update if r!=false
 return r!=false && r['status']=='success'
 end
 def list_channels
-cmd=command('list')
+cmd=command('list', {}, notify_failure: false)
+if cmd==false
+thread=@reconnect_thread
+thread.join(CommandTimeout+3) if thread!=nil && thread.alive?
+cmd=command('list') if @connected && !@reconnecting
+end
 return {} if cmd==false
 return cmd['channels']
 end
@@ -831,10 +836,10 @@ log(2, "VoIP command write: #{$!.to_s}")
 return true
 end
 end
-def handle_command_failure(reconnect)
+def handle_command_failure(reconnect, notify: true)
 return if @closing
 if reconnect
-play_sound("right")
+play_sound("right") if notify
 if @reconnecting==false && (@reconnect_thread==nil || !@reconnect_thread.alive?)
 @reconnect_thread = Thread.new{reconnect()}
 end
@@ -870,7 +875,7 @@ return Zstd.decompress(a)
 end
 ans
 end
-def command(cmd, params={}, reconnect: true)
+def command(cmd, params={}, reconnect: true, notify_failure: true)
 @cmd_mutex||=Mutex.new
 begin
 json=nil
@@ -888,9 +893,10 @@ return false if json['status']!='success'
 return json
 rescue Exception
 log(2, "VoIP command #{cmd}: #{$!.to_s}")
-handle_command_failure(reconnect)
+handle_command_failure(reconnect, notify: notify_failure)
 return false
 end
 end
 end
 end
+
