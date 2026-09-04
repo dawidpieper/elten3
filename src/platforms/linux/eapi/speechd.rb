@@ -108,6 +108,16 @@ module SpeechdBridge
       send_speech(ssml.to_s, true)
     end
 
+    # Spelling goes through SSIP CHAR rather than SPEAK: a CHAR message is
+    # processed at the highest symbol level regardless of the punctuation
+    # setting, which is what makes the daemon name "." or ":" instead of
+    # silently dropping them.
+    def say_chars(chars)
+      chars = Array(chars).map { |ch| ch.to_s }
+      return false if chars.empty?
+      send_chars(chars)
+    end
+
     def stop
       return false unless available?
       command("STOP self")
@@ -154,19 +164,34 @@ module SpeechdBridge
 
     private
 
+    def send_speech(data, ssml)
+      deliver do
+        command("SET self SSML_MODE #{ssml ? "on" : "off"}")
+        speak_data(data)
+      end
+    end
+
+    # SSML_MODE has to be settled before BLOCK BEGIN - inside a block SSIP only
+    # accepts the message commands and a handful of SET SELF parameters.
+    def send_chars(chars)
+      deliver do
+        command("SET self SSML_MODE off")
+        spell_data(chars)
+      end
+    end
+
     # Sends one utterance, reconnecting once if the daemon died in the meantime.
     # speech-dispatcher can be restarted (or crash) under a long-running Elten,
     # and without this the client would keep writing into a dead socket forever.
     # Held across the whole utterance so the SSML_MODE switch cannot be undone by
     # another thread between setting it and sending the text it applies to.
-    def send_speech(data, ssml)
+    def deliver
       LOCK.synchronize do
         attempted_reconnect = false
         begin
           return false if connection == nil
           reset_index
-          command("SET self SSML_MODE #{ssml ? "on" : "off"}")
-          speak_data(data)
+          yield
         rescue *DISCONNECT_ERRORS => e
           drop_connection("speak", e)
           unless attempted_reconnect
@@ -274,7 +299,7 @@ module SpeechdBridge
     rescue Exception
     end
 
-    # Disconnect errors propagate to send_speech, which retries once; anything
+    # Disconnect errors propagate to deliver, which retries once; anything
     # else is a local fault and just fails the utterance.
     # SPEAK and the data block that follows it are one indivisible exchange -
     # anything squeezed in between would be swallowed as part of the message
@@ -299,6 +324,30 @@ module SpeechdBridge
       lines = data.to_s.gsub("\r\n", "\n").split("\n", -1)
       lines = lines.map { |line| line.start_with?(".") ? ".#{line}" : line }
       lines.join("\r\n")
+    end
+
+    # A block keeps the whole spelling one message for the priority system and
+    # for STOP; without it the characters would be separate messages and the
+    # daemon's default priority would drop all but the last one.
+    def spell_data(chars)
+      LOCK.synchronize do
+        return false if connection == nil
+        return ok?(command("CHAR #{char_argument(chars[0])}")) if chars.size == 1
+        return false unless ok?(command("BLOCK BEGIN"))
+        chars.each { |ch| command("CHAR #{char_argument(ch)}") }
+        ok?(command("BLOCK END"))
+      rescue *DISCONNECT_ERRORS
+        raise
+      rescue Exception => e
+        note_failure("spell", e)
+        false
+      end
+    end
+
+    # SSIP takes the character verbatim on the command line, with space as the
+    # one exception it cannot represent.
+    def char_argument(ch)
+      ch == " " ? "space" : ch
     end
 
     # Locked as a unit: the write and the read of the reply it belongs to must

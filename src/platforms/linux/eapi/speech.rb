@@ -208,10 +208,12 @@ class SpeechDispatcher < SpeechOutput
       stop if interrupt
       @bookmark_id = nil
       apply_synth_settings
-      text = text.to_s.chars.join(" ") if spelling
+      text = text.to_s
+      return SpeechdBridge.say_chars(text.chars) ? 0 : 1 if spelling && spellable?(text)
+      text = text.chars.join(" ") if spelling
       # The bridge reports a dead daemon by returning false rather than raising,
       # so returning 0 unconditionally would claim success while being mute.
-      SpeechdBridge.say(text.to_s) ? 0 : 1
+      SpeechdBridge.say(text) ? 0 : 1
     rescue Exception => e
       Log.warning("Linux speech failed: #{e.class}: #{e.message}") if defined?(Log)
       1
@@ -245,6 +247,12 @@ class SpeechDispatcher < SpeechOutput
     end
 
     private
+
+    # CR and LF would break the framing of the CHAR command line, so those fall
+    # back to being read as ordinary text.
+    def spellable?(text)
+      text != "" && !text.include?("\r") && !text.include?("\n")
+    end
 
     def apply_synth_settings
       return false unless available?
