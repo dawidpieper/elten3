@@ -18,7 +18,8 @@ module Elten
     end
 
     def window_title
-      VERSION_STRING
+      return VERSION_STRING unless $developer_mode == true
+      "#{VERSION_STRING}, developer mode"
     end
 
     def build_id
@@ -189,7 +190,7 @@ module EltenBoot
       set_active_window = Fiddle::Function.new(user32["SetActiveWindow"], [type_ptr], type_ptr)
       set_focus = Fiddle::Function.new(user32["SetFocus"], [type_ptr], type_ptr)
       hwnd = nil
-      [Elten.window_title, "Elten"].uniq.each do |title|
+      [Elten::VERSION_STRING, Elten.window_title, "Elten"].uniq.each do |title|
         hwnd = find_window.call(wide_string(WINDOWS_MAIN_CLASS), wide_string(title))
         break if hwnd != nil && hwnd.to_i != 0
       end
