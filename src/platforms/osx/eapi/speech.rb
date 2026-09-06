@@ -59,7 +59,6 @@ module OSXSpeechBridge
       return 0 unless available?
       object = send_id(cls("AVSpeechSynthesizer"), "new")
       synth_settings(object)[:voice_id] = voice_id.to_s
-      # Completion callbacks are required to settle pending speech.
       unless install_delegate(object)
         send_void(object, "release")
         return 0
@@ -99,8 +98,6 @@ module OSXSpeechBridge
       settings = synth_settings(synth)
       utterance = build_utterance(text, settings[:voice_id], settings[:rate], settings[:volume])
       @indexed_utterances[synth.to_i] = utterance.to_i if track_indexes
-      # Submission counts as active speech before AVFoundation starts playback.
-      # Track queued utterances too, independently of the reading bookmarks.
       pending = (@pending_utterances[synth.to_i] ||= {})
       pending[utterance.to_i] = true
       send_void(synth, "speakUtterance:", utterance, [PTR])
@@ -113,8 +110,6 @@ module OSXSpeechBridge
 
     def stop(synth)
       return true if synth.to_i == 0
-      # Explicit stops settle the whole queue, including utterances for which
-      # AVFoundation has not delivered a callback yet.
       @pending_utterances.delete(synth.to_i)
       reset_index_events(synth)
       send_bool(synth, "stopSpeakingAtBoundary:", 0, [INT])
@@ -383,7 +378,6 @@ module OSXSpeechBridge
     end
 
     def record_finished(synth, utterance, finished)
-      # A late callback can only settle its own utterance, never a replacement.
       @pending_utterances[synth.to_i]&.delete(utterance.to_i)
       return unless indexed_utterance?(synth, utterance)
       @finished ||= {}
