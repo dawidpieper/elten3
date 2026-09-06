@@ -27,6 +27,7 @@ module OSXSpeechBridge
   AV_AUDIO_PCM_FORMAT_FLOAT32 = 1
   AV_AUDIO_PCM_FORMAT_INT16 = 3
   AV_AUDIO_PCM_FORMAT_INT32 = 4
+  @pending_utterances = {}
 
   class << self
     def available?
@@ -58,7 +59,11 @@ module OSXSpeechBridge
       return 0 unless available?
       object = send_id(cls("AVSpeechSynthesizer"), "new")
       synth_settings(object)[:voice_id] = voice_id.to_s
-      install_delegate(object)
+      # Completion callbacks are required to settle pending speech.
+      unless install_delegate(object)
+        send_void(object, "release")
+        return 0
+      end
       object
     rescue Exception
       0
@@ -88,20 +93,30 @@ module OSXSpeechBridge
       false
     end
 
-    def start(synth, text, track: true)
+    def start(synth, text, track_indexes: true)
       return false if synth.to_i == 0
-      reset_events(synth) if track
+      reset_index_events(synth) if track_indexes
       settings = synth_settings(synth)
       utterance = build_utterance(text, settings[:voice_id], settings[:rate], settings[:volume])
-      track_utterance(synth, utterance) if track
+      @indexed_utterances[synth.to_i] = utterance.to_i if track_indexes
+      # Submission counts as active speech before AVFoundation starts playback.
+      # Track queued utterances too, independently of the reading bookmarks.
+      pending = (@pending_utterances[synth.to_i] ||= {})
+      pending[utterance.to_i] = true
       send_void(synth, "speakUtterance:", utterance, [PTR])
       true
-    rescue Exception
+    rescue Exception => error
+      record_finished(synth, utterance, false) if utterance != nil
+      Log.warning("OSX speech submission failed: #{error.class}: #{error.message}") if defined?(Log)
       false
     end
 
     def stop(synth)
       return true if synth.to_i == 0
+      # Explicit stops settle the whole queue, including utterances for which
+      # AVFoundation has not delivered a callback yet.
+      @pending_utterances.delete(synth.to_i)
+      reset_index_events(synth)
       send_bool(synth, "stopSpeakingAtBoundary:", 0, [INT])
     rescue Exception
       false
@@ -122,10 +137,8 @@ module OSXSpeechBridge
     end
 
     def speaking?(synth)
-      return false if synth.to_i == 0
-      send_bool(synth, "isSpeaking")
-    rescue Exception
-      false
+      pending = @pending_utterances[synth.to_i]
+      pending != nil && !pending.empty?
     end
 
     def word_position(synth)
@@ -295,7 +308,9 @@ module OSXSpeechBridge
 
     def install_delegate(synth)
       return false if synth == nil || synth.to_i == 0
-      send_void(synth, "setDelegate:", speech_delegate, [PTR])
+      delegate = speech_delegate
+      return false if delegate.to_i == 0
+      send_void(synth, "setDelegate:", delegate, [PTR])
       true
     rescue Exception
       false
@@ -332,7 +347,7 @@ module OSXSpeechBridge
         [PTR, PTR, PTR, PTR],
         "v@:@@"
       ) do |_self, _cmd, synth, utterance|
-        OSXSpeechBridge.send(:record_finished, synth, utterance, 1)
+        OSXSpeechBridge.send(:record_finished, synth, utterance, true)
       end
       @delegate_closures << add_objc_method(
         klass,
@@ -341,7 +356,7 @@ module OSXSpeechBridge
         [PTR, PTR, PTR, PTR],
         "v@:@@"
       ) do |_self, _cmd, synth, utterance|
-        OSXSpeechBridge.send(:record_finished, synth, utterance, 0)
+        OSXSpeechBridge.send(:record_finished, synth, utterance, false)
       end
       objc_register_class_pair.call(klass)
       @speech_delegate_class = klass
@@ -361,40 +376,37 @@ module OSXSpeechBridge
     end
 
     def record_word_position(synth, utterance, location)
-      return unless tracked_utterance?(synth, utterance)
+      return unless indexed_utterance?(synth, utterance)
       @word_positions ||= {}
       @word_positions[synth.to_i] = location.to_i
     rescue Exception
     end
 
     def record_finished(synth, utterance, finished)
-      return unless tracked_utterance?(synth, utterance)
+      # A late callback can only settle its own utterance, never a replacement.
+      @pending_utterances[synth.to_i]&.delete(utterance.to_i)
+      return unless indexed_utterance?(synth, utterance)
       @finished ||= {}
-      @finished[synth.to_i] = finished.to_i != 0
-      @current_utterances.delete(synth.to_i)
+      @finished[synth.to_i] = finished
+      @indexed_utterances.delete(synth.to_i)
     rescue Exception
     end
 
-    def reset_events(synth)
+    def reset_index_events(synth)
       @word_positions ||= {}
       @finished ||= {}
-      @current_utterances ||= {}
+      @indexed_utterances ||= {}
       @word_positions.delete(synth.to_i)
       @finished.delete(synth.to_i)
-      @current_utterances.delete(synth.to_i)
+      @indexed_utterances.delete(synth.to_i)
       true
     rescue Exception
       false
     end
 
-    def track_utterance(synth, utterance)
-      @current_utterances ||= {}
-      @current_utterances[synth.to_i] = utterance.to_i
-    end
-
-    def tracked_utterance?(synth, utterance)
-      @current_utterances ||= {}
-      @current_utterances[synth.to_i] == utterance.to_i
+    def indexed_utterance?(synth, utterance)
+      @indexed_utterances ||= {}
+      @indexed_utterances[synth.to_i] == utterance.to_i
     end
 
     def synth_settings(synth)
@@ -738,8 +750,7 @@ class OSXSpeech < SpeechOutput
         clear_index_tracking
       end
       text = text.to_s.chars.join(" ") if spelling
-      speak_async(text, false, track: interrupt)
-      0
+      speak_async(text, false, track_indexes: interrupt) ? 0 : 1
     rescue Exception => e
       Log.warning("OSX speech failed: #{e.class}: #{e.message}")
       1
@@ -757,8 +768,7 @@ class OSXSpeech < SpeechOutput
       text = setup_index_tracking(texts, indexes, id)
       @bookmark = nil
       @bookmark_id = id
-      speak_async(text, false)
-      0
+      speak_async(text, false) ? 0 : 1
     rescue Exception => e
       Log.warning("OSX indexed speech failed: #{e.class}: #{e.message}")
       1
@@ -801,13 +811,12 @@ class OSXSpeech < SpeechOutput
       false
     end
 
-    def speak_async(text, stop_previous = true, track: true)
+    def speak_async(text, stop_previous = true, track_indexes: true)
       stop_current_backend if stop_previous
       return false unless bridge_active?
       @paused = false
       apply_synth_settings
-      OSXSpeechBridge.start(synth, text.to_s, track: track)
-      true
+      OSXSpeechBridge.start(synth, text.to_s, track_indexes: track_indexes)
     end
 
     def wait_current
