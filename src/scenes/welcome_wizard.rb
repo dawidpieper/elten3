@@ -148,11 +148,7 @@ class Scene_WelcomeWizard
 
   def add_orientation_pages
     add_menus_page
-    add_info_page(
-      :quick_actions,
-      p_("WelcomeWizard", "Quick Actions"),
-      p_("WelcomeWizard", "The main window greets you with a list of Quick Actions: shortcuts that take you straight to the places and commands you use most, such as opening Messages, publishing to the feed or entering a conference channel. The default set covers the essentials, but all of it is yours to change: use a Quick Action's context menu to move, rename, hide or delete it, assign a hotkey to it, add further actions or restore the defaults.")
-    )
+    add_quick_actions_page
     add_sounds_page
     add_controls_presentation_page
     add_nvda_page if nvda_active?
@@ -355,6 +351,57 @@ class Scene_WelcomeWizard
         selected == current ? @state.delete(:context_menu_bar) : @state[:context_menu_bar] = selected ? "true" : "false"
       end
     end
+  end
+
+  def add_quick_actions_page
+    text = p_("WelcomeWizard", "The main window greets you with a list of Quick Actions: shortcuts that take you straight to the places and commands you use most, such as opening Messages, publishing to the feed or entering a conference channel. The default set covers the essentials, but all of it is yours to change: choose below which actions should be visible in your Quick Actions list; shortcuts assigned to hidden actions remain active. You can also use a Quick Action's context menu at any time to move, rename, hide or delete it, assign a hotkey to it, add further actions or restore the defaults.")
+    if available_quick_actions.empty?
+      add_info_page(:quick_actions, p_("WelcomeWizard", "Quick Actions"), text)
+      return
+    end
+
+    add_page(:quick_actions, p_("WelcomeWizard", "Quick Actions")) do
+      actions = available_quick_actions
+      info = information_field(p_("WelcomeWizard", "Quick Actions"), text)
+      options = actions.map(&:detail)
+      list = ListBox.new(
+        options,
+        header: p_("WelcomeWizard", "Actions visible in the Quick Actions list"),
+        flags: ListBox::Flags::MultiSelection
+      )
+      current_visible = current_visible_quick_action_ids(actions)
+      selected = @state[:quick_actions_visibility] || current_visible
+      actions.each_with_index do |action, index|
+        list.selected[index] = true if selected.include?(quick_action_id(action))
+      end
+
+      view([info, list]) do
+        chosen = list.multiselections.map { |index| quick_action_id(actions[index]) }.compact
+        if chosen.sort == current_visible.sort
+          @state.delete(:quick_actions_visibility)
+        else
+          @state[:quick_actions_visibility] = chosen
+        end
+        true
+      end
+    end
+  end
+
+  def available_quick_actions
+    return [] unless defined?(EltenAPI::QuickActions)
+
+    EltenAPI::QuickActions.get
+  rescue StandardError => error
+    Log.warning("Welcome wizard quick actions lookup failed: #{error.class}: #{error.message}") if defined?(Log)
+    []
+  end
+
+  def quick_action_id(action)
+    [action.action.to_s, action.params.is_a?(Array) ? action.params : [], action.label.to_s]
+  end
+
+  def current_visible_quick_action_ids(actions=available_quick_actions)
+    actions.select { |action| action.show != false }.map { |action| quick_action_id(action) }
   end
 
   def context_menu_key_available?
@@ -1585,6 +1632,7 @@ class Scene_WelcomeWizard
         lines.push(p_("WelcomeWizard", "Hide the context menu from the menu bar"))
       end
     end
+    lines.push(p_("WelcomeWizard", "Change the actions shown in the Quick Actions list")) if @state[:quick_actions_visibility]
     if @state[:hide_window]
       if @state[:hide_window] == "true"
         lines.push(p_("WelcomeWizard", "Enable minimising to the system tray"))
@@ -1629,6 +1677,7 @@ class Scene_WelcomeWizard
     waiting
     apply_account_changes
     apply_local_changes
+    apply_quick_actions_changes
     apply_forum_changes
     apply_social_changes
     waiting_end
@@ -1696,6 +1745,21 @@ class Scene_WelcomeWizard
     perform(p_("WelcomeWizard", "Local program settings")) do
       changes.each { |group, key, value| writeconfig(group, key, value) }
       load_configuration
+      true
+    end
+  end
+
+  def apply_quick_actions_changes
+    return unless @state[:quick_actions_visibility]
+    return unless defined?(EltenAPI::QuickActions)
+
+    perform(p_("WelcomeWizard", "Quick Actions")) do
+      actions = EltenAPI::QuickActions.get
+      chosen = @state[:quick_actions_visibility]
+      actions.each do |action|
+        action.show = chosen.include?(quick_action_id(action))
+      end
+      raise p_("WelcomeWizard", "Could not save Quick Actions") unless EltenAPI::QuickActions.save_actions
       true
     end
   end
