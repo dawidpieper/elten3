@@ -176,6 +176,12 @@ module GlobalMenu
     }
     end
     if developer_mode?
+    m.option(p_("MainMenu", "Restart in &normal mode")) {
+                                  play_sound("logout")
+              if !restart_to_normal_mode
+                alert(p_("MainMenu", "Cannot restart in normal mode."))
+              end
+    }
     m.option(p_("MainMenu", "Restart in de&bug mode")) {
                     play_sound("logout")
               $DEBUG=true

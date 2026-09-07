@@ -125,6 +125,28 @@ end
       EltenSystemHelpers.command_line_join(parts)
     end
 
+    def restart_to_normal_mode
+      command = normal_restart_command
+      if command.to_s == ""
+        Log.error("Normal restart failed: empty restart command")
+        return false
+      end
+      Log.info("Restarting Elten in normal mode: #{command}")
+      $exit_runproc = command
+      $exit_runproc_path = Dir.pwd
+      $exit = true
+      $scene = nil
+      true
+    rescue Exception => e
+      Log.error("Normal restart failed: #{e.class}: #{e.message}")
+      false
+    end
+
+    def normal_restart_command
+      parts = restart_command_parts.reject { |part| EltenBoot::DEVELOPER_FLAGS.include?(part.to_s.downcase) }
+      EltenSystemHelpers.command_line_join(parts)
+    end
+
     def restart_command_parts
       parts = original_process_arguments
       if parts.size > 0
