@@ -2059,9 +2059,10 @@ break
     end
     sortermenu(1, @group, menu)
     menu.option(_("Refresh"), nil, "r") {
+      @frmsetid=@sforums[@frmsel.index].id if @sforums.size>0
 @@lastCacheIdent=nil
     getcache
-      main
+      forumsload(@group)
     }
   end
 
