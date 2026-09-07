@@ -345,6 +345,7 @@ when 1
              return
            end
            sel.focus
+           loop_update
          end
          break if key_pressed?(:key_escape)
        end
