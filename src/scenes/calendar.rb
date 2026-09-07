@@ -343,7 +343,7 @@ class Scene_Calendar
       end
     end
     if !preview_mode?
-      menu.option(p_("Calendar", "Calendar management"), nil, "c") do
+      menu.option(p_("Calendar", "Calendar management"), nil, "m") do
         $scene = Scene_Calendar_Management.new(@filter_calendar_id, @grid.date)
       end
     end
