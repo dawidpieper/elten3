@@ -478,6 +478,11 @@ module EltenLink
         true
       end
 
+      def delete_mention(client, mention_id:)
+        client.api_data("DELETE", "/api/v1/forum/mention/#{mention_id.to_i}", {})
+        true
+      end
+
       def list_forum_tags(client, forumid:)
         data = client.api_data("GET", "/api/v1/forum/forum/#{forumid.to_i}/tags")
         data["tags"].to_a.map { |row| build_tag(row) }
