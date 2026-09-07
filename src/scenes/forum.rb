@@ -1027,7 +1027,7 @@ motd = groupmotd(group)
       fields=[
             EditBox.new((p_("Forum", "Message of the day of group %{groupname}")%{:groupname=>group.name}), type: ((group.role==2)?(EditBox::Flags::MultiLine):(EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly)), text: motd),
             Button.new(_("Save")),
-            Button.new(_("Cancel"))
+            Button.new((group.role==2 && editable!=false)?_("Cancel"):_("OK"))
             ]
             fields[1]=nil if group.role!=2 or editable==false
             form=Form.new(fields)
