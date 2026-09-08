@@ -223,7 +223,7 @@ end
   else
       delay(1)
       end
-v=44
+v=45
 if nvda_running && defined?(NVDA) && (!NVDA.check || NVDA.getversion!=v)
   if !NVDA.check
   str=p_("Loading", "Elten has detected that you are using NVDA. To support some features of this screen reader, the Elten add-on for NVDA must be installed. Do you want to install it now?")
