@@ -170,6 +170,7 @@ module EltenAPI
         @stream_controls = Queue.new
         @notification_ids = {}
         @notifications_primed = false
+        @session_start_time = nil
         @active_notifications_mutex = Mutex.new
         @runtime_state_mutex = Mutex.new
         @active_notifications = []
@@ -317,6 +318,7 @@ module EltenAPI
         @next_virtual_update_check_at = 0.0
         @notification_ids.clear
         @notifications_primed = false
+        @session_start_time = nil
         @active_notifications_mutex.synchronize do
           @active_notifications = []
           @active_notifications_hash = ""
@@ -674,6 +676,7 @@ module EltenAPI
         )
         response["notifications_state"] = data["notifications_state"] if data["notifications_state"].is_a?(Array)
         @request_serial += 1
+        prime_window_notifications(response) if frame["full"] == true
         handle_status_data(response, key, false, @request_serial, nil, stream: true)
         @stream_wn_cursor = data["wn_cursor"].to_s unless data["wn_cursor"].to_s.empty?
         Log.info("Realtime stream restored over HTTP/2") if restored
@@ -739,7 +742,9 @@ module EltenAPI
         if response["time"].is_a?(Integer)
           server_time = response["time"].to_i
           @wnlasttime = @wnlasttime == nil ? server_time : [@wnlasttime.to_i, server_time].max
+          @session_start_time ||= server_time
         end
+        @session_start_time ||= Time.now.to_i
         handle_message_counter(response)
         handle_feed_counter(response, key)
         handle_active_notifications(response, request_id)
@@ -873,6 +878,10 @@ module EltenAPI
         queued = []
         notifications.each do |notification|
           id = notification["id"]
+          if stale_monitor_notification?(notification)
+            remember_notification(id)
+            next
+          end
           queued << notification if remember_notification(id)
         end
         app_notifications, queued = queued.partition do |notification|
@@ -894,14 +903,19 @@ module EltenAPI
             )
           end
         end
-        invisible.each do |notification|
-          enqueue_event(
-            "func" => "notif",
-            "alert" => notification["alert"],
-            "sound" => notification["sound"],
-            "id" => notification["id"],
-            "invisible" => true
-          )
+        if invisible.size > 10
+          sample_sound = invisible.map { |notification| notification["sound"] }.compact.first || "new"
+          enqueue_event("func" => "notif", "sound" => sample_sound, "invisible" => true)
+        else
+          invisible.each do |notification|
+            enqueue_event(
+              "func" => "notif",
+              "alert" => notification["alert"],
+              "sound" => notification["sound"],
+              "id" => notification["id"],
+              "invisible" => true
+            )
+          end
         end
       end
 
@@ -1108,6 +1122,15 @@ module EltenAPI
       def notification_invisible?(notification)
         value = notification["invisible"]
         value == true || value.to_s == "1" || value.to_s.downcase == "true"
+      end
+
+      def stale_monitor_notification?(notification)
+        return false unless notification.is_a?(Hash)
+        return false unless notification["cat"].to_s == "mtr"
+        return false if @session_start_time == nil
+
+        timestamp = (notification["date"] || notification["time"]).to_i
+        timestamp.positive? && timestamp < @session_start_time.to_i
       end
 
       def enqueue_event(event)
