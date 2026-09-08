@@ -1650,7 +1650,6 @@ loop do
     btn_cancel = Button.new(_("Cancel"))
     ], index: 0, silent: false, quiet: true)
     form.hide(lst_threadin) if obj!=nil
-        lst_phrasein.selected[0]=true
     lst_threadin.selected[0]=true
     lst_threadin.selected[1]=true
 chk_transcriptions.on(:change) {
@@ -1667,6 +1666,7 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
             result.phrase_in.push(:name) if lst_phrasein.selected[0]
                   result.phrase_in.push(:content) if lst_phrasein.selected[1]
         result.phrase_in.push(:author) if lst_phrasein.selected[2]
+        result.phrase_in.push(:name, :content, :author) if result.phrase_in.empty?
                   if obj==nil
                   result.thread_in.push(:joined)  if lst_threadin.selected[0]
           result.thread_in.push(:recommended) if lst_threadin.selected[1]
