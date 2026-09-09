@@ -91,11 +91,20 @@ module GlobalMenu
     }
     end
     @menu.submenu(p_("MainMenu", "&Programs")) {|m|
-    list=Programs.list
-    for prg in list
-      m.scene(prg.menu_label||prg.name||prg.to_s, prg) if !prg.hidden?
-      end
-    m.scene(p_("MainMenu", "Programs management"), Scene_Programs)
+    programs=Programs.list.filter_map do |program|
+      next if program.hidden?
+      [program.menu_label||program.name||program.to_s, program]
+    end
+    if programs.size>0
+      m.submenu(p_("MainMenu", "Installed &programs")) {|installed|
+      programs.each {|label, program| installed.scene(label, program)}
+      }
+    end
+    m.scene(p_("MainMenu", "&Manage installed programs"), Scene_Programs)
+    m.submenu(p_("MainMenu", "Install &new programs")) {|install|
+      install.scene(p_("MainMenu", "Install from &server"), Scene_Programs, :install_from_server)
+      install.scene(p_("MainMenu", "Install from &file"), Scene_Programs, :install_from_file)
+    }
     }
     @menu.submenu(p_("MainMenu", "&Tools")) {|m|
     m.scene(p_("MainMenu", "Program &settings"), Scene_Settings)

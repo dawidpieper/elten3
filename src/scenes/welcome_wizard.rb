@@ -504,7 +504,7 @@ class Scene_WelcomeWizard
     add_info_page(
       :program_compatibility,
       p_("WelcomeWizard", "Programs from Elten 2.x"),
-      p_("WelcomeWizard", "Programs written for Elten 2.x cannot run in Elten 3.0 and are not carried over during the upgrade. Compatible versions of the official programs are available from Programs management in the Programs menu, and later in this wizard you will be offered a few of the most useful ones. When an installed program has an update available, Elten 3.0 lets you know through a notification.")
+      p_("WelcomeWizard", "Programs written for Elten 2.x cannot run in Elten 3.0 and are not carried over during the upgrade. Compatible versions of the official programs are available from Install new programs in the Programs menu, and later in this wizard you will be offered a few of the most useful ones. When an installed program has an update available, Elten 3.0 lets you know through a notification.")
     )
     add_info_page(
       :shared_notifications,
@@ -1033,7 +1033,7 @@ class Scene_WelcomeWizard
       status = if installed
         p_("WelcomeWizard", "This program is already installed. The wizard will not reinstall it.")
       elsif app == nil
-        p_("WelcomeWizard", "The server is not currently offering this program for your operating system. Nothing can be selected here; check Programs management again later.")
+        p_("WelcomeWizard", "The server is not currently offering this program for your operating system. Nothing can be selected here; check Install new programs again later.")
       else
         p_("WelcomeWizard", "Available version: %{version}. Author: %{author}. Download size: %{size}.") % {
           version: app.version.to_s,

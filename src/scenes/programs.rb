@@ -20,11 +20,22 @@ class Scene_Programs
   def main
     @installed=Programs.local_entries
     @programs=[]
+    @refresh=false
+    if @initial_action==:install_from_server
+      @initial_action=nil
+      install_from_server
+      $scene=Scene_Main.new if $scene==self
+      return
+    elsif @initial_action==:install_from_file
+      @initial_action=nil
+      install_from_file
+      $scene=Scene_Main.new if $scene==self
+      return
+    end
     @all=@installed
     rows=@all.map{|program| installed_row(program)}
      @sel=TableBox.new([p_("Programs", "Name"), p_("Programs", "Version"), p_("Programs", "Installation"), p_("Programs", "Status")], rows, index: 0, header: p_("Programs", "Installed programs"), quiet: false)
      @sel.bind_context{|menu|context(menu)}
-     @refresh=false
      if @initial_action==:updates
        @initial_action=nil
        check_updates
@@ -50,7 +61,6 @@ end
        }
        program=@all[@sel.index]
        if program==nil
-         add_install_options(menu)
          return
        end
        menu.option(p_("Programs", "Details")) {
@@ -103,16 +113,6 @@ when 1
            end
          }
        end
-       add_install_options(menu)
-     end
-
-     def add_install_options(menu)
-       menu.option(p_("Programs", "Install new program from server"), nil, "i") {
-         install_from_server
-       }
-       menu.option(p_("Programs", "Install new program from file"), nil, "I") {
-         install_from_file
-       }
      end
 
      def installed_row(program)
