@@ -200,7 +200,9 @@ use_soundtheme(stheme)
                       Configuration.conferencesaudiobuffer = readconfig("Advanced", "ConferencesAudioBuffer", 0)
                       Configuration.conferencesaudiobuffercutoff = readconfig("Advanced", "ConferencesAudioBufferCutOff", 250)
                       Configuration.udppacketsize = readconfig("Advanced", "UDPMaxPacketSize", 1480)
-                          Configuration.autologin = load_configuration_boolean("Login", "EnableAutoLogin", true)
+                            Configuration.autologin = load_configuration_boolean("Login", "EnableAutoLogin", true)
+                            greeting = readini(EltenPath.join(Dirs.eltendata, "elten.ini"), "Login", "Greeting", "\0")
+                            Configuration.greeting = (greeting == "\0") ? nil : greeting
                           if lang!=Configuration.language
                             setlocale(Configuration.language)
                             SpeechOutput.apply_current_settings if defined?(SpeechOutput)

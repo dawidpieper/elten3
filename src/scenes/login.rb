@@ -236,11 +236,15 @@ if $speech_wait == true
   speech_wait
 end
 play_sound("login")
-if Session.greeting == "" or Session.greeting == "\r\n" or Session.greeting == nil or Session.greeting == " "
-speak(p_("Login", "Logged in as: %{user}")%{:user=>name}) if $silentstart != true
+greeting = Configuration.greeting
+if greeting.nil?
+  greeting = Session.greeting if defined?(Session) && Session.respond_to?(:greeting)
+end
+if greeting.to_s.strip == ""
+  speak(p_("Login", "Logged in as: %{user}")%{:user=>name}) if $silentstart != true
 else
-  speak(Session.greeting) if $silentstart != true
-  end
+  speak(greeting) if $silentstart != true
+end
 EltenAPI::NotificationService.synchronize_runtime_state
 else
   case login_error&.code.to_s

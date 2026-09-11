@@ -239,6 +239,10 @@ def make_window
       make_setting(p_("Settings", "Language"), langs, "Interface", "Language", langsmapping)
                             make_setting(p_("Settings", "Automatically minimize Elten Window to system tray"), :bool, "Interface", "HideWindow") if tray_supported?
                                         make_setting(p_("Settings", "Enable auto-login"), :bool, "Login", "EnableAutoLogin")
+        if readini(EltenPath.join(Dirs.eltendata, "elten.ini"), "Login", "Greeting", "\0") == "\0" && defined?(Session) && Session.respond_to?(:greeting) && Session.greeting.to_s.strip != ""
+          setcurrentconfig("Login", "Greeting", Session.greeting)
+        end
+        make_setting(p_("Account", "Greeting read after you log in to Elten"), :text, "Login", "Greeting")
         make_setting(
           p_("Settings", "Start Elten after I log on to Windows"),
           [p_("Settings", "Do not start automatically"), p_("Settings", "Start hidden"), p_("Settings", "Start with the window visible")],

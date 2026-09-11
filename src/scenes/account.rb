@@ -293,7 +293,6 @@ def load_signs
   setting_category(p_("Account", "Status and signature"))
   make_setting(p_("Account", "Status displayed after your name on all lists of users"), :text, 'status')
   make_setting(p_("Account", "Signature placed below all your forum posts"), :text, 'signature')
-  make_setting(p_("Account", "Greeting read after you log in to Elten"), :text, 'greeting')
 end
 def load_notifications_settings
   setting_category(p_("Account", "Notifications"))
