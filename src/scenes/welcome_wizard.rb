@@ -55,8 +55,10 @@ class Scene_WelcomeWizard
         cancel_wizard
       elsif @back_button != nil && @back_button.pressed?
         previous_page
-      elsif @next_button.pressed?
+      elsif @next_button != nil && @next_button.pressed?
         next_page
+      elsif @finish_button != nil && @finish_button.pressed?
+        confirm_finish_wizard
       end
       break if $scene != self || $restart == true
     end
@@ -1332,16 +1334,18 @@ class Scene_WelcomeWizard
     @view = page.builder.call
     fields = @view.fields.to_a.dup
     @back_button = @page_index == 0 ? nil : Button.new(_("Back"))
-    @next_button = Button.new(@page_index == @pages.size - 1 ? _("Finish") : _("Next"))
+    @next_button = @page_index == @pages.size - 1 ? nil : Button.new(_("Next"))
+    @finish_button = Button.new(_("Finish"))
     fields.push(@back_button) if @back_button != nil
-    fields.push(@next_button)
+    fields.push(@next_button) if @next_button != nil
+    fields.push(@finish_button)
     @form = Form.new(fields)
     @form.header = p_("WelcomeWizard", "%{title}, page %{current} of %{total}") % {
       title: page.title,
       current: @page_index + 1,
       total: @pages.size
     }
-    @form.accept_button = @next_button
+    @form.accept_button = @next_button || @finish_button
   end
 
   def capture_current_page
@@ -1370,6 +1374,29 @@ class Scene_WelcomeWizard
     else
       @page_index += 1
       show_page
+    end
+  end
+
+  def confirm_finish_wizard
+    return unless capture_current_page
+
+    if @page_index < @pages.size - 1
+      prompt = p_("WelcomeWizard", "You have not completed all sections of the wizard; what would you like to do?")
+      options = [
+        p_("WelcomeWizard", "Exit and save changes made so far"),
+        p_("WelcomeWizard", "Exit without saving changes"),
+        p_("WelcomeWizard", "Complete the wizard")
+      ]
+      choice = selector(options, header: prompt, start_index: 0, cancel_index: :cancel, flags: 1)
+      case choice
+      when 0
+        finish_wizard
+      when 1
+        @state.clear
+        $scene = Scene_Main.new
+      end
+    else
+      finish_wizard
     end
   end
 
