@@ -163,6 +163,21 @@ end
         Conference.kick(user.id)
         }
       end
+      if Conference.channel.administrators.include?(Session.name) && (Conference.channel.groupid==0 || Conference.channel.groupid==nil) && user.name != Session.name
+        menu.option(p_("Conference", "Ban user"), nil, "b") {
+          confirm(p_("Conference", "Are you sure you want to ban %{user}?") % { user: user.name }) do
+            Conference.ban(user.name)
+          end
+          @form.focus
+        }
+        if !(Conference.channel.whitelist || []).include?(user.name)
+          menu.option(p_("Conference", "Add to whitelist"), nil, "l") {
+            Conference.whitelist(user.name)
+            play_sound("listbox_select")
+            @form.focus
+          }
+        end
+      end
       if Conference.channel.administrators.include?(Session.name)
         if user.supervisor==nil || user.supervisor==0
                 menu.option(p_("Conference", "Take over this user's stream")) {
@@ -1390,7 +1405,7 @@ card=cards[cardid] if cardid>0
 if Conference.channel.id!=0
   menu.submenu(p_("Conference", "Channel")) {|m|
   if Conference.channel.groupid==0 || Conference.channel.groupid==nil
-  m.option(p_("Conference", "Show banned users")) {
+  m.option(p_("Conference", "Show banned users"), nil, "B") {
   showbanned
   @form.focus
   }
@@ -1401,7 +1416,7 @@ if Conference.channel.id!=0
   }
   if Conference.channel.administrators.include?(Session.name)
     if Conference.channel.groupid==0 || Conference.channel.groupid==nil
-  m.option(p_("Conference", "Show channel whitelist"), nil, "l") {
+  m.option(p_("Conference", "Show channel whitelist"), nil, "L") {
   showwhitelist
   @form.focus
   }
@@ -1429,11 +1444,18 @@ def showbanned
   lst_banned.bind_context{|menu|
   if banned.size>0
     menu.useroption(banned[lst_banned.index])
-    menu.option(p_("Conference", "Unban"), nil, :del) {
-    Conference.unban(banned[lst_banned.index])
-    refr.call
-        lst_banned.focus
-    }
+    if Conference.channel.administrators.include?(Session.name) && (Conference.channel.groupid==0 || Conference.channel.groupid==nil)
+      menu.option(p_("Conference", "Unban"), nil, :del) {
+        user = banned[lst_banned.index]
+        if user != nil
+          confirm(p_("Conference", "Are you sure you want to unban %{user}?") % { user: user }) do
+            Conference.unban(user)
+            refr.call
+          end
+          lst_banned.focus
+        end
+      }
+    end
   end
   if Conference.channel.administrators.include?(Session.name) && (Conference.channel.groupid==0 || Conference.channel.groupid==nil)
   menu.option(p_("Conference", "Ban user"), nil, "n") {
