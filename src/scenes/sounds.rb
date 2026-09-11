@@ -7,9 +7,10 @@
 require "fileutils"
 
 class Scene_Sounds
-  def initialize(file=nil)
+  def initialize(file=nil, on_keep: nil)
     @file=file
-        end
+    @on_keep=on_keep
+  end
   def main
     @theme=load_soundtheme(@file)
 @soundnames={
@@ -110,6 +111,7 @@ class Scene_Sounds
 'waiting' => p_("Sounds", "Waiting for an action to be completed"),
 'signal' => p_("Sounds", "Signal"),
 }
+    return (alert(_("Error")); @on_keep ? nil : $scene=Scene_SoundThemes.new) if @theme==nil && @file.to_s!=""
     if @file!=nil
       if @file!=""
         @name=@theme.name
@@ -142,11 +144,14 @@ class Scene_Sounds
     return $scene=Scene_Main.new if @snd.size==0
     h=p_("Sounds", "Sound guide; press Space to play")
     h=p_("Sounds", "Editing sound theme %{theme}")%{:theme=>@name} if @theme!=nil
+    h=p_("Sounds", "Previewing sound theme %{theme}; press Space to play")%{:theme=>@name} if @on_keep && @theme!=nil
+    @btn_keep = Button.new(p_("Sounds", "Keep")) if @on_keep.respond_to?(:call)
     @fields = [
     @sel=ListBox.new(@snd.map{|o| o.description}, header: h, index: 0, flags: ListBox::Flags::Silent),
     @btn_play = Button.new(p_("Sounds", "Play")),
     @btn_playorig = Button.new(p_("Sounds", "Play original sound")),
     @btn_stop = Button.new(p_("Sounds", "Stop")),
+    @btn_keep,
     @btn_extract = Button.new(p_("Sounds", "Extract")),
     @btn_change = Button.new(p_("Sounds", "Change")),
     @btn_rename = Button.new(p_("Sounds", "Change sound theme name")),
@@ -154,9 +159,11 @@ class Scene_Sounds
      @btn_export = Button.new(p_("Sounds", "Export")),
         @btn_upload = Button.new(p_("Sounds", "Upload to server")),
         @btn_close = Button.new(p_("Sounds", "Close"))
-    ]
+    ].compact
           a=nil
     @form=Form.new(@fields, index: 0, silent: false, quiet: true)
+    [@btn_extract, @btn_change, @btn_save, @btn_export, @btn_rename, @btn_upload].each { |b| @form.hide(b) } if @on_keep
+    @btn_keep.on(:press) { @on_keep.call; @form.hide(@btn_keep); @btn_close.focus } if @btn_keep
     if @theme==nil
       @form.hide(@btn_playorig)
       @form.hide(@btn_change)
@@ -191,6 +198,7 @@ class Scene_Sounds
     @btn_playorig.press
     end
     }
+    @sel.on(:key_enter) { @btn_play.press }
     @btn_stop.on(:press) {
     if a!=nil
                   a.close
@@ -243,10 +251,11 @@ save
     }
     @form.cancel_button = @btn_close
     @form.wait  
-              if @changed and @theme!=nil
+              if @changed and @theme!=nil and !@on_keep
                 confirm(p_("Sounds", "Do you want to save this sound theme?")) {save}
                 end
     a.close if a!=nil
+    return if @on_keep
     if @theme==nil
     $scene=Scene_Main.new
   else
