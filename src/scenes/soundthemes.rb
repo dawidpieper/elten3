@@ -70,13 +70,13 @@ stdownload
           menu.option(p_("SoundThemes", "New"), nil, "n") {
                         $scene=Scene_Sounds.new("")
           }
-          if @sel.index<@soundthemes.size-1
+          theme=@soundthemes[@sel.index]
+          if theme!=nil && theme.file!=nil && theme.file!=""
           menu.option(p_("SoundThemes", "Edit"), nil, "e") {
-                        $scene=Scene_Sounds.new(@soundthemes[@sel.index].file)
+                        $scene=Scene_Sounds.new(theme.file)
           }
           menu.option(p_("SoundThemes", "Delete"), nil, :del) {
-                          confirm(p_("SoundThemes", "Are you sure you want to delete the sound theme %{soundtheme}?")%{ :soundtheme => @soundthemes[@sel.index].name}) {
-                theme=@soundthemes[@sel.index]
+                          confirm(p_("SoundThemes", "Are you sure you want to delete the sound theme %{soundtheme}?")%{ :soundtheme => theme.name}) {
                 File.delete(theme.file)
                 if Configuration.soundtheme!=nil && File.basename(theme.file, ".elsnd")==Configuration.soundtheme
                   Configuration.soundtheme=nil
