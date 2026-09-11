@@ -689,31 +689,43 @@ class Scene_Account_Statistics
       [p_("AccountStatistics", "Forum mentions sent"), ["mentions", "sent"], :number],
       [p_("AccountStatistics", "Forum mentions received"), ["mentions", "received"], :number]
     ]
-    rows = metrics.map do |label, path, kind|
+    general_lines = metrics.map do |label, path, kind|
       current_value = statistic.integer(*path)
-      previous_value = previous == nil ? nil : previous.integer(*path)
-      [
-        label,
-        statistic_value_text(current_value, kind),
-        previous_value == nil ? p_("AccountStatistics", "No data") : statistic_value_text(previous_value, kind),
-        change_text(current_value, previous_value)
-      ]
+      cur_text = statistic_value_text(current_value, kind) || (kind == :duration ? duration_text(0) : "0")
+      if previous != nil
+        previous_value = previous.integer(*path)
+        prev_text = statistic_value_text(previous_value, kind) || (kind == :duration ? duration_text(0) : "0")
+        chg = change_text(current_value, previous_value)
+        if chg != nil && chg != ""
+          "#{label}: #{cur_text} (#{statistic.year - 1}: #{prev_text}, #{chg})"
+        else
+          "#{label}: #{cur_text}"
+        end
+      else
+        "#{label}: #{cur_text}"
+      end
     end
-    comparison = TableBox.new(
-      [
-        p_("AccountStatistics", "Statistic"),
-        statistic.year.to_s,
-        (statistic.year - 1).to_s,
-        p_("AccountStatistics", "Year-to-year change")
-      ],
-      rows,
-      index: 0,
-      header: p_("AccountStatistics", "Statistics for %{year}") % { year: statistic.year },
-      quiet: false
+    general_text = general_lines.join("\r\n")
+
+    comparison_box = EditBox.new(
+      p_("AccountStatistics", "Statistics for %{year}") % { year: statistic.year },
+      type: EditBox::Flags::ReadOnly | EditBox::Flags::MultiLine,
+      text: general_text,
+      quiet: true
     )
-    details = ranking_controls(statistic)
+    details, detail_sections = ranking_controls(statistic)
+    btn_copy = Button.new(p_("Conference", "Copy to clipboard"))
     close = Button.new(p_("AccountStatistics", "Close"))
-    form = Form.new([comparison] + details + [close])
+    btn_copy.on(:press) do
+      sections = []
+      sections << "#{p_("AccountStatistics", "Statistics for %{year}") % { year: statistic.year }}\r\n#{general_text}"
+      detail_sections.each do |sec_header, sec_text|
+        sections << "#{sec_header}\r\n#{sec_text}" unless sec_text.to_s.empty?
+      end
+      Clipboard.text = sections.join("\r\n\r\n")
+      speak(_("Copied"))
+    end
+    form = Form.new([comparison_box] + details + [btn_copy, close])
     form.cancel_button = close
     close.on(:press) { form.resume }
     form.wait
@@ -722,6 +734,7 @@ class Scene_Account_Statistics
 
   def ranking_controls(statistic)
     controls = []
+    sections = []
     forum_rows = statistic.value("forum", "top_forums").to_a.filter_map do |entry|
       next unless entry.is_a?(Hash)
 
@@ -731,15 +744,20 @@ class Scene_Account_Statistics
       name += " (#{group})" unless group.empty?
       next if name.empty? || posts == 0
 
-      [name, statistic_value_text(posts, :number)]
+      [name, posts]
     end
     unless forum_rows.empty?
-      controls << TableBox.new(
-        [nil, p_("AccountStatistics", "Forum posts")],
-        forum_rows,
-        index: 0,
-        header: p_("AccountStatistics", "Most frequently used forums")
+      forum_header = p_("AccountStatistics", "Most frequently used forums")
+      forum_text = forum_rows.map.with_index(1) do |row, index|
+        "#{index}. #{row[0]}: #{row[1]}"
+      end.join("\r\n")
+      controls << EditBox.new(
+        forum_header,
+        type: EditBox::Flags::ReadOnly | EditBox::Flags::MultiLine,
+        text: forum_text,
+        quiet: true
       )
+      sections << [forum_header, forum_text]
     end
 
     correspondent_rows = statistic.value("messages", "top_correspondents").to_a.filter_map do |entry|
@@ -750,48 +768,60 @@ class Scene_Account_Statistics
       received = entry["received"].to_i
       next if name.empty? || (sent == 0 && received == 0)
 
-      [
-        name,
-        statistic_value_text(sent, :number),
-        statistic_value_text(received, :number)
-      ]
+      [name, sent, received]
     end
     unless correspondent_rows.empty?
-      controls << TableBox.new(
-        [
-          nil,
-          p_("AccountStatistics", "Messages sent"),
-          p_("AccountStatistics", "Messages received")
-        ],
-        correspondent_rows,
-        index: 0,
-        header: p_("AccountStatistics", "Most frequent correspondents")
+      corr_header = p_("AccountStatistics", "Most frequent correspondents")
+      corr_text = correspondent_rows.map.with_index(1) do |row, index|
+        "#{index}. #{row[0]} - #{p_("AccountStatistics", "Messages sent")}: #{row[1]}, #{p_("AccountStatistics", "Messages received")}: #{row[2]}"
+      end.join("\r\n")
+      controls << EditBox.new(
+        corr_header,
+        type: EditBox::Flags::ReadOnly | EditBox::Flags::MultiLine,
+        text: corr_text,
+        quiet: true
       )
+      sections << [corr_header, corr_text]
     end
 
     commenters = ranking_list(statistic.value("blogs", "top_commenters"))
     unless commenters.empty?
-      controls << ListBox.new(
-        commenters,
-        header: p_("AccountStatistics", "Most frequent commenters")
+      comm_header = p_("AccountStatistics", "Most frequent commenters")
+      comm_text = commenters.map.with_index(1) { |item, index| "#{index}. #{item}" }.join("\r\n")
+      controls << EditBox.new(
+        comm_header,
+        type: EditBox::Flags::ReadOnly | EditBox::Flags::MultiLine,
+        text: comm_text,
+        quiet: true
       )
+      sections << [comm_header, comm_text]
     end
 
     commented_blogs = ranking_list(statistic.value("blogs", "top_commented_blogs"))
     unless commented_blogs.empty?
-      controls << ListBox.new(
-        commented_blogs,
-        header: p_("AccountStatistics", "Most frequently commented blogs")
+      blogs_header = p_("AccountStatistics", "Most frequently commented blogs")
+      blogs_text = commented_blogs.map.with_index(1) { |item, index| "#{index}. #{item}" }.join("\r\n")
+      controls << EditBox.new(
+        blogs_header,
+        type: EditBox::Flags::ReadOnly | EditBox::Flags::MultiLine,
+        text: blogs_text,
+        quiet: true
       )
+      sections << [blogs_header, blogs_text]
     end
 
     if controls.empty?
-      controls << ListBox.new(
-        [p_("AccountStatistics", "No additional details are available for this year.")],
-        header: p_("AccountStatistics", "Details")
+      no_details_header = p_("AccountStatistics", "Details")
+      no_details_text = p_("AccountStatistics", "No additional details are available for this year.")
+      controls << EditBox.new(
+        no_details_header,
+        type: EditBox::Flags::ReadOnly | EditBox::Flags::MultiLine,
+        text: no_details_text,
+        quiet: true
       )
+      sections << [no_details_header, no_details_text]
     end
-    controls
+    [controls, sections]
   end
 
   def ranking_list(entries)
