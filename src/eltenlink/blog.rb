@@ -197,6 +197,7 @@ module EltenLink
 
       def delete_blog(client, blog:)
         client.api_data("DELETE", "/api/v1/blogs/#{blog.to_s.urlenc}")
+        clear_owners_cache
         true
       end
 
@@ -367,6 +368,11 @@ module EltenLink
         result = $blogowners[blog]
         result = [blog] if result == nil && Users.exists?(client, blog)
         result || []
+      end
+
+      def clear_owners_cache
+        $blogownerstime = 0
+        $blogowners = nil
       end
 
       private
