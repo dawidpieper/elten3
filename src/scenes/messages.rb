@@ -239,10 +239,9 @@ else
   begin
     EltenLink::Messages.mark_all_read(elten_link, user: @users[@sel_users.index].user)
   rescue EltenLink::Error
-    alert(_("Error"))
     @sel_users.focus
-    next
-    end
+    alert(_("Error"))
+  else
     alert(p_("Messages", "All messages in this conversation have been marked as read."))
 speech_wait
 if @wn == true
@@ -250,6 +249,7 @@ if @wn == true
 else
   main
 end
+  end
 }
 menu.submenu(p_("Messages", "Add conversation to quick actions")) {|m|
 m.option(p_("Messages", "Add list of conversations to quick actions"), nil, "q") {
