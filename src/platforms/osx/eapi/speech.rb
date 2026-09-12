@@ -100,11 +100,11 @@ module OSXSpeechBridge
       end
     end
 
-    def start(synth, text, track_indexes: true)
+    def start(synth, text, spelling: false, track_indexes: true)
       return false if synth.to_i == 0
       reset_index_events(synth) if track_indexes
       settings = synth_settings(synth)
-      utterance = build_utterance(text, settings[:voice_id], settings[:rate], settings[:volume])
+      utterance = build_utterance(text, settings[:voice_id], settings[:rate], settings[:volume], spelling: spelling)
       @indexed_utterances[synth.to_i] = utterance.to_i if track_indexes
       pending = (@pending_utterances[synth.to_i] ||= {})
       pending[utterance.to_i] = true
@@ -421,14 +421,40 @@ module OSXSpeechBridge
       }
     end
 
-    def build_utterance(text, voice_id, rate, volume)
-      utterance = send_id(cls("AVSpeechUtterance"), "speechUtteranceWithString:", nsstring(prepare_text(text)), [PTR])
+    def build_utterance(text, voice_id, rate, volume, spelling: false)
+      if spelling && text == "\\"
+        # Apple's SSML character mode drops backslashes, so name them explicitly.
+        text = p_("EAPI_Speech", "backslash")
+        spelling = false
+      end
+      speech_rate = av_speech_rate(rate)
+      speech_volume = [[volume.to_f, 0.0].max, 1.0].min
+      if spelling
+        text = text.to_s.gsub("&", "&amp;").gsub("<", "&lt;").gsub(">", "&gt;")
+        # SSML utterances ignore rate and volume properties, so carry these
+        # as SSML markup instead.
+        # https://developer.apple.com/documentation/avfaudio/avspeechutterance/init(ssmlrepresentation:)-8zam9
+        #
+        # Also match Apple's rate calculation algorithm to keep rates consistent with non-SSML utterances.
+        ssml_rate = if speech_rate <= 0.5
+          12.5 + 175.0 * speech_rate
+        else
+          600.0 * speech_rate - 200.0
+        end
+        # SSML expresses volume in decibels relative to full volume.
+        # https://www.w3.org/TR/speech-synthesis11/#S3.2.4
+        ssml_volume = speech_volume == 0 ? "silent" : "#{20.0 * Math.log10(speech_volume)}dB"
+        ssml = "<speak><prosody rate=\"#{ssml_rate}%\" volume=\"#{ssml_volume}\"><say-as interpret-as=\"characters\">#{text}</say-as></prosody></speak>"
+        utterance = send_id(cls("AVSpeechUtterance"), "speechUtteranceWithSSMLRepresentation:", nsstring(ssml), [PTR])
+      else
+        utterance = send_id(cls("AVSpeechUtterance"), "speechUtteranceWithString:", nsstring(prepare_text(text)), [PTR])
+        send_void(utterance, "setRate:", speech_rate, [FLOAT])
+        send_void(utterance, "setVolume:", speech_volume, [FLOAT])
+      end
       if voice_id.to_s != ""
         voice = send_id(cls("AVSpeechSynthesisVoice"), "voiceWithIdentifier:", nsstring(voice_id.to_s), [PTR])
         send_void(utterance, "setVoice:", voice, [PTR]) if voice.to_i != 0
       end
-      send_void(utterance, "setRate:", av_speech_rate(rate), [FLOAT])
-      send_void(utterance, "setVolume:", [[volume.to_f, 0.0].max, 1.0].min, [FLOAT])
       utterance
     end
 
@@ -752,8 +778,7 @@ class OSXSpeech < SpeechOutput
         @bookmark_id = nil
         clear_index_tracking
       end
-      text = text.to_s.chars.join(" ") if spelling
-      speak_async(text, false, track_indexes: interrupt) ? 0 : 1
+      speak_async(text, false, spelling: spelling, track_indexes: interrupt) ? 0 : 1
     rescue Exception => e
       Log.warning("OSX speech failed: #{e.class}: #{e.message}")
       1
@@ -814,12 +839,12 @@ class OSXSpeech < SpeechOutput
       false
     end
 
-    def speak_async(text, stop_previous = true, track_indexes: true)
+    def speak_async(text, stop_previous = true, spelling: false, track_indexes: true)
       stop_current_backend if stop_previous
       return false unless bridge_active?
       @paused = false
       apply_synth_settings
-      OSXSpeechBridge.start(synth, text.to_s, track_indexes: track_indexes)
+      OSXSpeechBridge.start(synth, text.to_s, spelling: spelling, track_indexes: track_indexes)
     end
 
     def wait_current
