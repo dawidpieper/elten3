@@ -61,7 +61,7 @@ module EltenAPI
       end
     module Lists
       class <<self
-        attr_accessor :locations, :langs
+        attr_accessor :locations, :location_subdivisions, :langs
         end
       end
       module Dirs
