@@ -506,8 +506,8 @@ else
             rescue EltenLink::Error
               alert(_("Error"))
             else
-              alert(np_("Blog", "The mention has been sent.", "The mentions have been sent.", selections.size))
               @sel.focus
+              alert(np_("Blog", "The mention has been sent.", "The mentions have been sent.", selections.size))
               break
             end
           end
@@ -906,8 +906,8 @@ def context(menu)
         rescue EltenLink::Error
           alert(_("Error"))
         else
-          alert(np_("Blog", "The mention has been sent.", "The mentions have been sent.", selections.size))
           @form.focus
+          alert(np_("Blog", "The mention has been sent.", "The mentions have been sent.", selections.size))
           break
         end
       end
