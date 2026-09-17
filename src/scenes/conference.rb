@@ -390,6 +390,8 @@ def list_channels(user=nil)
         channels=[]
                 lst_channels = TableBox.new(["", ""], [], index: 0, header: p_("Conference", "Channels"))
       locha = Proc.new{|chans|
+      selected_index=lst_channels.index
+      selected_id=selected_index>=0 ? channels[selected_index]&.id : nil
       knownlanguages = Session.languages.split(",").map{|lg|lg.upcase}
       channels = chans.find_all{|c|
       if LocalConfig["ConferenceShowUnknownLanguages", type: :bool] || knownlanguages.size==0 || knownlanguages.include?(c.lang[0..1].upcase)
@@ -405,14 +407,15 @@ def list_channels(user=nil)
       selt = channels.map{|ch|channel_summary(ch)}
       lst_channels.rows=selt
       lst_channels.reload
+      lst_channels.index=channels.find_index{|ch|ch.id==selected_id} || [[selected_index, channels.size-1].min, 0].max
       lst_channels.clear_row_states
       channels.each_with_index{|ch,i|lst_channels.set_row_status(i, "conference_someoneonchannel", "", "") if ch.users.size>0}
       }
       locha.call(@chans)
       lst_channels.focus
   lst_channels.bind_context{|menu|
-  if channels.size>0
-    ch=channels[lst_channels.index]
+  ch=lst_channels.index>=0 ? channels[lst_channels.index] : nil
+  if ch!=nil
     if ch.id!=Conference.channel.id
     menu.option(p_("Conference", "Join"), nil, "j") {
         ps=nil
@@ -534,8 +537,8 @@ when 1
   loop do
     loop_update
     lst_channels.update
-    if lst_channels.selected?
-      ch=channels[lst_channels.index]
+    ch=lst_channels.index>=0 ? channels[lst_channels.index] : nil
+    if lst_channels.selected? && ch!=nil
       return if Conference.channel.id==ch.id
       ps=nil
     ps=input_text(p_("Conference", "Channel password"), flags: EditBox::Flags::Password, text: "", escapable: true) if ch.passworded
