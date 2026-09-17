@@ -8,7 +8,7 @@ msgstr ""
 "Project-Id-Version: Elten 3.0\n"
 "Report-Msgid-Bugs-To: dawidpieper@o2.pl\n"
 "POT-Creation-Date: 2026-09-07 20:26+0200\n"
-"PO-Revision-Date: 2026-09-17 03:46+0300\n"
+"PO-Revision-Date: 2026-09-17 14:00+0300\n"
 "Last-Translator: Danil Kostenkov <danilkostenkov38@gmail.com>\n"
 "Language-Team: monstricek, russiandan2019\n"
 "Language: ru\n"
@@ -8763,7 +8763,7 @@ msgstr "Вы больше не подписаны на этот форум."
 #: src/scenes/forum.rb:1937
 msgctxt "Forum"
 msgid "Mark this forum as read"
-msgstr "Отметить как прочитанный"
+msgstr "Пометить форум как прочитанный"
 
 #: src/scenes/forum.rb:1938
 msgctxt "Forum"
