@@ -6,6 +6,12 @@
 
 module EltenAPI
   module UI
+    ALT_MENU_CANCEL_KEYS = (
+      [0x08, 0x09, 0x0C, 0x0D, 0x10, 0x13, 0x14, 0x1B, 0x20, 0x2C, 0x2D, 0x2E, 0x5D, 0x90, 0x91, 0xE2] +
+      (0x21..0x28).to_a + (0x30..0x39).to_a + (0x41..0x5A).to_a +
+      (0x60..0x6F).to_a + (0x70..0x87).to_a + (0xBA..0xC0).to_a + (0xDB..0xDE).to_a
+    ).freeze
+
     @@altdowntime=0
     def self.call_sound_stop
       if $callplayer != nil
@@ -214,15 +220,23 @@ Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f/100.0)
       alt_first_pressed = raw_key_first_pressed?(:key_alt)
       @@altdown||=false
       @@altdown=true if alt_first_pressed
-      @@altdown=false if @@altdown && (raw_key_first_pressed?(:key_shift) || keyboard_modifier_state?(:control, :first_pressed) || keyboard_modifier_state?(:command, :first_pressed))
+      @@altdown=false if @@altdown && alt_menu_cancelled?
       if (@@altdowntime||0)<Time.now.to_f-1 && !alt_first_pressed
         @@altdowntime=Time.now.to_f
         return false
       end
-      @@altdown=false if modifier_held?(:control) || modifier_held?(:command) || raw_key_held?(:key_shift) || raw_key_held?(:key_tab) || raw_key_pressed?(:key_tab) || raw_key_first_pressed?(:key_tab)
               l=raw_key_released?(:key_alt)&&@@altdown
               @@altdowntime=0 if l
     return l
+    end
+
+    def alt_menu_cancelled?
+      raw_key_first_pressed?(0xFF) || modifier_held?(:control) || modifier_held?(:command) ||
+        keyboard_modifier_state?(:control, :first_pressed) ||
+        keyboard_modifier_state?(:command, :first_pressed) ||
+        ALT_MENU_CANCEL_KEYS.any? do |key|
+          raw_key_held?(key) || raw_key_pressed?(key) || raw_key_first_pressed?(key)
+        end
     end
 
     def cancel_pending_alt_menu
