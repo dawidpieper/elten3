@@ -68,6 +68,7 @@ module EltenAPI
   Configuration.mainnotificationtypeorder = load_configuration_order("MainWindow", "NotificationTypeOrder", NotificationGroups.default_notification_type_order)
   Configuration.iimodifiers = load_configuration_choice("InvisibleInterface", "IIModifiers", [:automatic, :alt_ctrl_windows, :alt_shift_windows, :alt_ctrl_shift, :alt_ctrl, :alt_shift], :automatic)
   Configuration.iicards = load_configuration_list("InvisibleInterface", "Cards", [:messages, :feed, :conference], [:messages, :feed, :conference])
+  Configuration.iireadmessagesubjects = load_configuration_boolean("InvisibleInterface", "ReadMessageSubjects", false)
   Configuration.roundupforms = load_configuration_boolean("Interface", "RoundUpForms", false)
   Configuration.usepan = load_configuration_boolean("Interface", "UsePan", true)
   Configuration.soundcard = readconfig("SoundCard", "SoundCard", "")

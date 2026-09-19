@@ -49,6 +49,7 @@ module EltenAPI
   end
     module Configuration
       class <<self
+        attr_accessor :iireadmessagesubjects
         attr_accessor :listtype, :usepan, :soundcard, :microphone, :controlspresentation, :contextmenubar, :soundthemeactivation, :typingecho, :linewrapping, :hidewindow, :synctime, :registeractivity, :voice, :language, :voicerate, :voicevolume, :soundtheme, :volume, :usefx, :bgsounds, :voicepitch, :usedenoising, :autologin, :autostart, :roundupforms, :checkupdates, :enablebraille, :useechocancellation, :usevoicedictionary, :disablefeednotifications, :maintabs, :showemptynotifications, :mainnotificationfocus, :mainnotificationsort, :mainnotificationtypeorder, :iimodifiers, :iicards, :usebilinearhrtf, :disablehttp2, :tcpconferences, :udppacketsize, :conferencesaudiobuffer , :conferencesaudiobuffercutoff, :disableconferencemiconrecord, :enableaudiobuffering, :saytimeperiod, :saytimetype, :autoplay, :branch, :keyboardscheme, :macoscharacternavigation, :requestresponsecachemode
         def to_h
           h={}
