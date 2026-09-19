@@ -424,7 +424,9 @@ module NotificationGroups
   def notification_rows(groups=@groups)
     groups.to_a.map do |group|
       count = group_count(group)
-      [group_description(group), count.to_i == 1 ? nil : count.to_s, group.category]
+      # Mentions already begin with their type; do not repeat it in TableBox.
+      category = group.cat.to_s == "mention" ? nil : group.category
+      [group_description(group), count.to_i == 1 ? nil : count.to_s, category]
     end
   end
 
@@ -490,11 +492,16 @@ module NotificationGroups
     title = single_line_notification_text(group.payload["title"]) if title.to_s.empty? && group.payload.is_a?(Hash)
     title = single_line_notification_text(group.payload["threadname"]) if title.to_s.empty? && group.payload.is_a?(Hash)
     title = single_line_notification_text(group.payload["user"]) if title.to_s.empty? && group.payload.is_a?(Hash)
+    if group.cat.to_s == "mention"
+      return p_("Notifications", "Mention") if title.to_s.empty?
+      return p_("Notifications", "Mention. %{details}") % { details: title }
+    end
     title = p_("Notifications", "Notification") if title.to_s.empty?
     title
   end
 
   def group_label(group)
+    return group_description(group) if group.cat.to_s == "mention"
     "#{group.category}: #{group_description(group)}"
   end
 
@@ -661,16 +668,9 @@ module NotificationGroups
   def forum_mention_title(payload, payloads: nil)
     payloads = notification_payloads(payload, payloads)
     author = first_payload_value(payload, payloads, "author")
-    return "" if author.empty?
-
     thread = first_payload_value(payload, payloads, "threadname")
     message = first_payload_value(payload, payloads, "message")
-    if !thread.empty?
-      return p_("Notifications", "%{author} sent you a forum mention in %{thread}") % { author: author, thread: thread } if message.empty?
-      return p_("Notifications", "%{author} sent you a forum mention in %{thread}: %{message}") % { author: author, thread: thread, message: message }
-    end
-    return p_("Notifications", "%{author} sent you a forum mention") % { author: author } if message.empty?
-    p_("Notifications", "%{author} sent you a forum mention: %{message}") % { author: author, message: message }
+    [author, thread, message].reject(&:empty?).join(". ")
   end
 
   def forum_thread_offer_title(payload, payloads: nil)
