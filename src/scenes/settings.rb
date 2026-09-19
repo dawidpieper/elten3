@@ -487,6 +487,7 @@ def make_window
             ii.each{|k|iimodifiers.push(k[0]);iimodifiersmapping.push(k[1])}
             make_setting(p_("Settings", "Modifier keys"), iimodifiers, "InvisibleInterface", "IIModifiers", iimodifiersmapping)
             make_setting(p_("Settings", "Cards to show"), [p_("Settings","Messages"), p_("Settings","Feed"), p_("Settings", "Conference options")], "InvisibleInterface", "Cards", ["messages", "feed", "conference"], true)
+            make_setting(p_("Settings", "Read message subjects"), :bool, "InvisibleInterface", "ReadMessageSubjects")
     end
     def load_advanced
           setting_category(p_("Settings", "Advanced"))

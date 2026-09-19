@@ -444,6 +444,7 @@ module EltenAPI
         text = from
         text = p_("Messages", "To") + " " + to if from == session_name && name == ""
         text += " " + p_("Messages", "To") + " " + name if name != ""
+        text += ": " + subject if Configuration.iireadmessagesubjects && !subject.strip.empty?
         forwardedfrom = message.respond_to?(:forwardedfrom) ? message.forwardedfrom.to_s : ""
         text += ":\r\n" + (p_("Messages", "Forwarded from %{user}") % { user: forwardedfrom }) if forwardedfrom != ""
         text += ": " + body
