@@ -7,7 +7,8 @@
 module ForumSceneClient
   def forum_fetch(default = nil, error_message = _("Error"))
     yield
-  rescue EltenLink::Error
+  rescue EltenLink::Error => error
+    return default if error.code.to_s == "cancelled"
     alert(error_message)
     default
   end
@@ -270,7 +271,7 @@ class Scene_Forum
     else
       @noteditable = false
     end
-    getcache
+    return $scene = (@return_scene || Scene_Main.new) unless getcache
     return if $scene != self
     if @pre == nil
       if mentions_target?(@preparam)
@@ -995,7 +996,7 @@ if (((@sgroups[@grpsel.index - @grpheadindex].role==1 || (@sgroups[@grpsel.index
     end
     menu.option(_("Refresh"), nil, "r") {
       @grpindex[type] = @grpsel.index
-      getcache
+      next unless getcache
       groupsmain
     }
   end
@@ -2061,7 +2062,7 @@ break
     menu.option(_("Refresh"), nil, "r") {
       @frmsetid=@sforums[@frmsel.index].id if @sforums.size>0
 @@lastCacheIdent=nil
-    getcache
+    next unless getcache
       forumsload(@group)
     }
   end
@@ -2096,6 +2097,22 @@ break
   end
 
   def threadsmain(id)
+    # Fetch remote lists before changing the current list or its selection.
+    if [-7, -11].include?(id)
+      mentions = forum_fetch(nil) { EltenLink::Forum.list_mentions(elten_link, all: id == -11) }
+      if mentions == nil
+        $scene = @return_scene || Scene_Main.new if @thrsel == nil && @grpsel == nil && @frmsel == nil
+        return
+      end
+      @mentions = mentions
+    elsif id == -8
+      popular = forum_fetch(nil) { EltenLink::Forum.popular_threads(elten_link) }
+      if popular == nil
+        $scene = @return_scene || Scene_Main.new if @thrsel == nil && @grpsel == nil && @frmsel == nil
+        return
+      end
+      @popular = popular
+    end
     @forum = id
     index = @lastthreadindex
     @lastthreadindex = nil
@@ -2104,16 +2121,6 @@ break
       @forumtype = forum.type if forum.id == id
     end
     @sthreads = []
-    if id == -7
-      @mentions = forum_fetch([], nil) { EltenLink::Forum.list_mentions(elten_link) }
-    end
-    if id == -8
-      @popular = forum_fetch([], nil) { EltenLink::Forum.popular_threads(elten_link) }
-    end
-    @sthreads = []
-    if id == -11
-      @mentions = forum_fetch([], nil) { EltenLink::Forum.list_mentions(elten_link, all: true) }
-    end
     rsl=[]
     if id==-3
       rsl=[]
@@ -2622,8 +2629,8 @@ if forum_attempt(nil) {
         end
     end
     menu.option(_("Refresh"), nil, "r") {
-      @pre = @sthreads[@thrsel.index].id
-      getcache
+      next unless getcache
+      @pre = @sthreads[@thrsel.index].id if @sthreads[@thrsel.index] != nil
       threadsmain(@forum)
     }
   end
@@ -3017,8 +3024,9 @@ if flp[0..3] != "OggS"
   end
   
   def getcache
-    self.class.getcache(elten_link)
+    loaded = self.class.getcache(elten_link)
     @groups, @forums, @threads = @@groups, @@forums, @@threads
+    loaded
     end
 
   def self.getcache(client = nil)
@@ -3045,13 +3053,14 @@ if flp[0..3] != "OggS"
     @@lastCache = structure.raw_cache
     @@lastCacheIdent = structure.ident
     @@lastCacheTime = structure.loaded_at
-  rescue Exception
-    Log.error("Failed to unserialize forum data: "+$!.message)
-    alert(_("Error"))
-      @@groups = []
-      @@forums = []
-      @@threads = []
-      @@lastCacheIdent=nil
+    true
+  rescue StandardError => error
+    @@groups, @@forums, @@threads = @@oldgroups, @@oldforums, @@oldthreads
+    unless error.is_a?(EltenLink::Error) && error.code.to_s == "cancelled"
+      Log.error("Failed to load forum data: "+error.message)
+      alert(_("Error"))
+    end
+    false
       end
 
   def getstruct
@@ -3059,8 +3068,9 @@ if flp[0..3] != "OggS"
     return { "groups" => @groups, "forums" => @forums, "threads" => @threads }
   end
   
-  def self.getstruct
-    self.getcache
+  def self.getstruct(require_fresh: false)
+    loaded = self.getcache
+    return nil if require_fresh && !loaded
     return { "groups" => @@groups, "forums" => @@forums, "threads" => @@threads }
   end
 
@@ -3149,7 +3159,9 @@ class Scene_Forum_Thread
   def main
     if @threadclass.is_a?(Integer)
       thread_id = @threadclass
-      @threadclass = Scene_Forum.getstruct['threads'].to_a.find { |thread| thread.id == thread_id }
+      structure = Scene_Forum.getstruct(require_fresh: true)
+      return $scene = (@scene || Scene_Main.new) if structure == nil
+      @threadclass = structure['threads'].to_a.find { |thread| thread.id == thread_id }
     end
     if @threadclass == nil
       alert(p_("Forum", "The thread is unavailable. It may have been deleted or you may not have access to it."))
@@ -3166,7 +3178,7 @@ class Scene_Forum_Thread
       @noteditable = true if (![1, 2].include?(@threadclass.forum.group.role) and @threadclass.forum.group.open == false) or @threadclass.forum.group.role == 3
     end
 refresh
-return $scene=Scene_Main.new if @form==nil
+return $scene=(@scene || Scene_Forum.new(@thread, @param, @cat, @query, @threadclass, @tag)) if @form==nil
     loop do
       loop_update
       @form.update
@@ -3298,7 +3310,7 @@ loop do
     lastindex=nil
     lastindex=@form.index if @form!=nil
     index=-1
-    getcache
+    return unless getcache
     begin
       @sponsors = EltenLink::Admins.users(elten_link, "sponsors")
     rescue EltenLink::Error
@@ -4465,13 +4477,14 @@ form.wait
 
   def getcache
     page = forum_fetch(nil, nil) { EltenLink::Forum.thread(elten_link, thread_id: @thread) }
-    return if page == nil
+    return false if page == nil
     @cache = page
     @cachetime = page.time
     @postscount = page.count
     @readposts = page.read_posts
     @followed = page.followed
     @posts = page.posts
+    true
   end
 end
 
