@@ -440,6 +440,7 @@ def make_window
     @soundcards[0]=Bass::Device.new(p_("Settings", "Use Default"), "", 1|2)
     @soundcards.delete_at(1)
     @microphones=[Bass::Device.new(p_("Settings", "Use Default"), "", 1|2)]+@microphones
+    @microphones.delete_at(1)
     @soundcardsmapping=@soundcards.map{|c|c.name}
     @soundcardsmapping[0]=""
     @microphonesmapping=@microphones.map{|m|m.name}
