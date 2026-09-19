@@ -811,8 +811,12 @@ module OSXWindowNative
           request_close(true)
           return :consumed
         end
+        # Let Cocoa handle modified Command+Q shortcuts, notably Control+
+        # Command+Q (lock screen), instead of recording them as Elten input.
+        return true if command_q_event?(event)
         return set_event_key(event, true) ? :consumed : true
       when 11
+        return true if command_q_event?(event) && !quit_shortcut_event?(event)
         return set_event_key(event, false) ? :consumed : true
       when 12
         update_modifier_keys(@msg_ulong.call(event, sel("modifierFlags")).to_i)
@@ -824,9 +828,19 @@ module OSXWindowNative
       false
     end
 
-    def quit_shortcut_event?(event)
+    def command_q_event?(event)
       return false if @msg_int.call(event, sel("keyCode")).to_i != MAC_KEY_Q
       (@msg_ulong.call(event, sel("modifierFlags")).to_i & NS_EVENT_MODIFIER_FLAG_COMMAND) != 0
+    rescue Exception
+      false
+    end
+
+    def quit_shortcut_event?(event)
+      return false unless command_q_event?(event)
+      flags = @msg_ulong.call(event, sel("modifierFlags")).to_i
+      return false if control_modifier_down?(flags)
+      (flags & ((1 << 17) | NS_EVENT_MODIFIER_FLAG_OPTION |
+        NX_DEVICE_LEFT_OPTION_MASK | NX_DEVICE_RIGHT_OPTION_MASK)) == 0
     rescue Exception
       false
     end
