@@ -928,7 +928,10 @@ module NotificationGroups
     when "followedblog", "blogcomment", "followedblogpost", "blogmention"
       Proc.new { open_blog_post(payload, cat.to_s) }
     when "blogfollower"
-      Proc.new { insert_scene(Scene_Blog_Followers.new(nil), true, return_to_main: true) }
+      Proc.new do
+        blog = payload["blog"].to_s
+        insert_scene(Scene_Blog_Followers.new(blog.empty? ? nil : blog), true, return_to_main: true)
+      end
     when "friend"
       Proc.new { insert_scene(Scene_Users_AddedMeToContacts.new(true, Scene_Main.new), true, return_to_main: true) }
     when "birthday"
