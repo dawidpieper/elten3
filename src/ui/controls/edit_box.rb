@@ -1674,7 +1674,7 @@ def value
         text = prefix + body + suffix
         cursor_pos = prefix.length + cursor - from
         if include_header
-          header = @header.to_s + "\n"
+          header = text_utf8(@header) + "\n"
           text = header + text
           cursor_pos += header.length
         end
