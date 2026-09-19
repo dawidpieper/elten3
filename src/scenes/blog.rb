@@ -2408,7 +2408,7 @@ end
     users.push(source.user)
     end
   if users.size==0
-    alert(p_("Blog", "This blog is not followed by any user"))
+    alert(@owner==nil ? p_("Blog", "No new followers.") : p_("Blog", "This blog is not followed by any user"))
   else
     rows=[]
     for i in 0...b.size
