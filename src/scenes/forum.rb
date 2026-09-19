@@ -2847,10 +2847,12 @@ form.wait
     form.fields[-3].trigger(:move)
     polls = []
     files = []
+    send_confirmed = false
     confirm_missing_tag = lambda {
       missing_tag_field = current_tag_fields.find { |field| field.index == 0 }
       return true if missing_tag_field == nil
       if confirm(p_("Forum", "You haven't selected all tags. Do you want to send the thread anyway?"))
+        send_confirmed = true
         true
       else
         form.index = form.fields.index(missing_tag_field)
@@ -2860,9 +2862,13 @@ form.wait
     }
     confirm_closed_forum = lambda {
       selected_forum = forumclasses[form.fields[-3].index]
-      !selected_forum.closed || confirm(p_("Forum", "The selected forum is closed. Are you sure you want to create a thread there?"))
+      next true unless selected_forum.closed
+      confirmed = confirm(p_("Forum", "The selected forum is closed. Are you sure you want to create a thread there?"))
+      send_confirmed = true if confirmed
+      confirmed
     }
         loop do
+      send_confirmed = false
       loop_update
       if type==0
       if (form.fields[0].text != "" and form.fields[1].text != "")
@@ -2956,7 +2962,7 @@ form.wait
         if (key_held?(0x11) and key_pressed?(:key_enter)) or (form.fields[-2]!=nil && form.fields[-2].pressed?)
           next if !confirm_missing_tag.call
           next if !confirm_closed_forum.call
-          play_sound("listbox_select")
+          play_sound("listbox_select") unless send_confirmed
           text = form.fields[1].text
           break
         end
