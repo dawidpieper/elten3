@@ -811,8 +811,6 @@ module OSXWindowNative
           request_close(true)
           return :consumed
         end
-        # Let Cocoa handle modified Command+Q shortcuts, notably Control+
-        # Command+Q (lock screen), instead of recording them as Elten input.
         return true if command_q_event?(event)
         return set_event_key(event, true) ? :consumed : true
       when 11
