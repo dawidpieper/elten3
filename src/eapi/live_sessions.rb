@@ -26,6 +26,7 @@ module EltenAPI
     class TimeoutError < Error; end
     class SessionClosed < Error; end
     class NotOwner < Error; end
+    class OwnershipTransferUnsupported < Error; end
     class QueueOverflow < Error; end
     class StackPacketTooLarge < Error; end
     class StackFull < Error; end
@@ -496,6 +497,38 @@ module EltenAPI
         @mutex.synchronize { @state == :closed }
       end
 
+      def ownership_transfer?
+        @mutex.synchronize { @limits["ownership_transfer"] == true }
+      end
+
+      # Requires the server contract in docs/live-session-ownership.md.
+      # With leave: true, assignment and departure are one server transaction.
+      def transfer_ownership(participant, leave: false, timeout: 45, cancellation_token: nil)
+        raise ArgumentError, "leave must be boolean" unless leave == true || leave == false
+        validate_ownership_transfer!(participant)
+        data = @endpoint.transfer_ownership(self, participant, leave: leave,
+          timeout: timeout, cancellation_token: cancellation_token)
+        @delivery_mutex.synchronize do
+          apply_snapshot(data)
+          close_local(:left, confirmed: true) if leave
+        end
+        true
+      end
+
+      def validate_ownership_transfer!(participant)
+        @mutex.synchronize do
+          raise SessionClosed, "Live session is closed" if @state == :closed
+          raise NotOwner, "Only the live session owner can transfer ownership" unless @participant_id == @owner_id
+          unless @limits["ownership_transfer"] == true
+            raise OwnershipTransferUnsupported, "Server does not support live session ownership transfer"
+          end
+          unless participant.is_a?(Participant) && @participants[participant.id].equal?(participant) && participant.id != @participant_id
+            raise ArgumentError, "successor must be another current participant of this session"
+          end
+        end
+        true
+      end
+
       def invite(user, metadata: {})
         ensure_open!
         @endpoint.invite(self, user, metadata)
@@ -833,6 +866,7 @@ module EltenAPI
       def on_message(with_metadata: false, &block); register_message_callback(:message, with_metadata, &block); end
       def on_participant_joined(&block); register_callback(:participant_joined, &block); end
       def on_participant_left(&block); register_callback(:participant_left, &block); end
+      def on_owner_changed(&block); register_callback(:owner_changed, &block); end
       def on_discovery_metadata_changed(&block); register_callback(:discovery_metadata_changed, &block); end
       def on_gap(&block); register_callback(:gap, &block); end
       def on_closed(&block); register_callback(:closed, &block); end
@@ -1105,6 +1139,14 @@ module EltenAPI
           emit(:participant_left, item, event["reason"].to_s.to_sym)
         when "discovery_metadata_changed"
           emit(:discovery_metadata_changed, LiveSessions.immutable_copy(event["discovery_metadata"])) if event["discovery_metadata"].is_a?(Hash)
+        when "owner_changed"
+          row = event["owner"]
+          unless row.is_a?(Hash) && row["id"].is_a?(String) && !row["id"].empty? && row["id"] == event["owner_id"]
+            raise EltenLink::Error.new("Invalid live session owner event", code: "invalid_json")
+          end
+          # Like participant events, this describes a historical change. The
+          # envelope's revision-checked snapshot remains the current authority.
+          emit(:owner_changed, Participant.new(LiveSessions.immutable_copy(row)).freeze)
         when "gap"
           emit(:gap, event["from"].to_i, event["to"].to_i)
         when "closed"
@@ -1416,6 +1458,30 @@ module EltenAPI
           participant_id: session.participant_id,
           timeout: CONTROL_TIMEOUT
         )
+      end
+
+      def transfer_ownership(session, participant, leave:, timeout: 45, cancellation_token: nil)
+        ensure_session!(session)
+        params = { "new_owner_id" => participant.id.dup, "leave" => leave, "request_id" => SecureRandom.uuid }
+        http = EltenLink::Apps.live_session_ownership_request(session.id, session.participant_id, params)
+        check = ->(_first) { session.validate_ownership_transfer!(participant) }
+        # A timeout can mean the transfer committed but its reply was lost.
+        # Do not retry a change of authority or schedule a fallback departure.
+        request = queue_live_request(session, :transfer_ownership, params, retries: 0,
+          timeout: timeout, http: http, validator: check)
+        data = await_live_request(request, cancellation_token: cancellation_token)
+        members = data["participants"]
+        valid = data["id"] == session.id && data["participant_id"] == session.participant_id &&
+          data["owner_id"] == params["new_owner_id"] && data["previous_owner_id"] == session.participant_id &&
+          data["request_id"] == params["request_id"] && data["left"] == leave &&
+          data["revision"].is_a?(Integer) && data["revision"] >= 0 && members.is_a?(Array) &&
+          members.all? { |row| row.is_a?(Hash) && row["id"].is_a?(String) && !row["id"].empty? }
+        if valid
+          ids = members.map { |row| row["id"] }
+          valid = ids.uniq == ids && ids.include?(params["new_owner_id"]) && ids.include?(session.participant_id) == !leave
+        end
+        raise EltenLink::Error.new("Invalid ownership transfer confirmation", code: "invalid_json") unless valid
+        data
       end
 
       def update_discovery_metadata(session, metadata, timeout: 45, cancellation_token: nil)

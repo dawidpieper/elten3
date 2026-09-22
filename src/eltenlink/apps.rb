@@ -542,6 +542,11 @@ module EltenLink
         true
       end
 
+      # Proposed endpoint; only used when limits["ownership_transfer"] is true.
+      def live_session_ownership_request(session_id, participant_id, params)
+        ["POST", "#{live_session_path(session_id)}/ownership", params.merge("participant_id" => participant_id)]
+      end
+
       def close_live_session(client, session_id:, participant_id:, timeout: Client::DEFAULT_TIMEOUT)
         client.api_data("POST", "#{live_session_path(session_id)}/close", { "participant_id" => participant_id }, timeout: timeout)
         true

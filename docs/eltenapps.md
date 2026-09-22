@@ -615,6 +615,47 @@ and allocate no dedicated socket. Use `communication` when an app needs binary p
 unreliable delivery, per-recipient delivery reports or separate session
 encryption.
 
+### Proposed ownership handover (requires server support)
+
+The client-side proposal adds `session.ownership_transfer?`,
+`session.transfer_ownership(successor, leave: false, timeout: 45,
+cancellation_token: nil)` and `session.on_owner_changed { |owner| ... }`.
+The successor must be a current `Participant` returned by that session,
+not a user name or an invitation. Only the current owner may transfer.
+With `leave: true`, ownership transfer and departure are one server
+transaction; an unsuccessful or unconfirmed request does not locally close
+the session or send a separate departure request. Existing `leave` and
+`close` calls retain their behaviour.
+
+This is **not an available server feature merely by installing this client**.
+The server must implement the [proposed ownership contract](live-session-ownership.md)
+and advertise `limits["ownership_transfer"] == true`. Otherwise the capability
+query returns false and the operation raises `OwnershipTransferUnsupported`
+without sending a request. The proposal does not elect an owner after a crash,
+transfer a separate Communications session, or migrate an application's bots
+and other owner responsibilities automatically.
+
+```ruby
+session.on_owner_changed do |owner|
+  # Reconcile application duties with session.owner / session.owner?.
+  # The callback describes the ordered event; a later transfer may already
+  # be present in the current snapshot.
+end
+
+successor = session.participants.find { |entry| entry.user == "alice" }
+if successor && session.owner? && session.ownership_transfer?
+  session.transfer_ownership(successor, leave: true)
+end
+```
+
+The operation uses the existing bounded request queue and cancellation path.
+A timeout or cancellation after submission does not prove that the server
+rolled back: wait for the authoritative session state before retrying or
+closing the room. `on_owner_changed` follows the same event cursor and gap
+semantics as participant callbacks. When handling `on_gap`, reconcile the
+current `owner` as well as application state; a snapshot alone does not
+synthesize historical ownership callbacks.
+
 ## Other integration points
 
 `Program` currently exposes further integration mechanisms:
