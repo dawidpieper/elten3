@@ -286,6 +286,9 @@ if @users[@sel_users.index].user[0..0]=="["
   edit_conversation(@users[@sel_users.index])
   @sel_users.focus
   }
+  menu.option(p_("Messages", "Call"), nil, "c") {
+    call_group(@users[@sel_users.index])
+  }
 menu.option(p_("Messages", "Leave")) {
     confirm(p_("Messages", "Are you sure you want to leave this group?")) {
     begin
@@ -423,6 +426,20 @@ if form.fields[2]!=nil and form.fields[2].pressed?
   end
     end
     loop_update
+  end
+  def call_group(u)
+    begin
+      members=EltenLink::Messages.group_users(elten_link, u.user)
+    rescue EltenLink::Error
+      alert(_("Error"))
+      return
+    end
+    members=members.reject{|m|m==Session.name}
+    if members.size==0
+      alert(p_("Messages", "There is nobody to call in this conversation."))
+      return
+    end
+    voicecall(nil, nil, members)
   end
   def mute_conversation(u, time=false)
     begin
