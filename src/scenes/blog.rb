@@ -1194,7 +1194,7 @@ if b.include?(Session.name)
   $scene = Scene_Blog_Recategorize.new(@blogs[@sel.index].id,$scene)
   }
   if b[0]==Session.name
-  menu.option(p_("Blog", "Delete this blog")) {
+  menu.option(p_("Blog", "Delete this blog"), nil, :del) {
   blogdelete
   }
   end
