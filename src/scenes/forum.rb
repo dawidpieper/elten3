@@ -2673,7 +2673,7 @@ threadopen(@thrsel.index)
             end
           end
         }
-        m.option(p_("Forum", "Delete thread"), nil, "-") {
+        m.option(p_("Forum", "Delete thread"), nil, :del) {
           confirm(p_("Forum", "Do you really want to delete thread %{thrname}?")%{ :thrname => @sthreads[@thrsel.index].name }) do
             if forum_attempt(nil) {
               EltenLink::Forum.delete_thread(elten_link, thread_id: @sthreads[@thrsel.index].id)
@@ -4048,7 +4048,7 @@ if post.edited && !post.locked
               end
             end
           }
-          m.option(p_("Forum", "Delete post"), nil, "-") {
+          m.option(p_("Forum", "Delete post"), nil, :del) {
             content = post.transcription.strip!="" ? post.transcription : post.post
             preview = content.lines.first.to_s.strip
             confirm(p_("Forum", "Are you sure you want to delete this post?")+"\r\n"+post.authorname+":\r\n"+preview) do
@@ -4964,7 +4964,7 @@ class Scene_Forum_Trash
     menu.option(p_("Forum", "Open")) { open_thread(thread) }
     menu.option(p_("Forum", "Mass Actions"), nil, "\\") { mass_threads }
     if !thread.trashed && thread.contains_trashed_posts
-      menu.option(p_("Forum", "Delete all trashed posts permanently"), nil, "-") {
+      menu.option(p_("Forum", "Delete all trashed posts permanently"), nil, :del) {
         mutate(
           p_("Forum", "Permanently delete all posts from thread %{thread} that are currently in the trash? This cannot be undone.") % {
             thread: thread.name
@@ -5004,7 +5004,7 @@ class Scene_Forum_Trash
         }
       end
     }
-    menu.option(p_("Forum", "Delete permanently"), nil, "-") {
+    menu.option(p_("Forum", "Delete permanently"), nil, :del) {
       mutate(
         p_("Forum", "Permanently delete thread %{thread} together with all its posts? This cannot be undone.") % {
           thread: thread.name
@@ -5049,7 +5049,7 @@ class Scene_Forum_Trash
         }
       end
     }
-    menu.option(p_("Forum", "Delete permanently"), nil, "-") {
+    menu.option(p_("Forum", "Delete permanently"), nil, :del) {
       mutate(
         p_("Forum", "Permanently delete this post by %{user}? This cannot be undone.") % { user: post.author },
         p_("Forum", "The post has been permanently deleted."),
