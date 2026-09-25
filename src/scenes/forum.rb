@@ -1242,68 +1242,247 @@ rfr.call
              dialog_close
            end
            
-           def groupreportresolver(group, report)
-             return if group==nil || report==nil || group.role!=2
-                          statuses=forum_report_resolution_options
-                          fields=[
-                          lst_status = ListBox.new(statuses.map{|status|status[1]}, header: p_("Forum", "Status")),
-                          edt_reason = EditBox.new(p_("Forum", "Optional comment"), type: EditBox::Flags::MultiLine, text: "", quiet: true)
-                          ]
-                          if report.suggestion_range.to_s.split(",").uniq.size>1
-                            fields.push(EditBox.new(p_("Forum", "Note"), type: EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly, text: p_("Forum", "This report concerns multiple posts."), quiet: true))
-                          end
-                          chk_suggestion=nil
-                          edt_suggestion=nil
-                          details=""
-                          action=forum_report_suggestion_name(report.suggestion)
-                          if action!=nil
-                            chk_suggestion=CheckBox.new(p_("Forum", "Apply suggested action: %{action}")%{ action: action })
-                            details=forum_report_suggestion_details(report)
-                            edt_suggestion=EditBox.new(p_("Forum", "Suggested action details"), type: EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly, text: details, quiet: true)
-                            fields.push(chk_suggestion, edt_suggestion)
-                          end
-                          btn_resolve=Button.new(p_("Forum", "Resolve"))
-                          btn_cancel=Button.new(_("Cancel"))
-                          fields.push(btn_resolve, btn_cancel)
-                          form=Form.new(fields)
-                          form.cancel_button=btn_cancel
-                          form.accept_button=btn_resolve
-                          if edt_suggestion!=nil
-                            update_suggestion=Proc.new {
-                              accepted=statuses[lst_status.index][0]==1
-                              accepted ? form.show(chk_suggestion) : form.hide(chk_suggestion)
-                              chk_suggestion.checked=false if !accepted
-                              accepted && chk_suggestion.checked && details!="" ? form.show(edt_suggestion) : form.hide(edt_suggestion)
-                            }
-                            lst_status.on(:move) {update_suggestion.call}
-                            chk_suggestion.on(:change) {update_suggestion.call}
-                            update_suggestion.call
-                          end
-                          btn_cancel.on(:press) {form.resume}
-                          btn_resolve.on(:press) {
-                          status=statuses[lst_status.index][0]
-                          use_suggestion=status==1 && chk_suggestion!=nil && chk_suggestion.checked
-                          resolved=false
-                          begin
-                            EltenLink::Forum.resolve_report(elten_link, group_id: group.id, report_id: report.id, status: status, reason: edt_reason.text, use_suggestion: use_suggestion)
-                            resolved=true
-                          rescue EltenLink::Error => e
-                            log_forum_error(e)
-                            if e.code.to_s=="forum.report_already_resolved"
-                              alert(p_("Forum", "This report has already been resolved."))
-                              form.resume
-                            else
-                              alert(_("Error"))
-                            end
-                          end
-                          if resolved
-                            getcache if use_suggestion
-                            alert(p_("Forum", "Report resolved"))
-                          form.resume
-                          end
-                          }
-                          form.wait
-             end
+  def groupreportresolver(group, report)
+    return if group == nil || report == nil || group.role != 2
+    statuses = forum_report_resolution_options
+    fields = [
+      lst_status = ListBox.new(statuses.map { |status| status[1] }, header: p_("Forum", "Status")),
+      edt_reason = EditBox.new(p_("Forum", "Optional comment"), type: EditBox::Flags::MultiLine, text: "", quiet: true)
+    ]
+    if report.suggestion_range.to_s.split(",").uniq.size > 1
+      fields.push(EditBox.new(p_("Forum", "Note"), type: EditBox::Flags::MultiLine | EditBox::Flags::ReadOnly, text: p_("Forum", "This report concerns multiple posts."), quiet: true))
+    end
+    chk_suggestion = nil
+    edt_suggestion = nil
+    details = ""
+    action = forum_report_suggestion_name(report.suggestion)
+    if action != nil
+      chk_suggestion = CheckBox.new(p_("Forum", "Apply suggested action: %{action}") % { action: action })
+      details = forum_report_suggestion_details(report)
+      edt_suggestion = EditBox.new(p_("Forum", "Suggested action details"), type: EditBox::Flags::MultiLine | EditBox::Flags::ReadOnly, text: details, quiet: true)
+      fields.push(chk_suggestion, edt_suggestion)
+    end
+    btn_thread_actions = Button.new(p_("Forum", "Thread actions"))
+    btn_post_actions = Button.new(p_("Forum", "Post actions"))
+    btn_resolve = Button.new(p_("Forum", "Resolve"))
+    btn_cancel = Button.new(_("Cancel"))
+    fields.push(btn_thread_actions, btn_post_actions, btn_resolve, btn_cancel)
+    form = Form.new(fields)
+    form.cancel_button = btn_cancel
+    form.accept_button = btn_resolve
+
+    thread_deleted = false
+    post_deleted = false
+
+    update_suggestion = proc do
+      accepted = statuses[lst_status.index][0] == 1
+      suggestion_applicable = if chk_suggestion == nil
+        false
+      elsif %w[thread_delete thread_move thread_rename thread_close thread_open thread_move_and_close thread_move_and_open thread_offer].include?(report.suggestion.to_s)
+        !thread_deleted
+      elsif %w[post_delete post_move post_edit].include?(report.suggestion.to_s)
+        !thread_deleted && !post_deleted
+      else
+        true
+      end
+
+      use_suggestion = accepted && suggestion_applicable && chk_suggestion != nil && chk_suggestion.checked
+
+      if chk_suggestion != nil
+        accepted && suggestion_applicable ? form.show(chk_suggestion) : form.hide(chk_suggestion)
+        chk_suggestion.checked = false if !accepted || !suggestion_applicable
+        use_suggestion && details != "" ? form.show(edt_suggestion) : form.hide(edt_suggestion)
+      end
+
+      accepted && !use_suggestion && !thread_deleted ? form.show(btn_thread_actions) : form.hide(btn_thread_actions)
+      accepted && !use_suggestion && !thread_deleted && !post_deleted && report.post.to_i > 0 ? form.show(btn_post_actions) : form.hide(btn_post_actions)
+    end
+
+    lst_status.on(:move) { update_suggestion.call }
+    chk_suggestion.on(:change) { update_suggestion.call } if chk_suggestion != nil
+    update_suggestion.call
+
+    btn_thread_actions.on(:press) do
+      thread = @threads.to_a.find { |t| t.id == report.thread }
+      if thread == nil
+        alert(p_("Forum", "The thread you searched for has already been deleted."))
+        thread_deleted = true
+        post_deleted = true
+        update_suggestion.call
+        form.index = btn_resolve
+        next
+      end
+
+      actions = [
+        [:move, p_("Forum", "Move thread")],
+        [:rename, p_("Forum", "Rename")],
+        [:toggle_closed, thread.closed ? p_("Forum", "Open thread") : p_("Forum", "Close thread")],
+        [:toggle_pinned, thread.pinned ? p_("Forum", "Unpin thread") : p_("Forum", "Pin thread")],
+        [:delete, p_("Forum", "Delete thread")]
+      ]
+      chosen = select_action(actions, header: p_("Forum", "Thread actions"))
+      case chosen
+      when :move
+        mforums = thread_move_forums(thread.forum)
+        index = mforums.find_index { |f| f.id == thread.forum.id } || 0
+        labels = mforums.map { |f| "#{f.fullname} (#{f.group.name})" }
+        destination = selector(labels, header: p_("Forum", "Thread destination"), start_index: index, cancel_index: -1)
+        if destination >= 0
+          if forum_attempt(nil) { EltenLink::Forum.move_thread(elten_link, thread_id: thread.id, forum_id: mforums[destination].id) }
+            thread.forum = mforums[destination]
+            alert(p_("Forum", "The thread has been moved."))
+          end
+        end
+      when :rename
+        name = input_text(p_("Forum", "Type a new thread name"), flags: 0, text: thread.name, escapable: true)
+        if name != nil && name.strip != ""
+          if forum_attempt(nil) { EltenLink::Forum.rename_thread(elten_link, thread_id: thread.id, name: name) }
+            thread.name = name
+            alert(p_("Forum", "The thread name has been changed."))
+          end
+        end
+      when :toggle_closed
+        clo = thread.closed ? 0 : 1
+        if forum_attempt(nil) { EltenLink::Forum.set_thread_closed(elten_link, thread_id: thread.id, closed: clo) }
+          thread.closed = !thread.closed
+          alert(thread.closed ? p_("Forum", "The thread has been closed") : p_("Forum", "The thread has been opened"))
+        end
+      when :toggle_pinned
+        pin = thread.pinned ? 0 : 1
+        if forum_attempt(nil) { EltenLink::Forum.set_thread_pinned(elten_link, thread_id: thread.id, pinned: pin) }
+          thread.pinned = !thread.pinned
+          alert(thread.pinned ? p_("Forum", "Thread has been pinned") : p_("Forum", "Thread has been unpinned"))
+        end
+      when :delete
+        confirm(p_("Forum", "Do you really want to delete thread %{thrname}?") % { thrname: thread.name }) do
+          if forum_attempt(nil) { EltenLink::Forum.delete_thread(elten_link, thread_id: thread.id) }
+            alert(p_("Forum", "This thread has been deleted."))
+            thread_deleted = true
+            post_deleted = true
+            update_suggestion.call
+            form.index = btn_resolve
+          end
+        end
+      end
+    end
+
+    btn_post_actions.on(:press) do
+      thread = @threads.to_a.find { |t| t.id == report.thread }
+      if thread == nil
+        alert(p_("Forum", "The thread you searched for has already been deleted."))
+        thread_deleted = true
+        post_deleted = true
+        update_suggestion.call
+        form.index = btn_resolve
+        next
+      end
+
+      page = forum_fetch(nil) { EltenLink::Forum.thread(elten_link, thread_id: thread.id) }
+      posts = page.posts if page.respond_to?(:posts)
+      post = posts.find { |p| p.id == report.post.to_i } if posts
+      if post == nil
+        alert(p_("Forum", "The post you searched for has already been deleted."))
+        post_deleted = true
+        update_suggestion.call
+        form.index = btn_resolve
+        next
+      end
+
+      actions = []
+      actions.push([:edit, p_("Forum", "Edit post")]) if post.audio_url.to_s.empty? && !post.locked
+      actions.push([:move, p_("Forum", "Move post")])
+      actions.push([:toggle_locked, post.locked ? p_("Forum", "Unlock post") : p_("Forum", "Lock post")])
+      actions.push([:delete, p_("Forum", "Delete post")])
+
+      chosen = select_action(actions, header: p_("Forum", "Post actions"))
+      case chosen
+      when :edit
+        new_text = input_text(p_("Forum", "edit your post here"), flags: EditBox::Flags::MultiLine, text: post.post, escapable: true)
+        if new_text != nil && new_text.strip != "" && new_text != post.post
+          attachments = post.attachments.to_a.join(",")
+          if forum_attempt(nil) { EltenLink::Forum.edit_post(elten_link, post_id: post.id, text: new_text, attachments: attachments, format: post.format) }
+            post.post = new_text
+            alert(p_("Forum", "The post has been modified"))
+          end
+        end
+      when :move
+        moderated_threads = @threads.to_a.select { |t| forum_group_moderator?(t.forum.group) }
+        local_threads, other_threads = moderated_threads.partition { |t| t.forum.group.id == group.id }
+        dest_threads = local_threads + other_threads
+        curr_index = dest_threads.find_index { |t| t.id == thread.id } || 0
+        labels = dest_threads.map { |t| "#{t.name} (#{t.forum.fullname} (#{t.forum.group.name}))" }
+        destination = selector(labels, header: p_("Forum", "Post destination"), start_index: curr_index, cancel_index: -1)
+        if destination >= 0
+          if forum_attempt(nil) { EltenLink::Forum.move_post(elten_link, post_id: post.id, thread_id: dest_threads[destination].id) }
+            alert(p_("Forum", "The post has been moved."))
+          end
+        end
+      when :toggle_locked
+        locked = post.locked ? 0 : 1
+        if forum_attempt(nil) { EltenLink::Forum.set_post_locked(elten_link, post_id: post.id, locked: locked) }
+          post.locked = !post.locked
+          alert(post.locked ? p_("Forum", "Post locked") : p_("Forum", "Post unlocked"))
+        end
+      when :delete
+        content = post.transcription.to_s.strip != "" ? post.transcription : post.post
+        preview = content.to_s.lines.first.to_s.strip
+        confirm(p_("Forum", "Are you sure you want to delete this post?") + "\r\n" + post.authorname.to_s + ":\r\n" + preview) do
+          action_type = posts.size == 1 ? :delete_thread : :delete_post
+          deleted = if action_type == :delete_thread
+            forum_attempt(nil) { EltenLink::Forum.delete_thread(elten_link, thread_id: thread.id) }
+          else
+            forum_attempt(nil) { EltenLink::Forum.delete_post(elten_link, post_id: post.id) }
+          end
+          if deleted
+            if action_type == :delete_thread
+              alert(p_("Forum", "This thread has been deleted."))
+              thread_deleted = true
+              post_deleted = true
+            else
+              alert(p_("Forum", "This post has been deleted."))
+              post_deleted = true
+            end
+            update_suggestion.call
+            form.index = btn_resolve
+          end
+        end
+      end
+    end
+
+    btn_cancel.on(:press) { form.resume }
+    btn_resolve.on(:press) {
+      status = statuses[lst_status.index][0]
+      suggestion_applicable = if chk_suggestion == nil
+        false
+      elsif %w[thread_delete thread_move thread_rename thread_close thread_open thread_move_and_close thread_move_and_open thread_offer].include?(report.suggestion.to_s)
+        !thread_deleted
+      elsif %w[post_delete post_move post_edit].include?(report.suggestion.to_s)
+        !thread_deleted && !post_deleted
+      else
+        true
+      end
+      use_suggestion = status == 1 && suggestion_applicable && chk_suggestion != nil && chk_suggestion.checked
+      resolved = false
+      begin
+        EltenLink::Forum.resolve_report(elten_link, group_id: group.id, report_id: report.id, status: status, reason: edt_reason.text, use_suggestion: use_suggestion)
+        resolved = true
+      rescue EltenLink::Error => e
+        log_forum_error(e)
+        if e.code.to_s == "forum.report_already_resolved"
+          alert(p_("Forum", "This report has already been resolved."))
+          form.resume
+        else
+          alert(_("Error"))
+        end
+      end
+      if resolved
+        getcache if use_suggestion || thread_deleted || post_deleted
+        alert(p_("Forum", "Report resolved"))
+        form.resume
+      end
+    }
+    form.wait
+  end
             
              def grouplog(group)
 sel = TableBox.new([nil, p_("Forum", "Action"), p_("Forum", "Group"), p_("Forum", "Forum"), p_("Forum", "Thread"), p_("Forum", "New group"), p_("Forum", "New forum"), p_("Forum", "New thread"), p_("Forum", "Old status"), p_("Forum", "New status"), p_("Forum", "Time")], [], index: 0, header: p_("Forum", "Log"))
