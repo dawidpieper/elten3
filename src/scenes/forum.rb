@@ -4347,8 +4347,8 @@ sent = forum_attempt(nil) {
 }
 if sent
 alert(np_("Forum", "The mention has been sent.", "The mentions have been sent.", selections.size))
-end
 form.resume
+end
 end
 }
 btn_mentionCancel.on(:press) {form.resume}
