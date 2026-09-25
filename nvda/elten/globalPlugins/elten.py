@@ -29,6 +29,9 @@ import re
 stopThreads=False
 eltenindex=None
 eltenindexid=None
+eltenspeaking=False
+eltengeneration=0
+eltencancelarmed=True
 
 if is_python_3_or_above:
 	class EltenIndexCallback(speech.commands.BaseCallbackCommand):
@@ -49,6 +52,37 @@ if is_python_3_or_above:
 	class EltenEmptyCallback(speech.commands.BaseCallbackCommand):
 		def run(self): pass
 		def __repr__(self): return "EltenEmptyCallback()"
+
+	class EltenDoneCallback(speech.commands.BaseCallbackCommand):
+		def __init__(self, gen):
+			super().__init__()
+			self.gen = gen
+		def run(self):
+			global eltenspeaking
+			if self.gen != eltengeneration: return
+			eltenspeaking = False
+		def __repr__(self): return "EltenDoneCallback()"
+
+	def eltenSpeechCanceled(*args, **kwargs):
+		global eltenspeaking
+		if eltencancelarmed == False: return
+		eltenspeaking = False
+
+	def eltencancelquiet():
+		global eltencancelarmed
+		eltencancelarmed = False
+		try: speech.cancelSpeech()
+		finally: eltencancelarmed = True
+
+	try:
+		from speech import extensions as eltenSpeechExtensions
+		global eltencancelhandler
+		eltencancelhandler = eltenSpeechCanceled
+		for eltencancelpoint in ("speechCanceled", "pre_speechCanceled"):
+			eltenpoint = getattr(eltenSpeechExtensions, eltencancelpoint, None)
+			if eltenpoint != None: eltenpoint.register(eltencancelhandler)
+	except Exception:
+		pass
 
 eltenmod=None
 eltenbraille = braille.BrailleBuffer(braille.handler)
@@ -232,6 +266,8 @@ def elten_command(ac):
 	global eltenindex
 	global eltenindexid
 	global eltenqueue
+	global eltenspeaking
+	global eltengeneration
 	try:
 		if(('ac' in ac)==False): return {}
 		if(ac['ac']=="speak"):
@@ -239,7 +275,13 @@ def elten_command(ac):
 			eltenindexid=None
 			text=""
 			if('text' in ac): text=ac['text']
-			if(speech.isBlank(text)==False): queueHandler.queueFunction(queueHandler.eventQueue,speech.speakText,text)
+			if(speech.isBlank(text)==False):
+				if is_python_3_or_above:
+					eltengeneration+=1
+					eltenspeaking=True
+					queueHandler.queueFunction(queueHandler.eventQueue,speech.speak,[text, EltenDoneCallback(eltengeneration)])
+				else:
+					queueHandler.queueFunction(queueHandler.eventQueue,speech.speakText,text)
 		if(ac['ac']=="speakspelling"):
 			eltenindex=None
 			eltenindexid=None
@@ -270,12 +312,20 @@ def elten_command(ac):
 				v.append(texts[i].replace("\n", " "))
 				text_added = True
 			log.info(v.__repr__())
-			queueHandler.queueFunction(queueHandler.eventQueue,speech.cancelSpeech)
+			if is_python_3_or_above and len(v)>0:
+				eltengeneration+=1
+				eltenspeaking=True
+				v.append(EltenDoneCallback(eltengeneration))
+			queueHandler.queueFunction(queueHandler.eventQueue,eltencancelquiet)
 			queueHandler.queueFunction(queueHandler.eventQueue,speech.speak,v)
 		if(ac['ac']=='stop'):
-			queueHandler.queueFunction(queueHandler.eventQueue,speech.cancelSpeech)
+			eltengeneration+=1
+			queueHandler.queueFunction(queueHandler.eventQueue,eltencancelquiet)
 			eltenindex=None
 			eltenindexid=None
+			eltenspeaking=False
+		if(ac['ac']=='speaking'):
+			return {'speaking': eltenspeaking}
 		if(ac['ac']=='sleepmode'):
 			st=eltenmod.sleepMode
 			if('st' in ac): st=ac['st']
@@ -334,7 +384,7 @@ def elten_command(ac):
 			eltenbraille.update()
 			braille.handler.update()
 		if(ac['ac']=='getversion'):
-			return {'version': 44}
+			return {'version': 45}
 		if(ac['ac']=='getnvdaversion'):
 			return {'version': buildVersion.version}
 		if(ac['ac']=='getindex'):
