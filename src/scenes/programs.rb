@@ -54,8 +54,8 @@ class Scene_Programs
 
   def category_labels
     {
-      installed: p_("Programs", "Installed programs"),
       updates: p_("Programs", "Available updates"),
+      installed: p_("Programs", "Installed programs"),
       featured: p_("Programs", "Featured programs"),
       popular: p_("Programs", "Most installed programs"),
       recent: p_("Programs", "Recently updated programs"),
@@ -92,6 +92,7 @@ class Scene_Programs
   def build_view(announce_header: false)
     labels=category_labels
     if @category==nil
+      labels.delete(:updates) if available_updates.empty?
       @items=labels.keys
       options=labels.values
       header=p_("Programs", "Program centre")
