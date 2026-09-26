@@ -107,6 +107,8 @@ src/platforms/osx/eapi/clipboard.rb :osx
 src/platforms/linux/eapi/clipboard.rb :linux
 src/scenes/authentication.rb
 src/eapi/audio/bass.rb
+src/eapi/audio/format.rb
+src/eapi/audio/source.rb
 src/eapi/audio/sound.rb
 src/eapi/audio/soundpool.rb
 src/eapi/audio/fx/audio3d.rb
@@ -229,9 +231,7 @@ src/platforms/windows/invisibleinterface/hotkeys.rb :windows
 src/platforms/windows/invisibleinterface/service.rb :windows
 src/platforms/osx/invisibleinterface/service.rb :osx
 src/platforms/linux/invisibleinterface/service.rb :linux
-src/eapi/audio/format.rb
 src/eapi/audio/encoders/media.rb
-src/eapi/audio/source.rb
 src/eapi/audio/processing.rb
 src/eapi/audio/renderer.rb
 src/eapi/speechtofile.rb

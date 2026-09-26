@@ -742,6 +742,7 @@ class Sound
     @processing_channels = 0
     @kind = :none
     @effects = []
+    @recordings = []
     @effects_mutex = Mutex.new
     @pipeline_mutex = Mutex.new
     @sound_attributes = {}
@@ -1041,6 +1042,8 @@ class Sound
     else
       Bass::BASS_ChannelStop.call(@channel)
     end
+  ensure
+    stop_recordings
   end
 
   def pause
@@ -1204,8 +1207,25 @@ class Sound
     self
   end
 
+  def record(path, encoder:)
+    @pipeline_mutex.synchronize do
+      raise Audio::EncodingError, "Sound is not open" if !opened?
+      raise Audio::UnsupportedOperation, "Sample sounds cannot be recorded" if @kind == :sample
+      recording = SoundRecording.new(self, path, :encoder => encoder, :channel => native_effect_channel)
+      @recordings.reject!(&:closed?)
+      @recordings << recording
+      recording
+    end
+  end
+
   def close
-    @pipeline_mutex.synchronize { close_sound }
+    @pipeline_mutex.synchronize do
+      begin
+        stop_recordings
+      ensure
+        close_sound
+      end
+    end
   end
 
   def close_sound
@@ -1740,7 +1760,20 @@ class Sound
     (seconds * [frequency, 1].max * ch * bitrate / 8).to_i
   end
 
+  def stop_recordings
+    recordings = @recordings
+    @recordings = []
+    error = nil
+    recordings.each do |recording|
+      recording.close
+    rescue StandardError => failure
+      error ||= failure
+    end
+    raise error if error
+  end
+
   def close_native_handles
+    stop_recordings
     cancel_all_tracked_slides
     unbind_native_effects
     if @kind == :sample
@@ -2156,5 +2189,138 @@ class Sound
       raise ArgumentError, "effect_buffer and effect_buffer_seconds cannot be used together"
     end
     preset == nil ? self.effect_buffer_seconds = seconds : self.effect_buffer = preset
+  end
+end
+
+class SoundRecording
+  attr_reader :path, :error
+
+  def initialize(sound, path, encoder:, channel:)
+    encoder = encoder.new if encoder.is_a?(Class) && encoder <= MediaEncoder
+    unless encoder.is_a?(MediaEncoder) && encoder.class.audio_supported?
+      raise Audio::EncodingError, "Audio encoder is unavailable"
+    end
+    @path = path.to_s
+    extensions = encoder.output_descriptor[:extensions]
+    raise Audio::EncodingError, "Invalid recording extension" if !extensions.include?(File.extname(@path).downcase)
+    @source = SoundRecordingSource.new(sound, channel)
+    format = encoder.input_constraints.negotiate(@source.format)
+    @output = FileRecorderOutput.new(@path)
+    @session = encoder.start(:output => @output, :input_format => format)
+    @finished = false
+    @thread = Thread.new do
+      begin
+        @source.convert(:format => format).each_buffer { |buffer| @session.process_pcm(buffer.data) }
+        @session.finish
+        @session = nil
+      rescue StandardError => error
+        @error = error
+      ensure
+        release
+        @finished = true
+      end
+    end
+  rescue Exception
+    release
+    raise
+  end
+
+  def recording?
+    !@finished
+  end
+
+  def closed?
+    @finished == true
+  end
+
+  def stop
+    @source.stop
+    @thread.join
+    raise @error if @error
+    @path
+  end
+
+  alias close stop
+
+  private
+
+  def release
+    [@session, @output, @source].compact.each do |resource|
+      resource.close
+    rescue StandardError => error
+      @error ||= error
+    end
+    @session = @output = nil
+  end
+end
+
+class SoundRecordingSource < Audio::Source
+  attr_reader :format
+
+  def initialize(sound, channel)
+    @sound = sound
+    @mutex = Mutex.new
+    @channel = Bass::BASS_Split_StreamCreate.call(channel,
+      Bass::BASS_STREAM_DECODE | Bass::BASS_SPLIT_DSP, nil)
+    raise Audio::EncodingError, "Cannot capture sound: #{Bass.error_name}" if @channel == 0
+    info = EltenBassStructs.bass_channel_info_buffer
+    raise Audio::EncodingError, "Cannot inspect sound: #{Bass.error_name}" if Bass::BASS_ChannelGetInfo.call(@channel, info) == 0
+    frequency, channels, flags = EltenBassStructs.bass_channel_info_values(info)
+    type = (flags & Bass::BASS_SAMPLE_FLOAT) != 0 ? :float32le : ((flags & Bass::BASS_SAMPLE_8BITS) != 0 ? :u8 : :s16le)
+    @format = Audio::Format.new(:sample_rate => frequency, :channels => channels, :sample_type => type)
+    @started = !@sound.status.stopped?
+  rescue Exception
+    close
+    raise
+  end
+
+  def each_full_buffer(chunk_frames: Audio::DEFAULT_CHUNK_FRAMES)
+    return enum_for(__method__, :chunk_frames => chunk_frames) if !block_given?
+    buffer = "\0".b * @format.bytes_for_frames(chunk_frames)
+    loop do
+      data, finished = @mutex.synchronize do
+        available = available_bytes
+        available = [available, @remaining].min if @remaining != nil
+        size = [available, buffer.bytesize].min
+        if size > 0
+          read = Bass::BASS_ChannelGetData.call(@channel, buffer, size)
+          raise Audio::EncodingError, "Cannot read sound: #{Bass.error_name}" if read < 0
+          @remaining -= read if @remaining != nil
+          @started = true if read > 0
+          [buffer.byteslice(0, read), false]
+        else
+          @started ||= !@sound.status.stopped?
+          [nil, @remaining == 0 || (@started && @sound.status.stopped?)]
+        end
+      end
+      break if finished
+      if data && !data.empty?
+        yield Audio::Buffer.new(:data => data, :format => @format)
+      else
+        sleep(0.01)
+      end
+    end
+    self
+  end
+
+  def stop
+    @mutex.synchronize { @remaining ||= @channel.to_i == 0 ? 0 : available_bytes }
+  end
+
+  def close
+    @mutex.synchronize do
+      Bass.free_stream(@channel) if @channel.to_i != 0
+      @channel = 0
+      @remaining = 0
+    end
+  end
+
+  private
+
+  def available_bytes
+    return 0 if @channel.to_i == 0
+    bytes = Bass::BASS_Split_StreamGetAvailable.call(@channel)
+    raise Audio::EncodingError, "Cannot read recording buffer: #{Bass.error_name}" if bytes == 0xffffffff
+    bytes
   end
 end
