@@ -99,6 +99,7 @@ src/eapi/audio/encoders/ogg.rb
 src/eapi/audio/encoders/opus.rb
 src/eapi/audio/encoders/vorbis.rb
 src/eapi/audio/encoders/wave.rb
+src/eapi/audio/encoders/mp3.rb
 src/scenes/version.rb
 src/scenes/speedtest.rb
 src/platforms/windows/eapi/clipboard.rb :windows
