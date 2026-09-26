@@ -220,7 +220,7 @@ end
     if channel.p2p_enabled
       participants=channel.users.count { |user| !user.waiting }
       if channel.p2p_participants_limit>0 && participants>channel.p2p_participants_limit
-        txt+="\n"+p_("Conference", "Channel P2P: disabled — participant limit exceeded")
+        txt+="\n"+p_("Conference", "Channel P2P: disabled - participant limit exceeded")
       else
         txt+="\n"+p_("Conference", "Channel P2P: enabled")
         p2p=status['p2p']

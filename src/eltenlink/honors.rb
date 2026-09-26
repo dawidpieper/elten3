@@ -8,7 +8,7 @@ module EltenLink
     STARTED_ON = Date.new(2014, 8, 24)
 
     DEFINITIONS = [
-      [1, "Developer", "Has left fingerprints in Elten's source code—and the pull request survived review.", [
+      [1, "Developer", "Has left fingerprints in Elten's source code - and the pull request survived review.", [
         "Have 1 pull request accepted into Elten.",
         "Have 5 pull requests accepted into Elten.",
         "Have 20 pull requests accepted into Elten.",

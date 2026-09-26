@@ -5811,7 +5811,7 @@ msgstr ""
 
 #: src/scenes/conference.rb:223
 msgctxt "Conference"
-msgid "Channel P2P: disabled — participant limit exceeded"
+msgid "Channel P2P: disabled - participant limit exceeded"
 msgstr ""
 
 #: src/scenes/conference.rb:225

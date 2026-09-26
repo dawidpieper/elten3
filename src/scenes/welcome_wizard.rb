@@ -889,7 +889,7 @@ class Scene_WelcomeWizard
           labels = candidates.map do |group|
             description = group.description.to_s.strip
             language = language_label(normalise_language(group.lang))
-            description == "" ? "#{group.name} — #{language}" : "#{group.name} — #{language}: #{description}"
+            description == "" ? "#{group.name} - #{language}" : "#{group.name} - #{language}: #{description}"
           end
           list = ListBox.new(labels, header: p_("WelcomeWizard", "Recommended groups"), flags: ListBox::Flags::MultiSelection)
           selected = @state[:join_group_ids].to_a
@@ -953,7 +953,7 @@ class Scene_WelcomeWizard
           end
           view([info, information_field(p_("WelcomeWizard", "Availability"), availability)])
         else
-          labels = suggestions.map { |item| "#{item.blog.name} — #{item.user}" }
+          labels = suggestions.map { |item| "#{item.blog.name} - #{item.user}" }
           list = ListBox.new(labels, header: p_("WelcomeWizard", "Blogs"), flags: ListBox::Flags::MultiSelection)
           selected = @state[:follow_blog_ids].to_a
           suggestions.each_with_index { |item, index| list.selected[index] = true if selected.include?(item.blog.id.to_s) }

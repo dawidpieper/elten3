@@ -6044,7 +6044,7 @@ msgstr "Empfangene bytes"
 
 #: src/scenes/conference.rb:223
 msgctxt "Conference"
-msgid "Channel P2P: disabled — participant limit exceeded"
+msgid "Channel P2P: disabled - participant limit exceeded"
 msgstr "P2P-Kanal: deaktiviert – Teilnehmergrenze überschritten"
 
 #: src/scenes/conference.rb:225
