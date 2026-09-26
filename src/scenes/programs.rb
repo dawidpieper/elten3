@@ -13,8 +13,10 @@ class Scene_Programs
   PROGRAM_LANGUAGE_FILTER_KNOWN = "known"
   PROGRAM_LANGUAGE_FILTER_ALL = "all"
 
-  def initialize(initial_action=nil)
+  def initialize(initial_action=nil, close_after_updates: false)
     @category=initial_action==:updates ? :updates : nil
+    @close_after_updates=close_after_updates
+    @update_installed=false
     @author=nil
     @positions={}
     @programs=[]
@@ -29,6 +31,8 @@ class Scene_Programs
       if @refresh
         remember_selection
         @installed=Programs.local_entries
+        break if @close_after_updates && @update_installed && available_updates.empty?
+        @update_installed=false
         build_view
       end
       @sel.update
@@ -662,9 +666,9 @@ class Scene_Programs
          }) if ask
          return false
        end
+       updating=update_available?(installed_program_for(program), program)
        if ask
          confirmed=false
-         updating=update_available?(installed_program_for(program), program)
          confirm(install_details(program, format_size(program.size), nil, updating: updating)) { confirmed=true }
          return false if !confirmed
        end
@@ -705,6 +709,7 @@ class Scene_Programs
        if installed_entry!=nil
          alert(p_("Programs", "Installation completed.")) if ask
          setlocale(Configuration.language)
+         @update_installed=true if updating
          true
        elsif install_error!=nil
          show_program_install_error(install_error) if ask

@@ -370,7 +370,7 @@ module NotificationGroups
       ids: [],
       payload: payload,
       virtual: true,
-      action: Proc.new { insert_scene(Scene_Programs.new(:updates), true, return_to_main: true) }
+      action: Proc.new { insert_scene(Scene_Programs.new(:updates, close_after_updates: true), true, return_to_main: true) }
     )
   rescue EltenLink::Error => e
     Log.warning("Program updates notification failed: #{e.message}")
