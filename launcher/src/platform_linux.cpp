@@ -8,6 +8,7 @@
 
 #include <dlfcn.h>
 #include <limits.h>
+#include <malloc.h>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -30,6 +31,27 @@ namespace fs = std::filesystem;
 
 namespace EltenLauncher {
 namespace {
+
+#if defined(__GLIBC__)
+constexpr int kMallocMmapThreshold = 1024 * 1024;
+constexpr int kMallocArenaMax = 2;
+
+bool MallocTunedByEnvironment() {
+  const char *tunables = std::getenv("GLIBC_TUNABLES");
+  if (tunables != nullptr && std::strstr(tunables, "glibc.malloc.") != nullptr) return true;
+  for (const char *name : {"MALLOC_ARENA_MAX", "MALLOC_ARENA_TEST", "MALLOC_MMAP_THRESHOLD_",
+                           "MALLOC_MMAP_MAX_", "MALLOC_TRIM_THRESHOLD_", "MALLOC_TOP_PAD_"}) {
+    if (std::getenv(name) != nullptr) return true;
+  }
+  return false;
+}
+
+__attribute__((constructor(101))) void ConfigureMalloc() {
+  if (MallocTunedByEnvironment()) return;
+  mallopt(M_MMAP_THRESHOLD, kMallocMmapThreshold);
+  mallopt(M_ARENA_MAX, kMallocArenaMax);
+}
+#endif
 
 fs::path ExecutablePath() {
   // readlink() does not report truncation: when the target does not fit it just
