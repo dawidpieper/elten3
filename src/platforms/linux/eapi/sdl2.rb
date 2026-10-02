@@ -97,10 +97,7 @@ module SDL2
 
   class << self
     def cstring(text)
-      bytes = text.to_s.encode(Encoding::UTF_8, invalid: :replace, undef: :replace).b + "\0".b
-      pointer = Fiddle::Pointer.malloc(bytes.bytesize)
-      pointer[0, bytes.bytesize] = bytes
-      pointer
+      text.to_s.encode(Encoding::UTF_8, invalid: :replace, undef: :replace) << "\0"
     end
 
     def read_cstring(pointer)
