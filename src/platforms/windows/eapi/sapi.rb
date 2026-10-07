@@ -278,7 +278,7 @@ class Sapi < SpeechOutput
     end
 
     def native_voices
-      voice_tokens.map do |token|
+      @native_voices ||= voice_tokens.map do |token|
         Voice.new(
           token.Id.to_s,
           token.GetDescription.to_s,
