@@ -1722,11 +1722,13 @@ if users[sel.index]!=Session.name
               menu.option(s, nil, "i") {
           u = input_user(p_("Forum", "User to invite"))
           if u != nil
-              if forum_attempt(nil) {
-                EltenLink::Forum.invite_user(elten_link, group_id: group.id, user: u)
-              }
-                alert(p_("Forum", "The user has been invited"))
-              end
+            begin
+              EltenLink::Forum.invite_user(elten_link, group_id: group.id, user: u)
+              alert(p_("Forum", "The user has been invited"))
+            rescue EltenLink::Error => e
+              log_forum_error(e)
+              alert(e.code.to_s == "forum.member_exists" ? p_("Forum", "This user already belongs to this group") : _("Error"))
+            end
           end
 rfr.call
         }
