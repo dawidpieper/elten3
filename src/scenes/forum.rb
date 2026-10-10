@@ -2800,6 +2800,11 @@ if forum_attempt(nil) {
           }
             alert(p_("Forum", "Offer refused"))
             @sthreads[@thrsel.index].offered=0
+            if @forum==-12
+              @sthreads.delete_at(@thrsel.index)
+              @thrsel.rows.delete_at(@thrsel.index)
+              @thrsel.reload
+            end
           end
           @thrsel.focus
           }
