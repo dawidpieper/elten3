@@ -38,7 +38,7 @@ class Scene_Programs
       @sel.update
       break if $scene!=self
       next if @refresh
-      if key_pressed?(:key_escape) || @sel.collapsed?
+      if key_pressed?(:key_escape) || (@sel.collapsed? && @category!=nil)
         break if @category==nil
         @category==:authors && @author!=nil ? change_view(:authors) : change_view(nil)
       elsif @sel.selected? || @sel.expanded?
