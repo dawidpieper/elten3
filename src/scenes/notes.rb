@@ -90,38 +90,8 @@ sharest=shares+[]
 @form.bind_context{|menu|
 if note.author==Session.name
 menu.option(p_("Notes", "Share"), nil, "n") {
-        inpt=EditBox.new(p_("Notes", "Who do you want to share this note with?"))
-    inpt.focus
-    loop do
-      loop_update
-      inpt.update
-      if key_pressed?(:key_escape)
-        dialog_close
-        break
-        end
-      inpt.set_text(selectcontact) if key_pressed?(:key_up) or key_pressed?(:key_down)
-      if key_pressed?(:key_enter)
-        user=EltenLink.legacy_line_to_text(inpt.text).delete("\r\n")
-                user=finduser(user) if finduser(user).upcase==user.upcase
-                if user_exists(user) == false
-          alert(p_("Notes", "The user cannot be found"))
-        else
-          begin
-            EltenLink::Notes.add_share(elten_link, note, user)
-          rescue EltenLink::Error => e
-            Log.warning("Note share add failed: #{e.message}")
-            alert(_("Error"))
-          else
-            speak(p_("Notes", "You are now sharing this note with %{user}")%{:user=>user})
-            speech_wait
-            shares.push(user)
-            sharest=shares
-            @form.fields[2].options=sharest
-                        break
-            end
-          end
-        end
-    end
+  share(note, shares)
+  @form.fields[2].options = shares.dup
 }
 end
 }
@@ -189,6 +159,135 @@ else
   end
 end
         end
+  def share(note, shares)
+    users = EltenAPI::Tasks.run(title: p_("Notes", "Loading contacts")) do
+      EltenLink::Contacts.list(EltenLink::Client.new)
+    end
+    excluded = ([note.author] + shares).map { |user| user.to_s.downcase }
+    unconfirmed = []
+    users = users.uniq { |user| user.downcase }.reject { |user| excluded.include?(user.downcase) }
+    list = ListBox.new(users.dup, header: p_("Notes", "Who do you want to share this note with?"), flags: ListBox::Flags::MultiSelection)
+    add = Button.new(p_("Notes", "Add another user"))
+    send = Button.new(p_("Notes", "Share"))
+    cancel = Button.new(_("Cancel"))
+    form = Form.new([list, add, send, cancel])
+    form.accept_button = send
+    form.cancel_button = cancel
+    form.hide(send)
+    list.on(:multiselection_changed) { list.multiselections.empty? ? form.hide(send) : form.show(send) }
+    add.on(:press) do
+      name = input_text(p_("Notes", "User name"), flags: 0, escapable: true)
+      next if name == nil || name.strip.empty?
+      begin
+        user = EltenAPI::Tasks.run(title: p_("Notes", "Finding user")) do
+          EltenLink::Users.search(EltenLink::Client.new, name.strip).find { |candidate| candidate.casecmp?(name.strip) }
+        end
+        if user == nil
+          alert(p_("Notes", "The user cannot be found"))
+          next
+        end
+        if unconfirmed.include?(user.downcase)
+          alert(p_("Notes", "Reopen the note to check access before retrying."))
+          next
+        end
+        if excluded.include?(user.downcase)
+          alert(p_("Notes", "This user already has access to the note."))
+          next
+        end
+        selected = list.multiselections.map { |index| users[index] }
+        index = users.index { |candidate| candidate.casecmp?(user) }
+        if index == nil
+          users << user
+          list.options = users.dup
+          selected.each { |candidate| list.selected[users.index(candidate)] = true }
+          index = users.size - 1
+        end
+        list.selected[index] = true
+        list.index = index
+        form.show(send)
+        form.index = 0
+        list.focus
+      rescue EltenAPI::Tasks::Cancelled
+        # Keep the selection when lookup is cancelled.
+      rescue EltenLink::Error => error
+        alert(_("Error")) unless error.code.to_s == "cancelled"
+      end
+    end
+    send.on(:press) do
+      selected = list.multiselections.map { |index| users[index] }
+      next if selected.empty?
+      result = share_with_users(note, selected)
+      result[:shared].each { |user| shares << user unless shares.any? { |existing| existing.casecmp?(user) } }
+      # Do not offer an uncertain POST again in this dialog. The server may
+      # already have applied it even though its response did not arrive.
+      completed = result[:shared] + result[:unknown]
+      excluded.concat(result[:shared].map(&:downcase))
+      unconfirmed.concat(result[:unknown].map(&:downcase))
+      users.reject! { |user| completed.include?(user) }
+      remaining = selected - completed
+      list.options = users.dup
+      remaining.each { |user| list.selected[users.index(user)] = true }
+      messages = []
+      messages << p_("Notes", "Now sharing with %{users}.") % { users: result[:shared].join(", ") } unless result[:shared].empty?
+      messages << p_("Notes", "Could not share with %{users}.") % { users: result[:failed].join(", ") } unless result[:failed].empty?
+      messages << p_("Notes", "Sharing could not be confirmed for %{users}. Reopen the note to check access before retrying.") % { users: result[:unknown].join(", ") } unless result[:unknown].empty?
+      alert(messages.join("\n")) unless messages.empty?
+      if remaining.empty?
+        form.resume
+      else
+        form.index = 0
+        list.focus
+      end
+    end
+    cancel.on(:press) { form.resume }
+    form.wait
+  rescue EltenAPI::Tasks::Cancelled
+    nil
+  rescue EltenLink::Error => error
+    alert(_("Error")) unless error.code.to_s == "cancelled"
+  end
+
+  def share_with_users(note, users)
+    users = users.uniq { |user| user.downcase }.reject { |user| user.casecmp?(note.author) }
+    result = { shared: [], failed: [], unknown: [] }
+    pending = nil
+    begin
+      EltenAPI::Tasks.run(title: p_("Notes", "Sharing note")) do |progress, token|
+        client = EltenLink::Client.new
+        current = EltenLink::Notes.shares(client, note, cancellation_token: token).map(&:downcase)
+        users.each_with_index do |user, index|
+          token.raise_if_cancelled!
+          begin
+            unless current.include?(user.downcase)
+              pending = user
+              EltenLink::Notes.add_share(client, note, user, cancellation_token: token)
+            end
+            result[:shared] << user
+            pending = nil
+          rescue EltenLink::Error => error
+            Log.warning("Note share add failed: #{error.message}")
+            # A definitive client error can be retried explicitly. A lost or
+            # invalid response (or server error) is not proof that sharing failed.
+            if error.status.to_i.between?(400, 499) && error.status.to_i != 408
+              result[:failed] << user
+              pending = nil
+            else
+              break
+            end
+          end
+          progress.update(index + 1, total: users.size)
+        end
+      end
+    rescue EltenAPI::Tasks::Cancelled
+      # Completed shares remain valid; leave unattempted users selected.
+    rescue EltenLink::Error => error
+      Log.warning("Note share list failed: #{error.message}")
+      result[:failed] = users - result[:shared] unless error.code.to_s == "cancelled"
+    end
+    result[:unknown] << pending if pending != nil && !result[:shared].include?(pending)
+    result
+  end
+
 def delete(note)
   id=note.id
 if note.author==Session.name
