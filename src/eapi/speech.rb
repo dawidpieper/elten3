@@ -225,8 +225,9 @@ def speech_actived(ignoreaudio=false)
   
   # Waits for a speech to finish reading of the previous message
       def speech_wait
-        if !speech_output_nvda?
-    while speech_actived == true
+        if !speech_output_nvda? || speech_output.speaking_supported?
+          t=Time.now.to_f
+    while speech_actived == true && Time.now.to_f-t<30.0
 loop_update(false)
 end
 else

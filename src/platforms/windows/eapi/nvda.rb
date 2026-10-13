@@ -236,6 +236,7 @@ elsif j['msgtype']==4
               @stopped=false
               @index=nil
             @indid=nil
+            @speaking=true if speaking_supported?
                                           #sleep(0.01)
       write({'ac'=>'speak', 'text'=>text},nil,true)!=nil
     end
@@ -279,6 +280,7 @@ end
       @stopped=false
       @index=nil
             @indid=nil
+            @speaking=true if speaking_supported?
               #sleep(0.01)
       write({'ac'=>'speakindexed', 'texts'=>texts, 'indexes'=>indexes, 'indid'=>indid}, nil, true)
       end
@@ -307,6 +309,21 @@ end
             version=a['version'] if a!=nil
             return version
           end
+
+    def speaking_supported?
+      return true if @speaking_supported==true
+      v=getversion
+      @speaking_supported = (v!=nil && v.to_i>=45)
+    end
+
+    def speaking?
+      return false if @stopped==true
+      return false if !speaking_supported?
+      return false if @speaking==false
+      a=write({'ac'=>'speaking'})
+      return false if a==nil
+      a['speaking']==true
+    end
           def getnvdaversion
             a=write({'ac'=>'getnvdaversion'})
             version=nil
@@ -345,6 +362,7 @@ end
             return if @stopped==true
             @index=nil
             @indid=nil
+            @speaking=false
             @stopped=true
                                                             write({'ac'=>'stop'},nil,true)!=nil
                                     end
