@@ -96819,1849 +96819,2157 @@
     "name": "Żyrardów",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 752967,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Zielonka",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 753276,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Zamość",
     "subcountry": "Lublin Voivodeship",
     "geonameid": 753866,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-06"
   },
   {
     "name": "Zambrów",
     "subcountry": "Podlasie",
     "geonameid": 753895,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-20"
   },
   {
     "name": "Ząbki",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 754351,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Wyszków",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 754454,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Wołomin",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 754800,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Wieliczka",
     "subcountry": "Lesser Poland Voivodeship",
     "geonameid": 755889,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-12"
   },
   {
     "name": "Warsaw",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 756135,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Tomaszów Mazowiecki",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 756867,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Tomaszów Lubelski",
     "subcountry": "Lublin Voivodeship",
     "geonameid": 756868,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-06"
   },
   {
     "name": "Tarnów",
     "subcountry": "Lesser Poland Voivodeship",
     "geonameid": 757026,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-12"
   },
   {
     "name": "Tarnobrzeg",
     "subcountry": "Subcarpathian Voivodeship",
     "geonameid": 757033,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-18"
   },
   {
     "name": "Szczytno",
     "subcountry": "Warmian-Masurian Voivodeship",
     "geonameid": 757357,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-28"
   },
   {
     "name": "Świdnik",
     "subcountry": "Lublin Voivodeship",
     "geonameid": 757692,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-06"
   },
   {
     "name": "Suwałki",
     "subcountry": "Podlasie",
     "geonameid": 757718,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-20"
   },
   {
     "name": "Sulejówek",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 757809,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Staszów",
     "subcountry": "Świętokrzyskie",
     "geonameid": 758252,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-26"
   },
   {
     "name": "Starachowice",
     "subcountry": "Świętokrzyskie",
     "geonameid": 758390,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-26"
   },
   {
     "name": "Stalowa Wola",
     "subcountry": "Subcarpathian Voivodeship",
     "geonameid": 758445,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-18"
   },
   {
     "name": "Sokołów Podlaski",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 758626,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Sokółka",
     "subcountry": "Podlasie",
     "geonameid": 758651,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-20"
   },
   {
     "name": "Sochaczew",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 758682,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Skierniewice",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 759123,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Skarżysko-Kamienna",
     "subcountry": "Świętokrzyskie",
     "geonameid": 759141,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-26"
   },
   {
     "name": "Siemiatycze",
     "subcountry": "Podlasie",
     "geonameid": 759320,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-20"
   },
   {
     "name": "Siedlce",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 759412,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Sanok",
     "subcountry": "Subcarpathian Voivodeship",
     "geonameid": 759591,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-18"
   },
   {
     "name": "Sandomierz",
     "subcountry": "Świętokrzyskie",
     "geonameid": 759603,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-26"
   },
   {
     "name": "Rzeszów",
     "subcountry": "Subcarpathian Voivodeship",
     "geonameid": 759734,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-18"
   },
   {
     "name": "Ropczyce",
     "subcountry": "Subcarpathian Voivodeship",
     "geonameid": 760343,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-18"
   },
   {
     "name": "Rawa Mazowiecka",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 760584,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Radzyń Podlaski",
     "subcountry": "Lublin Voivodeship",
     "geonameid": 760680,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-06"
   },
   {
     "name": "Radom",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 760778,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Pułtusk",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 760917,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Puławy",
     "subcountry": "Lublin Voivodeship",
     "geonameid": 760924,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-06"
   },
   {
     "name": "Przeworsk",
     "subcountry": "Subcarpathian Voivodeship",
     "geonameid": 761131,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-18"
   },
   {
     "name": "Przemyśl",
     "subcountry": "Subcarpathian Voivodeship",
     "geonameid": 761168,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-18"
   },
   {
     "name": "Przasnysz",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 761218,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Pruszków",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 761228,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Płońsk",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 762021,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Pisz",
     "subcountry": "Warmian-Masurian Voivodeship",
     "geonameid": 762120,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-28"
   },
   {
     "name": "Pionki",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 762199,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Piastów",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 762381,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Piaseczno",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 762423,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Otwock",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 762788,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Ostrów Mazowiecka",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 762850,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Ostrowiec Świętokrzyski",
     "subcountry": "Świętokrzyskie",
     "geonameid": 762863,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-26"
   },
   {
     "name": "Opoczno",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 763111,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Olsztyn",
     "subcountry": "Warmian-Masurian Voivodeship",
     "geonameid": 763166,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-28"
   },
   {
     "name": "Olecko",
     "subcountry": "Warmian-Masurian Voivodeship",
     "geonameid": 763291,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-28"
   },
   {
     "name": "Nowy Targ",
     "subcountry": "Lesser Poland Voivodeship",
     "geonameid": 763523,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-12"
   },
   {
     "name": "Nowy Sącz",
     "subcountry": "Lesser Poland Voivodeship",
     "geonameid": 763534,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-12"
   },
   {
     "name": "Nowy Dwór Mazowiecki",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 763556,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Nisko",
     "subcountry": "Subcarpathian Voivodeship",
     "geonameid": 763829,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-18"
   },
   {
     "name": "Mrągowo",
     "subcountry": "Warmian-Masurian Voivodeship",
     "geonameid": 764312,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-28"
   },
   {
     "name": "Mława",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 764634,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Mińsk Mazowiecki",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 764679,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Milanówek",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 764749,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Mielec",
     "subcountry": "Subcarpathian Voivodeship",
     "geonameid": 764849,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-18"
   },
   {
     "name": "Międzyrzec Podlaski",
     "subcountry": "Lublin Voivodeship",
     "geonameid": 764862,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-06"
   },
   {
     "name": "Marki",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 765191,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Łuków",
     "subcountry": "Lublin Voivodeship",
     "geonameid": 765749,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-06"
   },
   {
     "name": "Lublin",
     "subcountry": "Lublin Voivodeship",
     "geonameid": 765876,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-06"
   },
   {
     "name": "Lubartów",
     "subcountry": "Lublin Voivodeship",
     "geonameid": 765927,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-06"
   },
   {
     "name": "Łomża",
     "subcountry": "Podlasie",
     "geonameid": 766027,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-20"
   },
   {
     "name": "Łomianki",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 766042,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Lidzbark Warmiński",
     "subcountry": "Warmian-Masurian Voivodeship",
     "geonameid": 766307,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-28"
   },
   {
     "name": "Legionowo",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 766555,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Łęczna",
     "subcountry": "Lublin Voivodeship",
     "geonameid": 766583,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-06"
   },
   {
     "name": "Łapy",
     "subcountry": "Podlasie",
     "geonameid": 766783,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-20"
   },
   {
     "name": "Łańcut",
     "subcountry": "Subcarpathian Voivodeship",
     "geonameid": 766810,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-18"
   },
   {
     "name": "Krosno",
     "subcountry": "Subcarpathian Voivodeship",
     "geonameid": 767470,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-18"
   },
   {
     "name": "Krasnystaw",
     "subcountry": "Lublin Voivodeship",
     "geonameid": 767605,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-06"
   },
   {
     "name": "Kraśnik",
     "subcountry": "Lublin Voivodeship",
     "geonameid": 767623,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-06"
   },
   {
     "name": "Kozienice",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 767814,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Konstancin-Jeziorna",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 768216,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Końskie",
     "subcountry": "Świętokrzyskie",
     "geonameid": 768218,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-26"
   },
   {
     "name": "Kobyłka",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 768905,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Kielce",
     "subcountry": "Świętokrzyskie",
     "geonameid": 769250,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-26"
   },
   {
     "name": "Kętrzyn",
     "subcountry": "Warmian-Masurian Voivodeship",
     "geonameid": 769274,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-28"
   },
   {
     "name": "Józefów",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 769981,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Jędrzejów",
     "subcountry": "Świętokrzyskie",
     "geonameid": 770157,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-26"
   },
   {
     "name": "Jasło",
     "subcountry": "Subcarpathian Voivodeship",
     "geonameid": 770293,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-18"
   },
   {
     "name": "Jarosław",
     "subcountry": "Subcarpathian Voivodeship",
     "geonameid": 770380,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-18"
   },
   {
     "name": "Hrubieszów",
     "subcountry": "Lublin Voivodeship",
     "geonameid": 770966,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-06"
   },
   {
     "name": "Hajnówka",
     "subcountry": "Podlasie",
     "geonameid": 771158,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-20"
   },
   {
     "name": "Grodzisk Mazowiecki",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 771401,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Grajewo",
     "subcountry": "Podlasie",
     "geonameid": 771506,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-20"
   },
   {
     "name": "Gorlice",
     "subcountry": "Lesser Poland Voivodeship",
     "geonameid": 771804,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-12"
   },
   {
     "name": "Giżycko",
     "subcountry": "Warmian-Masurian Voivodeship",
     "geonameid": 772195,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-28"
   },
   {
     "name": "Gierłoż",
     "subcountry": "Warmian-Masurian Voivodeship",
     "geonameid": 772227,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-28"
   },
   {
     "name": "Garwolin",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 772339,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Ełk",
     "subcountry": "Warmian-Masurian Voivodeship",
     "geonameid": 772621,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-28"
   },
   {
     "name": "Działdowo",
     "subcountry": "Warmian-Masurian Voivodeship",
     "geonameid": 772748,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-28"
   },
   {
     "name": "Dęblin",
     "subcountry": "Lublin Voivodeship",
     "geonameid": 773357,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-06"
   },
   {
     "name": "Dębica",
     "subcountry": "Subcarpathian Voivodeship",
     "geonameid": 773380,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-18"
   },
   {
     "name": "Ciechanów",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 774208,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Chełm",
     "subcountry": "Lublin Voivodeship",
     "geonameid": 774558,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-06"
   },
   {
     "name": "Busko-Zdrój",
     "subcountry": "Świętokrzyskie",
     "geonameid": 774747,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-26"
   },
   {
     "name": "Brzesko",
     "subcountry": "Lesser Poland Voivodeship",
     "geonameid": 775183,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-12"
   },
   {
     "name": "Bochnia",
     "subcountry": "Lesser Poland Voivodeship",
     "geonameid": 775758,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-12"
   },
   {
     "name": "Biłgoraj",
     "subcountry": "Lublin Voivodeship",
     "geonameid": 775922,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-06"
   },
   {
     "name": "Bielsk Podlaski",
     "subcountry": "Podlasie",
     "geonameid": 775986,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-20"
   },
   {
     "name": "Białystok",
     "subcountry": "Podlasie",
     "geonameid": 776069,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-20"
   },
   {
     "name": "Biała Podlaska",
     "subcountry": "Lublin Voivodeship",
     "geonameid": 776175,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-06"
   },
   {
     "name": "Bartoszyce",
     "subcountry": "Warmian-Masurian Voivodeship",
     "geonameid": 776337,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-28"
   },
   {
     "name": "Augustów",
     "subcountry": "Podlasie",
     "geonameid": 776597,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-20"
   },
   {
     "name": "Żywiec",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3079855,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Żory",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3080004,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Złotów",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3080071,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Złotoryja",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3080074,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Zielona Góra",
     "subcountry": "Lubusz",
     "geonameid": 3080165,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-08"
   },
   {
     "name": "Zgorzelec",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3080231,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Zgierz",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 3080251,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Zduńska Wola",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 3080414,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Zawiercie",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3080526,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Żary",
     "subcountry": "Lubusz",
     "geonameid": 3080644,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-08"
   },
   {
     "name": "Zakopane",
     "subcountry": "Lesser Poland Voivodeship",
     "geonameid": 3080866,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-12"
   },
   {
     "name": "Żagań",
     "subcountry": "Lubusz",
     "geonameid": 3080944,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-08"
   },
   {
     "name": "Zabrze",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3080985,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Ząbkowice Śląskie",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3081046,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Września",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3081324,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Wrocław",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3081368,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Wodzisław Śląski",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3081677,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Włocławek",
     "subcountry": "Kujawsko-Pomorskie",
     "geonameid": 3081741,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-04"
   },
   {
     "name": "Wieluń",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 3082197,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Wejherowo",
     "subcountry": "Pomeranian Voivodeship",
     "geonameid": 3082473,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-22"
   },
   {
     "name": "Wałcz",
     "subcountry": "West Pomeranian Voivodeship",
     "geonameid": 3082704,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-32"
   },
   {
     "name": "Wałbrzych",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3082707,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Wągrowiec",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3082712,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Wadowice",
     "subcountry": "Lesser Poland Voivodeship",
     "geonameid": 3082722,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-12"
   },
   {
     "name": "Ustroń",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3082751,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Ustka",
     "subcountry": "Pomeranian Voivodeship",
     "geonameid": 3082756,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-22"
   },
   {
     "name": "Tychy",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3082914,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Turek",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3082998,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Trzebinia",
     "subcountry": "Lesser Poland Voivodeship",
     "geonameid": 3083111,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-12"
   },
   {
     "name": "Trzcianka",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3083185,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Toruń",
     "subcountry": "Kujawsko-Pomorskie",
     "geonameid": 3083271,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-04"
   },
   {
     "name": "Tczew",
     "subcountry": "Pomeranian Voivodeship",
     "geonameid": 3083426,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-22"
   },
   {
     "name": "Tarnowskie Góry",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3083440,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Szczecinek",
     "subcountry": "West Pomeranian Voivodeship",
     "geonameid": 3083826,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-32"
   },
   {
     "name": "Szczecin",
     "subcountry": "West Pomeranian Voivodeship",
     "geonameid": 3083829,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-32"
   },
   {
     "name": "Szamotuły",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3083878,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Świnoujście",
     "subcountry": "West Pomeranian Voivodeship",
     "geonameid": 3083955,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-32"
   },
   {
     "name": "Świętochłowice",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3083988,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Świebodzin",
     "subcountry": "Lubusz",
     "geonameid": 3084062,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-08"
   },
   {
     "name": "Świecie",
     "subcountry": "Kujawsko-Pomorskie",
     "geonameid": 3084074,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-04"
   },
   {
     "name": "Świebodzice",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3084084,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Świdwin",
     "subcountry": "West Pomeranian Voivodeship",
     "geonameid": 3084085,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-32"
   },
   {
     "name": "Świdnica",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3084093,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Swarzędz",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3084130,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Sulechów",
     "subcountry": "Lubusz",
     "geonameid": 3084241,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-08"
   },
   {
     "name": "Strzelce Opolskie",
     "subcountry": "Opole Voivodeship",
     "geonameid": 3084415,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-16"
   },
   {
     "name": "Strzegom",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3084440,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Starogard Gdański",
     "subcountry": "Pomeranian Voivodeship",
     "geonameid": 3084826,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-22"
   },
   {
     "name": "Stargard Szczeciński",
     "subcountry": "West Pomeranian Voivodeship",
     "geonameid": 3084840,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-32"
   },
   {
     "name": "Środa Wielkopolska",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3085045,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Śrem",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3085056,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Sosnowiec",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3085128,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Sopot",
     "subcountry": "Pomeranian Voivodeship",
     "geonameid": 3085151,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-22"
   },
   {
     "name": "Solec Kujawski",
     "subcountry": "Kujawsko-Pomorskie",
     "geonameid": 3085172,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-04"
   },
   {
     "name": "Słupsk",
     "subcountry": "Pomeranian Voivodeship",
     "geonameid": 3085450,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-22"
   },
   {
     "name": "Słubice",
     "subcountry": "Lubusz",
     "geonameid": 3085495,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-08"
   },
   {
     "name": "Skawina",
     "subcountry": "Lesser Poland Voivodeship",
     "geonameid": 3085807,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-12"
   },
   {
     "name": "Sierpc",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 3085941,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Sieradz",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 3085978,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Siemianowice Śląskie",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3086024,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Rypin",
     "subcountry": "Kujawsko-Pomorskie",
     "geonameid": 3086511,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-04"
   },
   {
     "name": "Rydułtowy",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3086531,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Rybnik",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3086586,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Rumia",
     "subcountry": "Pomeranian Voivodeship",
     "geonameid": 3086706,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-22"
   },
   {
     "name": "Ruda Śląska",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3086800,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Reda",
     "subcountry": "Pomeranian Voivodeship",
     "geonameid": 3087281,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-22"
   },
   {
     "name": "Rawicz",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3087307,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Radzionków",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3087418,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Radomsko",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 3087497,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Radlin",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3087529,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Racibórz",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3087584,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Pyskowice",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3087628,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Pszczyna",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3087705,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Pruszcz Gdański",
     "subcountry": "Pomeranian Voivodeship",
     "geonameid": 3088034,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-22"
   },
   {
     "name": "Prudnik",
     "subcountry": "Opole Voivodeship",
     "geonameid": 3088065,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-16"
   },
   {
     "name": "Poznań",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3088171,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Polkowice",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3088435,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Police",
     "subcountry": "West Pomeranian Voivodeship",
     "geonameid": 3088461,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-32"
   },
   {
     "name": "Płock",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 3088825,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Pleszew",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3088848,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Piotrków Trybunalski",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 3088972,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Piła",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3089033,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Piekary Śląskie",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3089125,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Pabianice",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 3089578,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Ozorków",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 3089582,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Oświęcim",
     "subcountry": "Lesser Poland Voivodeship",
     "geonameid": 3089658,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-12"
   },
   {
     "name": "Ostrów Wielkopolski",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3089684,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Ostróda",
     "subcountry": "Warmian-Masurian Voivodeship",
     "geonameid": 3089779,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-28"
   },
   {
     "name": "Orzesze",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3089965,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Opole",
     "subcountry": "Opole Voivodeship",
     "geonameid": 3090048,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-16"
   },
   {
     "name": "Olkusz",
     "subcountry": "Lesser Poland Voivodeship",
     "geonameid": 3090146,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-12"
   },
   {
     "name": "Oleśnica",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3090170,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Oława",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3090205,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Oborniki",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3090403,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Nysa",
     "subcountry": "Opole Voivodeship",
     "geonameid": 3090436,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-16"
   },
   {
     "name": "Nowy Tomyśl",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3090452,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Nowogard",
     "subcountry": "West Pomeranian Voivodeship",
     "geonameid": 3090558,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-32"
   },
   {
     "name": "Nowa Sól",
     "subcountry": "Lubusz",
     "geonameid": 3090764,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-08"
   },
   {
     "name": "Nowa Ruda",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3090768,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Namysłów",
     "subcountry": "Opole Voivodeship",
     "geonameid": 3091141,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-16"
   },
   {
     "name": "Nakło nad Notecią",
     "subcountry": "Kujawsko-Pomorskie",
     "geonameid": 3091150,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-04"
   },
   {
     "name": "Myszków",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3091217,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Mysłowice",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3091232,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Myślenice",
     "subcountry": "Lesser Poland Voivodeship",
     "geonameid": 3091256,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-12"
   },
   {
     "name": "Mikołów",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3091831,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Międzyrzecz",
     "subcountry": "Lubusz",
     "geonameid": 3091969,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-08"
   },
   {
     "name": "Malbork",
     "subcountry": "Pomeranian Voivodeship",
     "geonameid": 3092472,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-22"
   },
   {
     "name": "Luboń",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3092856,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Lubliniec",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3092906,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Lubin",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3092931,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Lubań",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3093040,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Łowicz",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 3093066,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Łódź",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 3093133,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Libiąż",
     "subcountry": "Lesser Poland Voivodeship",
     "geonameid": 3093457,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-12"
   },
   {
     "name": "Leszno",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3093524,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Legnica",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3093692,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Lędziny",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3093708,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Łęczyca",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 3093726,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Lębork",
     "subcountry": "Pomeranian Voivodeship",
     "geonameid": 3093739,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-22"
   },
   {
     "name": "Łaziska Górne",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3093785,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Łask",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 3093902,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Kwidzyn",
     "subcountry": "Pomeranian Voivodeship",
     "geonameid": 3094086,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-22"
   },
   {
     "name": "Kutno",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 3094170,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Krotoszyn",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3094625,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Krapkowice",
     "subcountry": "Opole Voivodeship",
     "geonameid": 3094788,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-16"
   },
   {
     "name": "Kraków",
     "subcountry": "Lesser Poland Voivodeship",
     "geonameid": 3094802,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-12"
   },
   {
     "name": "Koszalin",
     "subcountry": "West Pomeranian Voivodeship",
     "geonameid": 3095049,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-32"
   },
   {
     "name": "Kostrzyn nad Odrą",
     "subcountry": "Lubusz",
     "geonameid": 3095057,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-08"
   },
   {
     "name": "Kościerzyna",
     "subcountry": "Pomeranian Voivodeship",
     "geonameid": 3095126,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-22"
   },
   {
     "name": "Kościan",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3095151,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Konstantynów Łódzki",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 3095277,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Konin",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3095321,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Kołobrzeg",
     "subcountry": "West Pomeranian Voivodeship",
     "geonameid": 3095795,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-32"
   },
   {
     "name": "Koło",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3095797,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Knurów",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3095971,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Kluczbork",
     "subcountry": "Opole Voivodeship",
     "geonameid": 3096003,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-16"
   },
   {
     "name": "Kłodzko",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3096053,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Kęty",
     "subcountry": "Lesser Poland Voivodeship",
     "geonameid": 3096328,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-12"
   },
   {
     "name": "Kędzierzyn-Koźle",
     "subcountry": "Opole Voivodeship",
     "geonameid": 3096372,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-16"
   },
   {
     "name": "Katowice",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3096472,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Kartuzy",
     "subcountry": "Pomeranian Voivodeship",
     "geonameid": 3096525,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-22"
   },
   {
     "name": "Kamienna Góra",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3096779,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Kalisz",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3096880,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Jelenia Góra",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3097257,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Jelcz",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3097271,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Jaworzno",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3097333,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Jawor",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3097367,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Jastrzębie Zdrój",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3097391,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Jarocin",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3097528,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Inowrocław",
     "subcountry": "Kujawsko-Pomorskie",
     "geonameid": 3097872,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-04"
   },
   {
     "name": "Iława",
     "subcountry": "Warmian-Masurian Voivodeship",
     "geonameid": 3097902,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-28"
   },
   {
     "name": "Gubin",
     "subcountry": "Lubusz",
     "geonameid": 3098130,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-08"
   },
   {
     "name": "Gryfino",
     "subcountry": "West Pomeranian Voivodeship",
     "geonameid": 3098200,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-32"
   },
   {
     "name": "Gryfice",
     "subcountry": "West Pomeranian Voivodeship",
     "geonameid": 3098201,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-32"
   },
   {
     "name": "Grudziądz",
     "subcountry": "Kujawsko-Pomorskie",
     "geonameid": 3098218,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-04"
   },
   {
     "name": "Gostynin",
     "subcountry": "Masovian Voivodeship",
     "geonameid": 3098619,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-14"
   },
   {
     "name": "Gostyń",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3098625,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Gorzów Wielkopolski",
     "subcountry": "Lubusz",
     "geonameid": 3098722,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-08"
   },
   {
     "name": "Goleniów",
     "subcountry": "West Pomeranian Voivodeship",
     "geonameid": 3098966,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-32"
   },
   {
     "name": "Gniezno",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3099112,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Głuchołazy",
     "subcountry": "Opole Voivodeship",
     "geonameid": 3099169,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-16"
   },
   {
     "name": "Głowno",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 3099180,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Głogów",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3099213,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Gliwice",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3099230,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Gdynia",
     "subcountry": "Pomeranian Voivodeship",
     "geonameid": 3099424,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-22"
   },
   {
     "name": "Gdańsk",
     "subcountry": "Pomeranian Voivodeship",
     "geonameid": 3099434,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-22"
   },
   {
     "name": "Fordon",
     "subcountry": "Kujawsko-Pomorskie",
     "geonameid": 3099654,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-04"
   },
   {
     "name": "Elbląg",
     "subcountry": "Warmian-Masurian Voivodeship",
     "geonameid": 3099759,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-28"
   },
   {
     "name": "Dzierżoniów",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3099828,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Dąbrowa Górnicza",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3100796,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Częstochowa",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3100946,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Czerwionka-Leszczyny",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3100974,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Czeladź",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3101057,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Czechowice-Dziedzice",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3101076,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Cieszyn",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3101321,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Chrzanów",
     "subcountry": "Lesser Poland Voivodeship",
     "geonameid": 3101547,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-12"
   },
   {
     "name": "Choszczno",
     "subcountry": "West Pomeranian Voivodeship",
     "geonameid": 3101613,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-32"
   },
   {
     "name": "Chorzów",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3101619,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Chojnice",
     "subcountry": "Pomeranian Voivodeship",
     "geonameid": 3101672,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-22"
   },
   {
     "name": "Chodzież",
     "subcountry": "Greater Poland Voivodeship",
     "geonameid": 3101680,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-30"
   },
   {
     "name": "Chełmża",
     "subcountry": "Kujawsko-Pomorskie",
     "geonameid": 3101787,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-04"
   },
   {
     "name": "Chełmno",
     "subcountry": "Kujawsko-Pomorskie",
     "geonameid": 3101795,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-04"
   },
   {
     "name": "Bytów",
     "subcountry": "Pomeranian Voivodeship",
     "geonameid": 3101943,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-22"
   },
   {
     "name": "Bytom",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3101950,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Bydgoszcz",
     "subcountry": "Kujawsko-Pomorskie",
     "geonameid": 3102014,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-04"
   },
   {
     "name": "Brzeg",
     "subcountry": "Opole Voivodeship",
     "geonameid": 3102459,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-16"
   },
   {
     "name": "Brodnica",
     "subcountry": "Kujawsko-Pomorskie",
     "geonameid": 3102627,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-04"
   },
   {
     "name": "Braniewo",
     "subcountry": "Warmian-Masurian Voivodeship",
     "geonameid": 3102677,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-28"
   },
   {
     "name": "Bolesławiec",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3102987,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Boguszów-Gorce",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3103034,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Bogatynia",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3103096,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Bieruń",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3103365,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Bielsko-Biala",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3103402,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Bielawa",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 3103476,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Białogard",
     "subcountry": "West Pomeranian Voivodeship",
     "geonameid": 3103556,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-32"
   },
   {
     "name": "Bełchatów",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 3103709,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Będzin",
     "subcountry": "Silesian Voivodeship",
     "geonameid": 3103719,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-24"
   },
   {
     "name": "Andrychów",
     "subcountry": "Lesser Poland Voivodeship",
     "geonameid": 3104115,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-12"
   },
   {
     "name": "Aleksandrów Łódzki",
     "subcountry": "Łódź Voivodeship",
     "geonameid": 3104132,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-10"
   },
   {
     "name": "Jelcz Laskowice",
     "subcountry": "Lower Silesian Voivodeship",
     "geonameid": 7303641,
-    "country": "Poland"
+    "country": "Poland",
+    "subcountry_code": "PL-02"
   },
   {
     "name": "Saint-Pierre",

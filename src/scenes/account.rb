@@ -206,6 +206,7 @@ location=currentconfig("location")
 location_a={}
 countries=[""]+Lists.locations.map {|c| location_a=c if c['geonameid']==location.to_i;c['country']}.uniq.polsort
 subcountries=[]
+subcountry_names=[]
 cities=[]
 ind=[-1, -1, -1]
 @form.fields[6].options=countries
@@ -216,8 +217,16 @@ if ind[0]==-1
 @form.fields[6].on(:move) {
             subcountries=[""]+Lists.locations.map {|c| (c['country']==countries[@form.fields[6].index])?(c['subcountry']):(nil)}.uniq
             subcountries.delete(nil)
-            subcountries.polsort!
-                        @form.fields[7].options = subcountries
+            subdivisions=(Lists.location_subdivisions||{})[Configuration.language.to_s]||{}
+            subcountry_pairs=subcountries.map {|subcountry|
+              location=Lists.locations.find {|c| c['country']==countries[@form.fields[6].index] and c['subcountry']==subcountry}
+              code=location ? location['subcountry_code'] : nil
+              [subcountry, subdivisions[code]||subcountry]
+            }
+            subcountry_pairs.sort! {|a,b| polsorter(a[1],b[1])}
+            subcountries=subcountry_pairs.map {|pair| pair[0]}
+            subcountry_names=subcountry_pairs.map {|pair| pair[1]}
+                        @form.fields[7].options = subcountry_names
             if ind[1]==-1
               ind[1]=subcountries.find_index(location_a['subcountry'])||0
               @form.fields[7].index=ind[1]
