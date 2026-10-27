@@ -803,6 +803,17 @@ params.delete('p2p_participants_limit') if p2p_participants_limit==nil
 safe {@@core.edit_channel(id, params) if @@core!=nil && id.is_a?(Integer)}
 delay(1)
 end
+def self.delete_channel(id)
+  if @@opened==false
+    self.open
+    delay(1)
+  end
+  result=safe(false) {
+    @@core!=nil && id.is_a?(Integer) && @@core.edit_channel(id, {'channel'=>id, 'permanent'=>false})!=nil
+  }
+  delay(1)
+  result==true
+end
 def self.update_channels
   if @@opened==false
   self.open

@@ -509,6 +509,20 @@ when 1
   locha.call(@chans)
         lst_channels.focus
   }
+    if ch.permanent && (ch.groupid==0 || ch.groupid==nil)
+      menu.option(p_("Conference", "Delete channel"), nil, :del) {
+        confirm(p_("Conference", "Are you sure you want to delete channel %{channel}?")%{:channel=>ch.name}) do
+          if Conference.delete_channel(ch.id)
+            play_sound("editbox_delete")
+          else
+            alert(_("Error"))
+          end
+          @chans=get_channelslist
+          locha.call(@chans)
+          lst_channels.focus
+        end
+      }
+    end
     end
   end
   if Conference.channel.id!=0
