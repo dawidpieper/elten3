@@ -210,8 +210,18 @@ module EltenLink
         data["threads"].to_a.map { |row| row["thread"].to_i }
       end
 
-      def popular_groups(client)
-        []
+      def popular_groups(client, threads:)
+        groups_by_thread = Array(threads).each_with_object({}) do |thread, groups|
+          thread_id = thread.respond_to?(:id) ? thread.id.to_i : 0
+          group_id = if thread.respond_to?(:forum) && thread.forum.respond_to?(:group)
+            thread.forum.group.respond_to?(:id) ? thread.forum.group.id.to_i : 0
+          else
+            0
+          end
+          groups[thread_id] = group_id if thread_id.positive? && group_id.positive?
+        end
+
+        popular_threads(client).filter_map { |thread_id| groups_by_thread[thread_id.to_i] }.uniq
       end
 
       def mark_forum_as_read(client, forumid:)

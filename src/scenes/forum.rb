@@ -722,7 +722,7 @@ end
       end
       grpselh = [nil, p_("Forum", "Administrator"), nil, p_("Forum", "Forums"), p_("Forum", "Threads"), p_("Forum", "posts"), p_("Forum", "Unread")]
     when 8 #Popular
-      grp = forum_fetch([], nil) { EltenLink::Forum.popular_groups(elten_link) }
+      grp = forum_fetch([], nil) { EltenLink::Forum.popular_groups(elten_link, threads: @threads) }
       @sgroups = []
         for l in grp
           g = nil
@@ -733,6 +733,10 @@ end
           @sgroups.push(g) if g.forums>0
           end
         end
+      if @sgroups.empty?
+        alert(p_("Forum", "No groups popular with your friends"))
+        return groupsmain(0)
+      end
       @grpheadindex = 0
       grpselt = []
       for group in @sgroups
