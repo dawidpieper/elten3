@@ -278,9 +278,10 @@ class Sapi < SpeechOutput
     end
 
     def native_voices
-      return [] if voice == nil
+      return @native_voices if @native_voices
+      return @native_voices = [] if voice == nil
       tokens = voice.GetVoices
-      (0...tokens.Count.to_i).map do |index|
+      @native_voices = (0...tokens.Count.to_i).map do |index|
         token = tokens.Item(index)
         begin
           Voice.new(
@@ -301,7 +302,7 @@ class Sapi < SpeechOutput
         end
       end.compact
     rescue Exception
-      []
+      @native_voices = []
     ensure
       tokens.ole_free if tokens != nil
     end

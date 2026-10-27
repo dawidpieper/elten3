@@ -65,6 +65,7 @@ src/eltenlink/blog.rb
 src/eltenlink/notes.rb
 src/eltenlink/calendars.rb
 src/eltenlink/tasks.rb
+src/eltenlink/forum_template.rb
 src/eltenlink/forum.rb
 src/scenes/faq.rb
 src/scenes/sponsors.rb
@@ -143,6 +144,7 @@ src/scenes/update.rb
 src/scenes/messages.rb
 src/scenes/online.rb
 src/eapi/mainmenu.rb
+src/scenes/forum_templates.rb
 src/scenes/forum.rb
 src/scenes/main.rb
 src/scenes/login.rb
@@ -170,6 +172,7 @@ src/eapi/common/media.rb
 src/eapi/common/input.rb
 src/eapi/common/threads.rb
 src/eapi/common/draft.rb
+src/eapi/common/server_data.rb
 src/eapi/common/premium.rb
 src/eapi/common/platform.rb
 src/eapi/common/activity.rb

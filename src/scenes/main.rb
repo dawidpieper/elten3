@@ -57,6 +57,7 @@ class Scene_Main
     $speech_lasttext = ""
     $ctrldisable = false
     key_update
+    return if show_beta_testing_group_notice
     ci = 0
     plsinfo = false
     ci += 1 if ci < 20
@@ -116,6 +117,20 @@ class Scene_Main
     @@feed_id = @feeds[@feedsel.index].id if @feeds.size>0
     LocalConfig['MainFeedId'] = @@feed_id
   end
+
+  def show_beta_testing_group_notice
+    return false unless Session.logged? && %w[beta rc].include?(Elten.branch.to_s.downcase)
+
+    group_id = EltenAPI::ServerData[:beta_testing_group_id]
+    return false unless group_id.is_a?(Integer) && group_id.positive?
+    return false if LocalConfig["BetaTestingGroupNoticeShown", type: :bool]
+
+    open_group = confirm(p_("Main", "Since 22 October 2026, beta testing for Elten has taken place in a single English-speaking group.\n\nWe know that English-speaking users have had very limited contact with the developer for a long time. We are also aware of the many bugs still present in Elten, as well as your many ideas and suggestions.\n\nPlease visit the new group and join the discussion. Help us shape Elten and report any bugs you find.\n\nWould you like to visit this group now?"))
+    LocalConfig["BetaTestingGroupNoticeShown"] = true
+    $scene = Scene_Forum.new(nil, group_id) if open_group
+    open_group
+  end
+
 def self.register_specialaction(id, name, &proc)
   unregister_specialaction(id)
   @@specials.push([id, name, proc])

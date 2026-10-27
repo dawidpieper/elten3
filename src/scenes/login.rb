@@ -183,6 +183,7 @@ end
       Session.gender=logintemp.gender.to_i
       Session.languages = logintemp.languages
       Session.greeting = logintemp.greeting
+      EltenAPI::ServerData.__send__(:receive, logintemp.server_data) if logintemp.server_data != nil
       update_premiumpackages(logintemp.premium_packages) if logintemp.premium_packages.is_a?(Array)
   end
 if logintemp != nil

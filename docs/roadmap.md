@@ -3,7 +3,7 @@
 [Back to the project README](../readme.md). See also [Elten 3 architecture](architecture.md), [Building Elten 3](building.md), [Elten applications](eltenapps.md) and [Contributing to Elten 3](contributing.md).
 
 > [!IMPORTANT]
-> This is deliberately not a feature wish list, release checklist or substitute for the project forums. Smaller product decisions, new features and individual ideas are discussed in the EltenLink beta-testing groups. Anyone trying to understand or influence the practical shape of a coming release should follow the [Polish beta-testing group](https://elten.link/forum/group/110) or the [English beta-testing group](https://elten.link/forum/group/111).
+> This is deliberately not a feature wish list, release checklist or substitute for the project forums. Smaller product decisions, new features and individual ideas are discussed in the [EltenLink beta-testing group](https://elten.link/forum/group/112). Follow that group to understand or influence the practical shape of a coming release.
 >
 > This document records only architectural directions and development constraints which are important across multiple changes. An item absent from this file is not rejected or unimportant. Unless a section states that a target is committed, its design, timing and even final implementation remain open to discussion.
 

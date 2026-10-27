@@ -30,6 +30,9 @@ module EltenAPI
       end
       text += card.status.text
       text += "\r\n"
+      if card.profile_hidden
+        text += p_("EAPI_Common", "This profile is only visible to the user's contacts.") + "\r\n"
+      end
       fullname = ""
       gender = -1
       birthdateyear = 0

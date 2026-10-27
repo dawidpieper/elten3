@@ -59,6 +59,6 @@ If testing could affect other users, production availability or data integrity, 
 
 Please allow a reasonable period for investigation and remediation before publishing technical details. Coordinate the timing and scope of disclosure through the email thread. Confirm that a report still applies to the latest code before public discussion.
 
-Ordinary defects without a security impact should be reported through the beta-testing groups described in the [contributing guide](contributing.md#planning-a-change).
+Ordinary defects without a security impact should be reported through the beta-testing group described in the [contributing guide](contributing.md#planning-a-change).
 
 Thank you for taking the time to report security issues responsibly and for helping to protect EltenLink, its users and the wider community.

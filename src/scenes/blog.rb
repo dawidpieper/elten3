@@ -209,7 +209,7 @@ def context(menu)
     }
   end
   if @sel.index>0
-  menu.option(p_("Blog", "Copy category URL")) {
+  menu.option(p_("Blog", "Copy category URL"), nil, "c") {
   Clipboard.text=@categories[@sel.index-1].url
   alert(p_("Blog", "Category URL copied to clipboard"))
   }
@@ -537,7 +537,7 @@ else
       end
     }
   end
-  menu.option(p_("Blog", "Copy post URL")) {
+  menu.option(p_("Blog", "Copy post URL"), nil, "c") {
   Clipboard.text=@post[@sel.index].url
   alert(p_("Blog", "Post URL copied to clipboard"))
   }
@@ -1271,7 +1271,7 @@ else
 alert(_("Error"))
 end
 }
-menu.option(p_("Blog", "Copy blog URL")) {
+menu.option(p_("Blog", "Copy blog URL"), nil, "c") {
 Clipboard.text=@blogs[@sel.index].url
 alert(p_("Blog", "Blog URL copied to clipboard"))
 }

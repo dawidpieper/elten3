@@ -27,6 +27,7 @@ module EltenLink
     :status,
     :main_honor,
     :ban,
+    :profile_hidden,
     keyword_init: true
   )
 
@@ -44,7 +45,8 @@ module EltenLink
 
         UserCard.new(
           name: data["name"].to_s,
-          profile: build_profile(data["profile"]),
+          profile: data["profile"].is_a?(Hash) ? build_profile(data["profile"]) : nil,
+          profile_hidden: Client.truthy?(data["profile_hidden"]),
           info: Users.build_info(data["info"]),
           visiting_card: Client.truthy?(visiting_card["exists"]) ? visiting_card["text"].to_s : nil,
           status: UserStatus.new(

@@ -237,6 +237,8 @@ def make_window
   langsmapping=langsmapping.find_all{|l|Lists.langs[l[0..1].downcase].is_a?(Hash)}
         langs=langsmapping.map{|l|Lists.langs[l[0..1].downcase]['name']+" ("+Lists.langs[l[0..1].downcase]['nativeName']+")"}  
       make_setting(p_("Settings", "Language"), langs, "Interface", "Language", langsmapping)
+      translation_langs=translation_languages
+      make_setting(p_("Settings", "Translation languages (all if none selected)"), translation_langs.values, "Interface", "TranslationLanguages", translation_langs.keys, true)
                             make_setting(p_("Settings", "Automatically minimize Elten Window to system tray"), :bool, "Interface", "HideWindow") if tray_supported?
                                         make_setting(p_("Settings", "Enable auto-login"), :bool, "Login", "EnableAutoLogin")
         make_setting(

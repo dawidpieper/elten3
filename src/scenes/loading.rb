@@ -151,9 +151,10 @@ else
   use_soundtheme("data/audio.elsnd", true)
   Log.info("Loading locales")
   loadlocaledata
-  load_configuration
+  load_configuration(interactive: false)
     Log.info("Initializing Bass")
 Bass.init($wnd)
+configure_activity_reporting
                           if Configuration.usefx==:auto
                                 Log.debug("Testing for Bass FX")
                             Configuration.usefx=Bass.test

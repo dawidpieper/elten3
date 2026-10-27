@@ -72,16 +72,11 @@ Elten 3 deliberately remains an in-process application. Its internal boundaries 
 
 ## Reporting bugs and following development
 
-GitHub Issues are disabled. Official issue tracking, discussion and milestone work take place in dedicated EltenLink forums:
+GitHub Issues are disabled. Official issue tracking, development discussion and milestone work take place in the [Elten beta-testing group](https://elten.link/forum/group/112). Follow the reporting instructions published in that group.
 
-- [Polish beta testing](https://elten.link/forum/group/110)
-- [English beta testing](https://elten.link/forum/group/111)
+When submitting a related code change, link its ELTEN thread using the [contribution guidelines](docs/contributing.md#linking-elten-issues).
 
-Both groups are active, but, frankly, the Polish group is substantially busier and has the more complete tagging, triage and milestone history, so it is the best reference for an overview of current development. The English group remains the correct place for reports and discussion in English.
-
-Details regarding bug-reporting are provided in the mentioned forums.
-
-Do not post suspected vulnerabilities to either group. Report them privately by following the [Security Policy](docs/security.md).
+Do not post suspected vulnerabilities in the public beta-testing forums. Report them privately by following the [Security Policy](docs/security.md).
 
 ## Official binaries and updates
 

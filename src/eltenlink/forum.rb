@@ -3,33 +3,36 @@
 
 require "digest"
 require "json"
+require "securerandom"
+require "uri"
 
 module EltenLink
   class ForumStructure
-    attr_reader :groups, :forums, :threads, :ident, :raw_cache, :loaded_at
+    attr_reader :groups, :forums, :threads, :ident, :raw_cache, :loaded_at, :url_templates
 
-    def initialize(groups:, forums:, threads:, ident:, raw_cache:, loaded_at: Time.now.to_f)
+    def initialize(groups:, forums:, threads:, ident:, raw_cache:, loaded_at: Time.now.to_f, url_templates: {})
       @groups = groups
       @forums = forums
       @threads = threads
       @ident = ident
       @raw_cache = raw_cache
       @loaded_at = loaded_at
+      @url_templates = url_templates
     end
 
     def to_h
-      { "groups" => @groups, "forums" => @forums, "threads" => @threads }
+      { "groups" => @groups, "forums" => @forums, "threads" => @threads, "url_templates" => @url_templates }
     end
   end
 
   ForumThreadPage = Struct.new(:time, :count, :read_posts, :followed, :posts, keyword_init: true)
   ForumTrashThread = Struct.new(
     :id, :name, :forum_fullname, :forum_id, :last_update, :trashed, :thread_trashed, :forum_trashed,
-    :contains_trashed_posts,
+    :contains_trashed_posts, :meta,
     keyword_init: true
   )
   ForumTrashPage = Struct.new(:posts, :trashed, :thread_trashed, :forum_trashed, keyword_init: true)
-  ForumUserPost = Struct.new(:post_id, :thread_id, :text, :transcription, :audio_url, :date, :format, keyword_init: true)
+  ForumUserPost = Struct.new(:post_id, :thread_id, :text, :transcription, :audio_url, :date, :format, :meta, keyword_init: true)
   ForumUserPostsPage = Struct.new(:posts, :more, :next_before, keyword_init: true)
   ForumThreadStats = Struct.new(:followers, :mentions, :authors, :readers, :readers_below_half, :readers_above_90, :readers_all, keyword_init: true)
   ForumSearchResult = Struct.new(:thread, :count, keyword_init: true)
@@ -60,7 +63,8 @@ module EltenLink
         cached_data = cached_structure_data(last_cache)
         if truthy?(data["unchanged"])
           data = if cached_data != nil
-            cached_data.merge("ident" => data["ident"].to_s.empty? ? last_ident.to_s : data["ident"].to_s)
+            cached_data.merge("ident" => data["ident"].to_s.empty? ? last_ident.to_s : data["ident"].to_s,
+              "url_templates" => data["url_templates"])
           else
             client.api_data("GET", "/api/v1/forum")
           end
@@ -77,7 +81,33 @@ module EltenLink
         raw_cache = JSON.generate(raw_cache_data)
         ident = data["ident"].to_s
         ident = Digest::SHA256.hexdigest(raw_cache)[0, 40] if ident.empty?
-        ForumStructure.new(groups: groups, forums: forums, threads: threads, ident: ident, raw_cache: raw_cache)
+        ForumStructure.new(groups: groups, forums: forums, threads: threads, ident: ident, raw_cache: raw_cache,
+          url_templates: raw_cache_data["url_templates"])
+      end
+
+      def url_from_template(template, id)
+        return nil unless template.is_a?(String) && id.is_a?(Integer) && id.positive?
+        valid = true
+        substituted = false
+        url = template.gsub(/\{\{|\}\}|\{id\}|[{}]/) do |token|
+          case token
+          when "{{"
+            "%7B"
+          when "}}"
+            "%7D"
+          when "{id}"
+            substituted = true
+            id.to_s
+          else
+            valid = false
+            ""
+          end
+        end
+        return nil unless valid && substituted
+        uri = URI.parse(url)
+        url if uri.is_a?(URI::HTTP) && !uri.host.to_s.empty?
+      rescue URI::InvalidURIError
+        nil
       end
 
       def thread(client, thread_id:)
@@ -103,7 +133,8 @@ module EltenLink
             trashed: truthy?(row["trashed"]),
             thread_trashed: truthy?(row["thread_trashed"]),
             forum_trashed: truthy?(row["forum_trashed"]),
-            contains_trashed_posts: truthy?(row["contains_trashed_posts"])
+            contains_trashed_posts: truthy?(row["contains_trashed_posts"]),
+            meta: row["meta"].to_s
           )
         end
       end
@@ -136,7 +167,8 @@ module EltenLink
             transcription: row["transcription"].to_s,
             audio_url: content_audio_url(row),
             date: forum_post_date(row["date"]),
-            format: row["format"].to_i
+            format: row["format"].to_i,
+            meta: row["meta"].to_s
           )
         end
         ForumUserPostsPage.new(
@@ -245,6 +277,11 @@ module EltenLink
         true
       end
 
+      def set_thread_meta(client, thread_id:, meta:)
+        client.api_data("PATCH", "/api/v1/forum/#{thread_id.to_i}", { "meta" => meta })
+        true
+      end
+
       def rename_thread(client, thread_id:, name:)
         client.api_data("PATCH", "/api/v1/forum/#{thread_id.to_i}", { "name" => name })
         true
@@ -307,48 +344,81 @@ module EltenLink
         true
       end
 
-      def create_thread(client, forumid:, name:, text:, follow: false, polls: nil, attachments: nil, format: 0)
+      def create_thread(client, forumid:, name:, text:, follow: false, polls: nil, attachments: nil, format: 0, questions: nil)
         data = client.api_data("POST", "/api/v1/forum", clean_hash(
           "forum" => forumid.to_i,
           "thread_name" => name,
           "text" => text,
           "follow" => truth_param(follow),
           "polls" => csv_value(polls),
+          "questions" => questions,
           "attachments" => csv_value(attachments),
           "format" => format
         ))
         data["thread"].to_i
       end
 
-      def create_audio_thread(client, forumid:, name:, audio:, follow: false)
+      def create_audio_thread(client, forumid:, name:, audio:, follow: false, questions: nil)
+        body, headers = audio_question_payload(audio, questions)
         data = client.api_binary_data(
           "POST",
           "/api/v1/forum",
-          audio.to_s.b,
-          { "Content-Type" => "application/octet-stream" },
+          body,
+          headers,
           clean_hash("forum" => forumid.to_i, "thread_name" => name, "audio" => 1, "follow" => truth_param(follow))
         )
         data["thread"].to_i
       end
 
-      def create_post(client, thread_id:, text:, attachments: nil, format: 0)
+      def create_post(client, thread_id:, text:, attachments: nil, format: 0, questions: nil)
         data = client.api_data("POST", "/api/v1/forum/#{thread_id.to_i}", clean_hash(
           "text" => text,
+          "questions" => questions,
           "attachments" => csv_value(attachments),
           "format" => format
         ))
         data["id"].to_i
       end
 
-      def create_audio_post(client, thread_id:, audio:)
+      def create_audio_post(client, thread_id:, audio:, questions: nil)
+        body, headers = audio_question_payload(audio, questions)
         data = client.api_binary_data(
           "POST",
           "/api/v1/forum/#{thread_id.to_i}",
-          audio.to_s.b,
-          { "Content-Type" => "application/octet-stream" },
-          { "audio" => 1 }
+          body,
+          headers,
+          clean_hash("audio" => 1)
         )
         data["id"].to_i
+      end
+
+      def post_questions(client, post_id:)
+        client.api_data("GET", "/api/v1/forum/post/#{post_id.to_i}/questions")
+      end
+
+      def create_post_question(client, post_id:, question:)
+        client.api_data("POST", "/api/v1/forum/post/#{post_id.to_i}/questions", question)
+      end
+
+      def edit_post_question(client, post_id:, question_id:, question:)
+        client.api_data("PATCH", "/api/v1/forum/post/#{post_id.to_i}/questions/#{question_id.to_i}", question)
+      end
+
+      def delete_post_question(client, post_id:, question_id:)
+        client.api_data("DELETE", "/api/v1/forum/post/#{post_id.to_i}/questions/#{question_id.to_i}")
+      end
+
+      def answer_post_question(client, post_id:, question_id:, answer_id:)
+        client.api_data("PUT", "/api/v1/forum/post/#{post_id.to_i}/questions/#{question_id.to_i}/answer", { "answer" => answer_id })
+      end
+
+      def withdraw_post_question_answer(client, post_id:, question_id:)
+        client.api_data("DELETE", "/api/v1/forum/post/#{post_id.to_i}/questions/#{question_id.to_i}/answer")
+      end
+
+      def set_post_meta(client, post_id:, meta:)
+        client.api_data("PATCH", "/api/v1/forum/post/#{post_id.to_i}", { "meta" => meta })
+        true
       end
 
       def edit_post(client, post_id:, text:, attachments: nil, format: 0)
@@ -476,6 +546,16 @@ module EltenLink
       def notice_mention(client, mention_id:)
         client.api_data("PATCH", "/api/v1/forum/mention/#{mention_id.to_i}/noticed", {})
         true
+      end
+
+      def list_forum_templates(client, forumid:)
+        data = client.api_data("GET", "/api/v1/forum/forum/#{forumid.to_i}/templates")
+        data["templates"]
+      end
+
+      def set_forum_templates(client, forumid:, templates:)
+        data = client.api_data("PUT", "/api/v1/forum/forum/#{forumid.to_i}/templates", { "templates" => templates })
+        data["templates"]
       end
 
       def list_forum_tags(client, forumid:)
@@ -640,6 +720,11 @@ module EltenLink
         true
       end
 
+      def set_forum_meta(client, forumid:, meta:)
+        client.api_data("PATCH", "/api/v1/forum/forum/#{forumid.to_i}", { "meta" => meta })
+        true
+      end
+
       def set_forum_closed(client, forumid:, closed:)
         client.api_data("PATCH", "/api/v1/forum/forum/#{forumid.to_i}", { "closed" => truth_param(closed) })
         true
@@ -673,7 +758,8 @@ module EltenLink
         {
           "groups" => data["groups"].to_a,
           "forums" => data["forums"].to_a,
-          "threads" => data["threads"].to_a
+          "threads" => data["threads"].to_a,
+          "url_templates" => data["url_templates"].is_a?(Hash) ? data["url_templates"].slice("group", "forum", "thread") : {}
         }
       end
 
@@ -689,7 +775,8 @@ module EltenLink
           "ident" => data["ident"].to_s,
           "groups" => groups,
           "forums" => forums,
-          "threads" => threads
+          "threads" => threads,
+          "url_templates" => data["url_templates"]
         }
       end
 
@@ -759,6 +846,8 @@ module EltenLink
           forum.type = row["type"].to_i
           forum.group = group_by_id[row["group_id"].to_i] || Struct_Forum_Group.new(0)
           forum.description = row["description"].to_s
+          forum.meta = row["meta"].to_s
+          forum.has_templates = truthy?(row["has_templates"])
           forum.closed = truthy?(row["closed"])
           forum.private = truthy?(row["private"])
           forum.followed = truthy?(row["followed"])
@@ -774,6 +863,7 @@ module EltenLink
         rows.to_a.map do |row|
           thread = Struct_Forum_Thread.new(row["id"].to_i)
           thread.name = row["name"].to_s
+          thread.meta = row["meta"].to_s
           thread.author = row["author"].to_s
           thread.forum = forum_by_id[row["forumid"].to_i]
           thread.pinned = truthy?(row["pinned"])
@@ -807,10 +897,12 @@ module EltenLink
         post.author = author.respond_to?(:maintext) ? author.maintext : author
         post.authorname = author.respond_to?(:lore) ? author.lore : ""
         post.post = content_text(row, "text")
+        post.meta = row["meta"].to_s
         post.signature = row["signature"].to_s
         post.audio_url = content_audio_url(row) if post.respond_to?(:audio_url=)
         post.date = forum_post_date(row["date"])
         post.polls = csv_list(row["polls"]).map(&:to_i)
+        post.questions_count = row["questions_count"].to_i
         post.attachments = csv_list(row["attachments"])
         post.liked = truthy?(row["liked"])
         post.edited = truthy?(row["edited"])
@@ -910,6 +1002,20 @@ module EltenLink
         return "" unless audio.is_a?(Hash) && audio["url"].to_s != ""
 
         Client.absolute_api_url(audio["url"])
+      end
+
+      def audio_question_payload(audio, questions)
+        audio = audio.to_s.b
+        return [audio, { "Content-Type" => "application/octet-stream" }] if questions == nil || questions.empty?
+        definition = JSON.generate(questions).b
+        begin
+          boundary = "Elten#{SecureRandom.hex(16)}"
+        end while audio.include?(boundary) || definition.include?(boundary)
+        body = "--#{boundary}\r\nContent-Disposition: form-data; name=\"questions\"\r\n\r\n".b
+        body << definition << "\r\n--#{boundary}\r\n".b
+        body << "Content-Disposition: form-data; name=\"file\"; filename=\"post.opus\"\r\nContent-Type: audio/ogg\r\n\r\n".b
+        body << audio << "\r\n--#{boundary}--\r\n".b
+        [body, { "Content-Type" => "multipart/form-data; boundary=#{boundary}" }]
       end
 
       def clean_hash(hash)

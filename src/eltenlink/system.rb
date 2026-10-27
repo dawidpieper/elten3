@@ -56,8 +56,26 @@ module EltenLink
     end
   end
 
+  class ServerDataSnapshot
+    attr_reader :revision, :values
+
+    def initialize(data)
+      unless data.is_a?(Hash) && data["revision"].is_a?(String) && data["revision"].match?(/\A[0-9a-f]{64}\z/) && data["values"].is_a?(Hash)
+        raise Error.new("Invalid server data", code: "system.invalid_client_data")
+      end
+
+      @revision = data["revision"].dup.freeze
+      @values = JSON.parse(JSON.generate(data["values"], max_nesting: false), max_nesting: false, freeze: true)
+      freeze
+    end
+  end
+
   module System
     class << self
+      def server_data(client)
+        ServerDataSnapshot.new(client.api_data("GET", "/api/v1/system/client-data"))
+      end
+
       def connected?(client)
         ["/api/v1/system/time", "/api/v1/system/build-id"].any? do |path|
           payload = client.api_payload("GET", path)

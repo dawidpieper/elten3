@@ -25,6 +25,66 @@ module EltenAPI
   end
 
   module HTTPClient
+    class Connection < HTTP2::Client
+      CANCELLED_STREAM_TTL = 15.0
+      MAX_CANCELLED_STREAMS = 128
+
+      class CancelledStream
+        def <<(_frame)
+        end
+      end
+
+      CANCELLED_STREAM = CancelledStream.new.freeze
+
+      def initialize(settings = {})
+        @cancelled_streams = {}
+        super
+        on(:frame_received) do |frame|
+          clear_cancelled_frame
+          prune_cancelled_streams
+          id = frame[:stream]
+          if @cancelled_streams.key?(id) && !@streams.key?(id) && frame[:type] != :push_promise
+            @cancelled_frame_id = id
+            @streams[id] = CANCELLED_STREAM
+          end
+        end
+      end
+
+      def receive(data)
+        super
+      ensure
+        clear_cancelled_frame
+      end
+
+      private
+
+      def activate_stream(id:, **args)
+        stream = super
+        stream.once(:close) do
+          if stream.closed == :local_rst
+            prune_cancelled_streams
+            @cancelled_streams.shift while @cancelled_streams.size >= MAX_CANCELLED_STREAMS
+            @cancelled_streams[id] = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          end
+        end
+        stream
+      end
+
+      def clear_cancelled_frame
+        @streams.delete(@cancelled_frame_id) if @cancelled_frame_id && @streams[@cancelled_frame_id].equal?(CANCELLED_STREAM)
+        @cancelled_frame_id = nil
+      end
+
+      def prune_cancelled_streams
+        cutoff = Process.clock_gettime(Process::CLOCK_MONOTONIC) - CANCELLED_STREAM_TTL
+        while (entry = @cancelled_streams.first) && entry[1] <= cutoff
+          @cancelled_streams.shift
+        end
+      end
+    end
+
+    private_constant :Connection
+
     HOST = "api.elten.link".freeze
     PORT = 443
     HTTP2_ALPN = "h2".freeze
@@ -221,7 +281,7 @@ module EltenAPI
         end
       end
 
-      def ejstream(path, params, data=nil, cancellation_token: nil, &block)
+      def ejstream(path, params, data=nil, cancellation_token: nil, transport_session_retry: true, &block)
         params = {} unless params.is_a?(Hash)
         Thread.new do
           Thread.current.report_on_exception = false
@@ -232,7 +292,21 @@ module EltenAPI
             raise "HTTP/2 disabled" if disable_http2?
             raise "HTTP/2 unavailable" unless ensure_http2_connection
             json, context = json_request_body(params, true)
-            raise "Encrypted transport session unavailable" unless context.is_a?(Hash) && context[:mode] == :session
+            unless context.is_a?(Hash) && context[:mode] == :session
+              raise "Encrypted transport session unavailable" unless transport_session_retry
+
+              ejrequest(
+                "GET", "/api/v1/system/time", {}, data,
+                encrypted: true, protocol: :http2, transport_session_retry: false,
+                cancellation_token: cancellation_token
+              ) do |_answer, _request_data|
+                ejstream(
+                  path, params, data, cancellation_token: cancellation_token,
+                  transport_session_retry: false, &block
+                )
+              end
+              next
+            end
 
             buffer = +"".b
             sequence = 0
@@ -449,7 +523,7 @@ module EltenAPI
           ssl.hostname = HOST if ssl.respond_to?(:hostname=)
           Timeout.timeout(CONNECT_TIMEOUT) { ssl.connect }
 
-          http = HTTP2::Client.new(settings_max_frame_size: 131072)
+          http = Connection.new(settings_max_frame_size: 131072)
           @connection_sequence = @connection_sequence.to_i + 1
           generation = @connection_sequence
           @connection_generation = generation

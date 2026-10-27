@@ -332,8 +332,10 @@ module EltenWindow
   POST_QUIT_MESSAGE = Fiddle::Function.new(USER32["PostQuitMessage"], [INT], Fiddle::TYPE_VOID, ABI)
   REGISTER_HOT_KEY = Fiddle::Function.new(USER32["RegisterHotKey"], [HANDLE, INT, INT, INT], INT, ABI)
   UNREGISTER_HOT_KEY = Fiddle::Function.new(USER32["UnregisterHotKey"], [HANDLE, INT], INT, ABI)
-  GET_FOREGROUND_WINDOW = Fiddle::Function.new(USER32["GetForegroundWindow"], [], HANDLE, ABI)
-  GET_PARENT = Fiddle::Function.new(USER32["GetParent"], [HANDLE], HANDLE, ABI)
+  # These short getters run in the UI loop. Keeping the GVL avoids costly
+  # release/reacquire stalls when a Ruby worker is CPU-bound.
+  GET_FOREGROUND_WINDOW = Fiddle::Function.new(USER32["GetForegroundWindow"], [], HANDLE, ABI, need_gvl: true)
+  GET_PARENT = Fiddle::Function.new(USER32["GetParent"], [HANDLE], HANDLE, ABI, need_gvl: true)
   IS_ICONIC = Fiddle::Function.new(USER32["IsIconic"], [HANDLE], INT, ABI)
   GET_WINDOW_LONG = Fiddle::Function.new(USER32["GetWindowLongW"], [HANDLE, INT], INT, ABI)
   SET_WINDOW_LONG = Fiddle::Function.new(USER32["SetWindowLongW"], [HANDLE, INT, INT], INT, ABI)

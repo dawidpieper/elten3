@@ -59,6 +59,101 @@ module ForumSceneClient
     [[2, p_("Forum", "Rejected")], [1, p_("Forum", "Accepted")]]
   end
 
+  def post_question_button(questions)
+    button = Button.new
+    label = proc { button.label = questions.empty? ? p_("Forum", "Attach a question") : p_("Forum", "Edit attached question") }
+    label.call
+    button.on(:press) do
+      question = edit_question_definition(questions.first)
+      questions.replace([question]) if question
+      label.call
+      button.focus
+    end
+    button.bind_context do |menu|
+      unless questions.empty?
+        menu.option(p_("Forum", "Remove attached question")) do
+          questions.clear if confirm(p_("Forum", "Are you sure you want to remove the attached question?"))
+          label.call
+        end
+      end
+    end
+    button
+  end
+
+  def edit_question_definition(definition = nil)
+    definition ||= { "text" => "", "answers" => [] }
+    title = EditBox.new(p_("Forum", "Question"), text: definition["text"])
+    title.max_length = 512
+    answers = definition["answers"].map { |answer| answer.slice("id", "text") }
+    list = ListBox.new(answers.map { |answer| answer["text"] }, header: p_("Forum", "Answers"))
+    save = Button.new(_("Save"))
+    cancel = Button.new(_("Cancel"))
+    form = Form.new([title, list, save, cancel])
+    snapshot = proc { { "text" => title.text, "answers" => answers } }
+    original = JSON.parse(JSON.generate(snapshot.call))
+    refresh = proc do |index = list.index|
+      list.options = answers.map { |answer| answer["text"] }
+      list.index = [[index, answers.size - 1].min, 0].max
+      form.focus
+    end
+    edit = proc do |index|
+      text = input_text(p_("Forum", "Answer"), text: answers[index]&.fetch("text").to_s,
+        escapable: true, max_length: 256)
+      if text != nil
+        text = text.strip
+        if text.empty?
+          alert(p_("Forum", "Enter an answer."))
+        else
+          answers[index] = (answers[index] || {}).merge("text" => text)
+        end
+      end
+      loop_update
+      refresh.call(index)
+    end
+    list.bind_context do |menu|
+      menu.option(p_("Forum", "Add an answer"), nil, "n") do
+        if answers.size >= 20
+          alert(p_("Forum", "A question can have at most 20 answers."))
+        else
+          edit.call(answers.size)
+        end
+      end
+      unless answers.empty?
+        menu.option(p_("Forum", "Edit answer"), nil, "e") { edit.call(list.index) }
+        menu.option(p_("Forum", "Remove answer"), nil, :del) do
+          if confirm(p_("Forum", "Are you sure you want to remove this answer?"))
+            answers.delete_at(list.index)
+          end
+          refresh.call
+        end
+      end
+    end
+    loop do
+      loop_update
+      form.update
+      if key_pressed?(:key_escape) || cancel.pressed?
+        return nil if snapshot.call == original || confirm(p_("Forum", "Discard changes to the question?"))
+        form.focus
+      elsif save.pressed? || (key_held?(0x11) && key_pressed?(:key_enter))
+        value = snapshot.call.merge("text" => title.text.strip)
+        texts = answers.map { |answer| answer["text"] }
+        if value["text"].empty? || answers.empty?
+          alert(p_("Forum", "Enter a question and at least one answer."))
+          form.focus
+        elsif texts.map(&:downcase).uniq.size != texts.size
+          alert(p_("Forum", "Answers must be different."))
+          form.focus
+        else
+          return value
+        end
+      elsif form.fields[form.index] == list && key_pressed?(:key_enter) && !answers.empty?
+        edit.call(list.index)
+      end
+    end
+  ensure
+    loop_update
+  end
+
   def log_forum_error(error)
 
     details = [
@@ -101,6 +196,7 @@ end
 
 class Scene_Forum
   include ForumSceneClient
+  include ForumTemplatesScene
 
   def select_group_ban_expiry
     duration = select_action(
@@ -134,6 +230,7 @@ class Scene_Forum
   @@lastCache=nil
   @@lastCacheIdent=nil
   @@lastCacheTime=nil
+  @@url_templates = {}
 
   def self.forum_target(id)
     { "type" => "forum", "id" => id.to_i }
@@ -177,6 +274,15 @@ class Scene_Forum
 
   def forum_id?(value)
     value.is_a?(Integer) && value.positive?
+  end
+
+  def copy_forum_url_option(menu, type, id)
+    url = EltenLink::Forum.url_from_template(@@url_templates[type], id)
+    return if url == nil
+    menu.option(p_("Forum", "Copy URL"), nil, "c") do
+      Clipboard.text = url
+      alert(p_("Forum", "URL copied to clipboard"))
+    end
   end
 
   def forum_new_status
@@ -389,8 +495,11 @@ end
       sgloc = false
       klangs=[]
       knownlanguages = Session.languages.split(",").map{|lg|lg.upcase}
+      testing_group_id = EltenAPI::ServerData[:beta_testing_group_id]
+      testing_group_id = nil unless testing_group_id.is_a?(Integer) && testing_group_id.positive?
+      testing_group_id = nil unless [Elten.branch, get_updatesbranch].any? { |branch| %w[beta rc].include?(branch.to_s.downcase) }
       for g in @groups
-        if g.role == 1 || g.role == 2
+        if g.role == 1 || g.role == 2 || g.id == testing_group_id
           @sgroups.push(g)
         end
         if !klangs.include?(g.lang[0..1].upcase) and knownlanguages.include?(g.lang[0..1].upcase) and g.recommended
@@ -421,7 +530,6 @@ end
       for i in 0...@sgroups.size
         group = @sgroups[i]
         grpselt.push([group.name, group.forums.to_s, group.threads.to_s, group.posts.to_s, (group.posts - group.readposts).to_s])
-        @grpindex[0] = i + @grpheadindex if group.id == @grpsetindex
       end
       forfol = @forums.find_all{|forum|forum.followed}.map{|forum|forum.id}
             flt = flr = flp = 0
@@ -632,7 +740,7 @@ end
       end
       grpselh = [nil, p_("Forum", "Administrator"), nil, p_("Forum", "Forums"), p_("Forum", "Threads"), p_("Forum", "posts"), p_("Forum", "Unread")]
     end
-    if @grpindex[type] == nil and @grpsetindex != nil
+    if @grpsetindex != nil
       for i in 0...@sgroups.size
         @grpindex[type] = i + @grpheadindex if @sgroups[i].id == @grpsetindex
       end
@@ -749,6 +857,7 @@ return result
     end
     if @grpsel.index >= @grpheadindex and @grpsel.index < @grpheadindex + @sgroups.size
       g = @sgroups[@grpsel.index - @grpheadindex]
+      copy_forum_url_option(menu, "group", g.id)
       menu.option(p_("Forum", "Show all threads"), nil, :shift_enter) {
       groupopen(@grpsel.index, type, true)
       }
@@ -1722,11 +1831,13 @@ if users[sel.index]!=Session.name
               menu.option(s, nil, "i") {
           u = input_user(p_("Forum", "User to invite"))
           if u != nil
-              if forum_attempt(nil) {
-                EltenLink::Forum.invite_user(elten_link, group_id: group.id, user: u)
-              }
-                alert(p_("Forum", "The user has been invited"))
-              end
+            begin
+              EltenLink::Forum.invite_user(elten_link, group_id: group.id, user: u)
+              alert(p_("Forum", "The user has been invited"))
+            rescue EltenLink::Error => e
+              log_forum_error(e)
+              alert(e.code.to_s == "forum.member_exists" ? p_("Forum", "This user already belongs to this group") : _("Error"))
+            end
           end
 rfr.call
         }
@@ -2085,6 +2196,7 @@ form.focus
         @frmindex = @frmsel.index
         threadsmain(@sforums[@frmsel.index].id)
       }
+      copy_forum_url_option(menu, "forum", @sforums[@frmsel.index].id)
             s = p_("Forum", "Follow this forum")
       s = p_("Forum", "Unfollow this forum") if @sforums.size > 0 and @sforums[@frmsel.index].followed == true
       menu.option(s, nil, "l") {
@@ -2141,13 +2253,15 @@ form.focus
     end
     groupclass = Struct_Forum_Group.new
     @groups.each { |g| groupclass = g if g.id == @group }
-    if groupclass.founder == Session.name or groupclass.role == 2
+    can_manage_forums = groupclass.founder == Session.name || groupclass.role == 2
+    can_edit_templates = @sforums.size > 0 && forum_group_moderator?(@sforums[@frmsel.index].group)
+    if can_manage_forums || can_edit_templates
       menu.submenu(p_("Forum", "Moderation")) {|m|
       m.option(p_("Forum", "New forum"), nil, "n") {
         newforum
         getcache
         forumsmain(@group)
-      }
+      } if can_manage_forums
       if @sforums.size > 0
         m.option(p_("Forum", "Edit forum"), nil, "e") {
           form = Form.new([EditBox.new(p_("Forum", "Forum name"), type: 0, text: @sforums[@frmsel.index].fullname, quiet: true), EditBox.new(p_("Forum", "Forum description"), type: EditBox::Flags::MultiLine, text: @sforums[@frmsel.index].description, quiet: true), ListBox.new([p_("Forum", "Text forum"), p_("Forum", "Voice forum"), p_("Forum", "Mixed forum")], header: p_("Forum", "Forum type"), index: @sforums[@frmsel.index].type), ListBox.new([p_("Forum", "Public (visible according to the group settings)"), p_("Forum", "Private (visible only to group members)")], header: p_("Forum", "Forum visibility"), index: @sforums[@frmsel.index].private ? 1 : 0), nil, Button.new(_("Cancel"))])
@@ -2181,7 +2295,7 @@ break
           end
           loop_update
           @frmsel.focus
-        }
+        } if can_manage_forums
         s = p_("Forum", "Close forum")
         s = p_("Forum", "Open forum") if @sforums[@frmsel.index].closed
         m.option(s, nil, "k") {
@@ -2200,11 +2314,17 @@ break
             end
             @frmsel.reload
           end
-        }
+        } if can_manage_forums
         m.option(p_("Forum", "Edit forum tags"), nil, "t") {
         forumtagsedit(@sforums[@frmsel.index])
         @frmsel.focus
-        }
+        } if can_manage_forums
+        if can_edit_templates
+          m.option(p_("Forum", "Thread templates")) {
+            edit_forum_templates(@sforums[@frmsel.index])
+            @frmsel.focus
+          }
+        end
 #        m.option(p_("Forum", "Change forum position")) {
 #          selt = []
 #          @sforums.each { |f| selt.push(f.fullname) }
@@ -2221,7 +2341,7 @@ break
 #            @frmsel.focus
 #          end
 #        }
-        if @sforums[@frmsel.index].posts == 0
+        if can_manage_forums && @sforums[@frmsel.index].posts == 0
           m.option(p_("Forum", "Delete forum")) {
             confirm(p_("Forum", "Are you sure you want to delete forum %{forum}?")%{ :forum => @sforums[@frmsel.index].fullname}) {
               if forum_attempt(nil) {
@@ -2492,6 +2612,7 @@ break
         elsif id == -2 or id == -4 or id == -6 or id == -7
           return $scene = Scene_Main.new
         else
+          @grpsetindex = @query.groupid if id == -3 && @query.is_a?(Struct_Forum_SearchQuery)
           return groupsmain
         end
       end
@@ -2556,6 +2677,7 @@ threadopen(@thrsel.index)
         threadopen(@thrsel.index)
       }
       thread = @sthreads[@thrsel.index]
+      copy_forum_url_option(menu, "thread", thread.id)
       if thread.readposts < thread.posts
         menu.option(p_("Forum", "Mark this thread as read"), nil, "w") {
           unread = thread.posts - thread.readposts
@@ -2800,6 +2922,11 @@ if forum_attempt(nil) {
           }
             alert(p_("Forum", "Offer refused"))
             @sthreads[@thrsel.index].offered=0
+            if @forum==-12
+              @sthreads.delete_at(@thrsel.index)
+              @thrsel.rows.delete_at(@thrsel.index)
+              @thrsel.reload
+            end
           end
           @thrsel.focus
           }
@@ -2974,10 +3101,24 @@ form.wait
     end
     draft_data = { "title" => "", "text" => "", "markdown" => false, "forum_id" => @forum }
     if type == 0
-      draft = Draft.new("editor:#{@forum}", config_key: "ForumDrafts", collection: "forum_drafts",
-        empty: proc { |data| data["text"].to_s == "" && data["title"].to_s == "" })
-      draft_data = draft.restore(draft_data, editor: true)
+      template = select_thread_template(forumclasses[forumindex])
+      return if template == false
+      template_id = template && template["id"]
+      draft_key = template_id ? "editor:#{@forum}:template:#{template_id}" : "editor:#{@forum}:manual"
+      draft = Draft.new(draft_key, config_key: "ForumDrafts", collection: "forum_drafts",
+        empty: proc { |data|
+          data["text"].to_s == "" && data["title"].to_s == "" && data.fetch("template_tags", []).empty? &&
+            data.fetch("template_answers", {}).values.all? { |value| value == nil || value == false || value == "" || value == [] }
+        })
+      draft_data = draft.restore(draft_data, editor: true, fallback_key: "editor:#{@forum}") { |stored|
+        (stored["template_id"] || stored.dig("template", "id")) == template_id
+      }
+      draft_data["template_id"] = template_id
       forumindex = forumclasses.index { |forum| forum.id == draft_data["forum_id"] } || forumindex
+      if template && draft_data["from_template"] != true
+        draft_data = fill_thread_template(draft_data["template"] || template, draft, draft_data)
+        return if draft_data == nil
+      end
     end
     fields = [EditBox.new(p_("Forum", "Thread name"), type: 0, text: draft_data["title"].to_s, quiet: true)]
     if type == 0
@@ -2988,9 +3129,12 @@ form.wait
       else
       fields[1..6] = [OpusRecordButton.new(p_("Forum", "Audio post"), EltenPath.join(Dirs.temp, "audiopost.opus"), max_bitrate: 96, bitrate: 48), nil, nil, nil, nil, nil]
     end
+    questions = []
+    fields << post_question_button(questions)
     fields += [CheckBox.new(p_("Forum", "Follow this thread")), ListBox.new(forums, header: p_("Forum", "Forum"), index: forumindex), nil, Button.new(_("Cancel"))]
     form = Form.new(fields, quiet: type == 0)
     selected_tags = { draft_data["forum_id"] => draft_data.fetch("tags", {}) }
+    pending_template_tags = draft_data["template_tags"]
     current_tag_forum_id = nil
     current_tags = []
     current_tag_fields = []
@@ -2999,12 +3143,12 @@ form.wait
       draft.bind(form, fields[1]) {
         { "title" => fields[0].text, "text" => fields[1].text, "markdown" => fields[2].checked,
           "forum_id" => forumclasses[form.fields[-3].index].id, "follow" => form.fields[-4].checked,
+          "template_id" => draft_data["template_id"], "from_template" => draft_data["from_template"] == true,
           "tags" => current_tags.each_with_index.to_h { |tag, index|
             field = current_tag_fields[index]
             [tag[0].to_s, field.index > 0 ? field.options[field.index] : nil]
           } }
       }
-      form.focus
     end
     form.fields[-3].on(:move) {
     if current_tag_forum_id!=nil
@@ -3019,6 +3163,12 @@ form.wait
     tin=true if form.index==form.fields.size-3
     forum=forumclasses[form.fields[-3].index]
     tags=forumtags(forum)
+    if pending_template_tags
+      selections = selected_tags[forum.id] ||= {}
+      remaining = assign_thread_template_tags!(pending_template_tags, tags, selections)
+      fields[0].set_text((remaining.map { |tag| "[#{tag}]" } + [fields[0].text]).reject(&:empty?).join(" "))
+      pending_template_tags = nil
+    end
     f=[]
     for t in tags
       options=[p_("Forum", "No tag value")]+t[2..-1]
@@ -3043,17 +3193,19 @@ form.wait
       form.show(6)
       form.show(5)
     end
-    fields[7...-4]=f
+    fields[8...-4]=f
     current_tag_forum_id=forum.id
     current_tags=tags
     current_tag_fields=f
     form.index=form.fields.size-3 if tin
     }
     form.fields[-3].trigger(:move)
+    form.focus if draft
     polls = []
     files = []
     send_confirmed = false
     confirm_missing_tag = lambda {
+      return true if draft_data["from_template"] == true
       missing_tag_field = current_tag_fields.find { |field| field.index == 0 }
       return true if missing_tag_field == nil
       if confirm(p_("Forum", "You haven't selected all tags. Do you want to send the thread anyway?"))
@@ -3189,9 +3341,9 @@ form.wait
     end
     next if ![1,2].include?(forumclasses[form.fields[-3].index].group.role) and !canjoin(forumclasses[form.fields[-3].index].group)
     name=""
-    for f in form.fields[7...-4]
+    for f in form.fields[8...-4]
       if f.index>0
-        name+="["+f.options[f.index]+"] "
+        name+="["+f.options[f.index]+"] " unless form.fields[0].text.include?("[#{f.options[f.index]}]")
         end
       end
       name+=form.fields[0].text
@@ -3208,7 +3360,7 @@ form.wait
         attachments = atts
       end
       ft = forum_attempt(nil, p_("Forum", "Error creating thread!")) {
-        EltenLink::Forum.create_thread(elten_link, forumid: forumclasses[form.fields[-3].index].id, name: name, text: text, format: format, follow: form.fields[-4].checked, polls: polls, attachments: attachments)
+        EltenLink::Forum.create_thread(elten_link, forumid: forumclasses[form.fields[-3].index].id, name: name, text: text, format: format, follow: form.fields[-4].checked, polls: polls, attachments: attachments, questions: questions)
       }
     else
       fl = form.fields[1].get_recording_file(true)
@@ -3218,7 +3370,7 @@ if flp[0..3] != "OggS"
         return $scene = Scene_Main.new
       end
       ft = forum_attempt(nil, p_("Forum", "Error creating thread!")) {
-        EltenLink::Forum.create_audio_thread(elten_link, forumid: forumclasses[form.fields[-3].index].id, name: name, audio: flp, follow: form.fields[-4].checked)
+        EltenLink::Forum.create_audio_thread(elten_link, forumid: forumclasses[form.fields[-3].index].id, name: name, audio: flp, follow: form.fields[-4].checked, questions: questions)
       }
       form.fields[1].delete_audio(true)
     end
@@ -3262,6 +3414,7 @@ if flp[0..3] != "OggS"
     @@groups = structure.groups
     @@forums = structure.forums
     @@threads = structure.threads
+    @@url_templates = structure.url_templates
     @@lastCache = structure.raw_cache
     @@lastCacheIdent = structure.ident
     @@lastCacheTime = structure.loaded_at
@@ -3277,13 +3430,13 @@ if flp[0..3] != "OggS"
 
   def getstruct
     getcache
-    return { "groups" => @groups, "forums" => @forums, "threads" => @threads }
+    return { "groups" => @groups, "forums" => @forums, "threads" => @threads, "url_templates" => @@url_templates }
   end
   
   def self.getstruct(require_fresh: false)
     loaded = self.getcache
     return nil if require_fresh && !loaded
-    return { "groups" => @@groups, "forums" => @@forums, "threads" => @@threads }
+    return { "groups" => @@groups, "forums" => @@forums, "threads" => @@threads, "url_templates" => @@url_templates }
   end
 
   def usequery
@@ -3339,6 +3492,8 @@ end
 
 class Scene_Forum_Thread
   include ForumSceneClient
+
+  POST_FIELDS = 4
 
   FORUM_SIGNATURE_MODE_KEY = "ForumSignatureMode"
   REPORT_SUGGESTION_RANGE_LIMIT = 4_096
@@ -3396,7 +3551,7 @@ return $scene=(@scene || Scene_Forum.new(@thread, @param, @cat, @query, @threadc
       @form.update
       if @closed_thread_reply_button != nil && @closed_thread_reply_button.pressed?
         @noteditable = false
-        @form.index = @postscount * 3 + ((@type == 2) ? 0 : 1)
+        @form.index = @postscount * POST_FIELDS + ((@type == 2) ? 0 : 1)
         refresh
         next
       end
@@ -3427,8 +3582,8 @@ return $scene=(@scene || Scene_Forum.new(@thread, @param, @cat, @query, @threadc
       end
       end
       end
-      if key_pressed?(:key_enter) and @form.index < @postscount * 3 and @form.index % 3 == 1
-        pl = @posts[@form.index / 3].polls[@form.fields[@form.index].index]
+      if key_pressed?(:key_enter) and @form.index < @postscount * POST_FIELDS and @form.index % POST_FIELDS == 1
+        pl = @posts[@form.index / POST_FIELDS].polls[@form.fields[@form.index].index]
         voted = false
         begin
           voted = EltenLink::Polls.voted?(elten_link, pl)
@@ -3448,8 +3603,8 @@ return $scene=(@scene || Scene_Forum.new(@thread, @param, @cat, @query, @threadc
         loop_update
         @form.focus
       end
-      if key_pressed?(:key_enter) and @form.index < @postscount * 3 and @form.index % 3 == 2
-        fl = @posts[@form.index / 3].attachments[@form.fields[@form.index].index]
+      if key_pressed?(:key_enter) and @form.index < @postscount * POST_FIELDS and @form.index % POST_FIELDS == 2
+        fl = @posts[@form.index / POST_FIELDS].attachments[@form.fields[@form.index].index]
         process_attachment(fl)
 @form.focus
         loop_update
@@ -3491,6 +3646,131 @@ return $scene=(@scene || Scene_Forum.new(@thread, @param, @cat, @query, @threadc
     end
   end
   
+  def question_display_button(post)
+    return nil unless post.questions_count > 0
+    label = post.questions_count == 1 ? p_("Forum", "Show attached question") : p_("Forum", "Show attached questions")
+    button = Button.new(label)
+    button.on(:press) { open_post_questions(post) }
+    button
+  end
+
+  def update_question_display(post)
+    index = @posts.index(post) * POST_FIELDS
+    @form.fields[index + 3] = question_display_button(post)
+    @form.index = index if @form.fields[@form.index] == nil
+    @form.focus
+  end
+
+  def open_post_questions(post)
+    show_post_questions(post)
+    update_question_display(post)
+  end
+
+  def show_post_questions(post)
+    data = forum_fetch(nil) { EltenLink::Forum.post_questions(elten_link, post_id: post.id) }
+    return if data == nil
+    focused_question = nil
+    selected_answers = {}
+    loop do
+      questions = data.fetch("questions")
+      post.questions_count = questions.size
+      fields = []
+      tables = []
+      withdrawals = []
+      questions.each do |question|
+        rows = question["answers"].map do |answer|
+          [answer["text"], answer["users"].join(", "), answer["id"] == question["selected_answer"] ? p_("Forum", "Your answer") : nil]
+        end
+        selected = selected_answers[question["id"]] || question["selected_answer"]
+        index = question["answers"].index { |answer| answer["id"] == selected } || 0
+        table = TableBox.new([p_("Forum", "Answer"), p_("Forum", "Respondents"), p_("Forum", "Status")],
+          rows, header: question["text"], index: index)
+        withdraw = question["selected_answer"] ? Button.new(p_("Forum", "Withdraw my answer")) : nil
+        fields.concat([table, withdraw])
+        tables << table
+        withdrawals << withdraw
+      end
+      close = Button.new(_("Close"))
+      fields << close
+      index = questions.index { |question| question["id"] == focused_question }
+      form = Form.new(fields, index: index ? index * 2 : 0)
+      refreshed = nil
+      form.bind_context do |menu|
+        question = form.index < questions.size * 2 ? questions[form.index / 2] : nil
+        menu.option(_("Refresh"), nil, "r") do
+          refreshed = forum_fetch(nil) { EltenLink::Forum.post_questions(elten_link, post_id: post.id) }
+        end
+        if data["can_add"]
+          menu.option(p_("Forum", "Attach a question")) do
+            definition = edit_question_definition
+            if definition
+              refreshed = forum_fetch(nil) { EltenLink::Forum.create_post_question(elten_link, post_id: post.id, question: definition) }
+            end
+          end
+        end
+        if question && question["can_edit"]
+          menu.option(p_("Forum", "Edit question")) do
+            definition = edit_question_definition(question)
+            if definition
+              refreshed = forum_fetch(nil) { EltenLink::Forum.edit_post_question(elten_link, post_id: post.id, question_id: question["id"], question: definition) }
+            end
+          end
+        end
+        if question && question["can_delete"]
+          menu.option(p_("Forum", "Delete question")) do
+            if confirm(p_("Forum", "Delete this question and all its answers?"))
+              refreshed = forum_fetch(nil) { EltenLink::Forum.delete_post_question(elten_link, post_id: post.id, question_id: question["id"]) }
+            end
+          end
+        end
+      end
+      loop do
+        loop_update
+        form.update
+        return if key_pressed?(:key_escape) || close.pressed?
+        question = form.index < questions.size * 2 ? questions[form.index / 2] : nil
+        if question
+          number = form.index / 2
+          answer = form.index.even? && key_pressed?(:key_enter) ? question["answers"][tables[number].index] : nil
+          if (withdrawals[number] && withdrawals[number].pressed?) || (answer && answer["id"] == question["selected_answer"])
+            if confirm(p_("Forum", "Are you sure you want to withdraw your answer?"))
+              refreshed = forum_fetch(nil) { EltenLink::Forum.withdraw_post_question_answer(elten_link, post_id: post.id, question_id: question["id"]) }
+            end
+            loop_update
+            form.focus unless refreshed
+          elsif answer && data["can_answer"]
+            refreshed = forum_fetch(nil) { EltenLink::Forum.answer_post_question(elten_link, post_id: post.id, question_id: question["id"], answer_id: answer["id"]) }
+          end
+        end
+        next unless refreshed
+        focused_question = question && question["id"]
+        questions.each_with_index do |item, i|
+          selected_answers[item["id"]] = item["answers"][tables[i].index]&.fetch("id")
+        end
+        data = refreshed
+        break
+      end
+    end
+  ensure
+    loop_update
+  end
+
+  def post_questions_context(menu, post)
+    if post.questions_count > 0
+      label = post.questions_count == 1 ? p_("Forum", "Show attached question") : p_("Forum", "Show attached questions")
+      menu.option(label) { open_post_questions(post) }
+    elsif Session.logged? && !post.locked && (post.author == Session.name || forum_group_moderator?(@threadclass.forum.group))
+      menu.option(p_("Forum", "Attach a question")) do
+        definition = edit_question_definition
+        if definition
+          data = forum_fetch(nil) { EltenLink::Forum.create_post_question(elten_link, post_id: post.id, question: definition) }
+          post.questions_count = data["questions"].size if data
+          update_question_display(post)
+        end
+      end
+    end
+  end
+
   def groupregulations
     forum_fetch("", nil) { EltenLink::Forum.group_regulations(elten_link, group_id: @threadclass.forum.group.id) }
     end
@@ -3536,11 +3816,11 @@ loop do
     signature_mode = effective_forum_signature_mode
     for i in 0...@posts.size
       post = @posts[i]
-      index = i * 3 if index == -1 and @param == -3 and @query.is_a?(Struct_Forum_SearchQuery) and post.post.downcase.include?(@query.phrase.downcase) && @query.phrase_in.include?(:content)
-      index = i * 3 if index == -1 and @param == -3 and @query.is_a?(Struct_Forum_SearchQuery) and post.transcription.downcase.include?(@query.phrase.downcase) && @query.phrase_in.include?(:content) && @query.transcriptions
-      index = i * 3 if index == -1 and @param == -3 and @query.is_a?(Struct_Forum_SearchQuery) and post.author.downcase==@query.phrase.downcase && @query.phrase_in.include?(:author)
-      index = i * 3 if @mention != nil and (@param == -7 or @param == -11) and post.id == @mention.post
-      index = i * 3 if index == -1 and @param == -13 and @query.is_a?(Numeric) and @query==post.id
+      index = i * POST_FIELDS if index == -1 and @param == -3 and @query.is_a?(Struct_Forum_SearchQuery) and post.post.downcase.include?(@query.phrase.downcase) && @query.phrase_in.include?(:content)
+      index = i * POST_FIELDS if index == -1 and @param == -3 and @query.is_a?(Struct_Forum_SearchQuery) and post.transcription.downcase.include?(@query.phrase.downcase) && @query.phrase_in.include?(:content) && @query.transcriptions
+      index = i * POST_FIELDS if index == -1 and @param == -3 and @query.is_a?(Struct_Forum_SearchQuery) and post.author.downcase==@query.phrase.downcase && @query.phrase_in.include?(:author)
+      index = i * POST_FIELDS if @mention != nil and (@param == -7 or @param == -11) and post.id == @mention.post
+      index = i * POST_FIELDS if index == -1 and @param == -13 and @query.is_a?(Numeric) and @query==post.id
       flags=EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly
       flags|=EditBox::Flags::MarkDown if post.format==1
       flags|=EditBox::Flags::Transcripted if post.transcription.strip!=""
@@ -3550,11 +3830,11 @@ loop do
       post_field = EditBox.new(label, type: flags, text: "", quiet: true)
       update_post_field(post_field, post, signature_mode)
       post_field.audio_url = post.audio_url if post.respond_to?(:audio_url) && post.audio_url.to_s != ""
-      @fields += [post_field, nil, nil]
+      @fields += [post_field, nil, nil, question_display_button(post)]
 if @sponsors.include?(post.author)
-  @fields[-3].add_sound("user_sponsor")
+  post_field.add_sound("user_sponsor")
 end
-      @fields[-1] = ListBox.new(name_attachments(post.attachments), header: p_("Forum", "Attachments")) if post.attachments.size > 0
+      @fields[-2] = ListBox.new(name_attachments(post.attachments), header: p_("Forum", "Attachments")) if post.attachments.size > 0
       if post.polls.size > 0
         names = []
         for o in post.polls
@@ -3564,11 +3844,11 @@ end
           rescue EltenLink::Error
           end
         end
-        @fields[-2] = ListBox.new(names, header: p_("Forum", "Polls")) if names.size == post.polls.size
+        @fields[-3] = ListBox.new(names, header: p_("Forum", "Polls")) if names.size == post.polls.size
       end
     end
 
-    index = @readposts * 3 if index == -1 && @query == :first_unread && @readposts < @postscount
+    index = @readposts * POST_FIELDS if index == -1 && @query == :first_unread && @readposts < @postscount
     index = 0 if index == -1
     index = @lastpostindex if @lastpostindex != nil
     index = 0 if index > @fields.size
@@ -3587,6 +3867,8 @@ end
   else
     @fields.push(nil)
     end
+    @reply_questions ||= []
+    question_button = post_question_button(@reply_questions)
     markdown = @textfields && @textfields[3] && @textfields[3].checked
     @textfields = [EditBox.new(p_("Forum", "Your reply"), type: EditBox::Flags::MultiLine, text: pretext, quiet: true), nil, nil, nil, nil, nil, Button.new(p_("Forum", "Attach a file"))]
       @textfields[3] = CheckBox.new(p_("Forum", "Use Markdown in this post"), checked: markdown)
@@ -3596,10 +3878,12 @@ end
         @textfields[0].set_text(data["text"]) if @textfields[0].text != data["text"]
         @textfields[3].checked = data["markdown"] == true && holds_premiumpackage("courier")
       end
+      @textfields[4] = question_button
       @textfields[3].on(:change) {
       @textfields[3].checked=false if !requires_premiumpackage("courier")
       }
         @audiofields = [OpusRecordButton.new(p_("Forum", "Audio post"), EltenPath.join(Dirs.temp, "audiopost.opus"), max_bitrate: 96, bitrate: 48, time_limit: @threadclass.forum.group.audiolimit), nil, nil, nil, nil, nil, nil]
+    @audiofields[4] = question_button
     if @noteditable == false
       case @posttype
       when 0
@@ -3713,14 +3997,14 @@ end
   end
 
   def textsendupdate
-    if @form.fields[@postscount * 3+1].text == "" and @form.fields[@postscount * 3 + 3] != nil
-      @form.fields[@postscount * 3 + 3] = nil
-    elsif @form.fields[@postscount * 3+1].text != "" and @form.fields[@postscount * 3 + 3] == nil
-      @form.fields[@postscount * 3 + 3] = Button.new(p_("Forum", "Send"))
+    if @form.fields[@postscount * POST_FIELDS + 1].text == "" and @form.fields[@postscount * POST_FIELDS + 3] != nil
+      @form.fields[@postscount * POST_FIELDS + 3] = nil
+    elsif @form.fields[@postscount * POST_FIELDS + 1].text != "" and @form.fields[@postscount * POST_FIELDS + 3] == nil
+      @form.fields[@postscount * POST_FIELDS + 3] = Button.new(p_("Forum", "Send"))
     end
-    if (@form.fields[@postscount*3+3]!=nil && @form.fields[@postscount * 3 + 3].pressed?) or (key_pressed?(:key_enter) and key_held?(0x11) and @form.index == @postscount * 3+1)
+    if (@form.fields[@postscount * POST_FIELDS + 3]!=nil && @form.fields[@postscount * POST_FIELDS + 3].pressed?) or (key_pressed?(:key_enter) and key_held?(0x11) and @form.index == @postscount * POST_FIELDS + 1)
       return if ![1,2].include?(@threadclass.forum.group.role) and !canjoin
-      text=@form.fields[@postscount * 3+1].text
+      text=@form.fields[@postscount * POST_FIELDS + 1].text
       attachments = nil
       if @attachments.size > 0
         atts = ""
@@ -3731,13 +4015,14 @@ end
         attachments = atts
       end
       format = 0
-      if @form.fields[@postscount * 3+4]!=nil
-        format = @form.fields[@postscount * 3+4].checked
+      if @form.fields[@postscount * POST_FIELDS + 4]!=nil
+        format = @form.fields[@postscount * POST_FIELDS + 4].checked
         end
       if forum_attempt(nil) {
-        EltenLink::Forum.create_post(elten_link, thread_id: @thread, text: text, attachments: attachments, format: format)
+        EltenLink::Forum.create_post(elten_link, thread_id: @thread, text: text, attachments: attachments, format: format, questions: @reply_questions)
       }
-        @form.fields[@postscount * 3+1].set_text("")
+        @form.fields[@postscount * POST_FIELDS + 1].set_text("")
+        @reply_questions.clear
         @reply_draft&.sent
         alert(p_("Forum", "The post was created."))
       end
@@ -3761,8 +4046,9 @@ end
         return $scene = Scene_Main.new
       end
       if forum_attempt(nil, p_("Forum", "Post creation failure.")) {
-        EltenLink::Forum.create_audio_post(elten_link, thread_id: @thread, audio: fl)
+        EltenLink::Forum.create_audio_post(elten_link, thread_id: @thread, audio: fl, questions: @reply_questions)
       }
+        @reply_questions.clear
               f.delete_audio(true)
         alert(p_("Forum", "The post was created."))
               return main
@@ -3771,8 +4057,9 @@ end
   end
 
   def context(menu)
-    if @form.index < @postscount * 3 && @posts[@form.index/3]!=nil
-      menu.useroption(@posts[@form.index / 3].authorname)
+    if @form.index < @postscount * POST_FIELDS && @posts[@form.index / POST_FIELDS]!=nil
+      menu.useroption(@posts[@form.index / POST_FIELDS].authorname)
+      post_questions_context(menu, @posts[@form.index / POST_FIELDS])
     end
     mention = @threadclass.mention || @mention
     if mention!=nil
@@ -3790,24 +4077,24 @@ end
       end
       }
       end
-    if @form.index < @postscount * 3 and !@noteditable
+    if @form.index < @postscount * POST_FIELDS and !@noteditable
       menu.submenu(p_("Forum", "Reply")) { |m|
         m.option(p_("Forum", "Reply"), nil, "n") {
-          @form.index = @postscount * 3+((@type==2)?0:1)
+          @form.index = @postscount * POST_FIELDS + ((@type==2)?0:1)
           @form.focus
         }
-        if (@type==0 || @type==2) and @form.fields[@postscount * 3+1].is_a?(EditBox) and @posts[@form.index / 3].audio_url.to_s==""
+        if (@type==0 || @type==2) and @form.fields[@postscount * POST_FIELDS + 1].is_a?(EditBox) and @posts[@form.index / POST_FIELDS].audio_url.to_s==""
         m.option(p_("Forum", "Reply with quote"), nil, "d") {
-          @form.fields[@postscount * 3+1].set_text("\r\n-- (#{@posts[@form.index / 3].authorname}):\r\n#{@posts[@form.index / 3].post}\r\n--\r\n#{@form.fields[@postscount * 3 + 1].text}")
-          @form.fields[@postscount * 3+1].index = 0
-          @form.index = @postscount * 3+1
+          @form.fields[@postscount * POST_FIELDS + 1].set_text("\r\n-- (#{@posts[@form.index / POST_FIELDS].authorname}):\r\n#{@posts[@form.index / POST_FIELDS].post}\r\n--\r\n#{@form.fields[@postscount * POST_FIELDS + 1].text}")
+          @form.fields[@postscount * POST_FIELDS + 1].index = 0
+          @form.index = @postscount * POST_FIELDS + 1
           @form.focus
         }
         end
       }
     end
-    if @form.index < @postscount * 3
-      post=@posts[@form.index/3]
+    if @form.index < @postscount * POST_FIELDS
+      post=@posts[@form.index / POST_FIELDS]
       if @threadclass != nil && @threadclass.forum.group.role!=3
       s=p_("Forum", "Like this post")
 s=p_("Forum", "Dislike this post") if post.liked==true
@@ -3827,7 +4114,7 @@ if forum_attempt(nil) {
     post.likes-=1
     alert(p_("forum", "This post is no longer liked"))
   end
-  update_post_field(@form.fields[@form.index/3*3], post)
+  update_post_field(@form.fields[@form.index / POST_FIELDS *  POST_FIELDS], post)
 end
 }
 end
@@ -3877,13 +4164,13 @@ if post.edited && !post.locked
         for i in 0..@posts.size - 1
           selt.push((i + 1).to_s + " / " + @postscount.to_s + ": " + @posts[i].author)
         end
-                @form.index = selector(selt, header: p_("Forum", "Select post"), start_index: @form.index / 3, cancel_index: @form.index / 3) * 3
+                @form.index = selector(selt, header: p_("Forum", "Select post"), start_index: @form.index / POST_FIELDS, cancel_index: @form.index / POST_FIELDS) * POST_FIELDS
         @form.focus
       }
       m.option(p_("Forum", "Go to post number"), nil, "J") {
-      pst = input_text(p_("Forum", "Type post number"), flags: EditBox::Flags::Numbers, text: (@form.index/3+1).to_s, escapable: true)
+      pst = input_text(p_("Forum", "Type post number"), flags: EditBox::Flags::Numbers, text: (@form.index / POST_FIELDS + 1).to_s, escapable: true)
       if pst!=nil and pst.to_i<=@posts.size and pst.to_i>0
-        @form.index=(pst.to_i-1)*3
+        @form.index=(pst.to_i-1) * POST_FIELDS
         @form.focus
         end
       }
@@ -3904,7 +4191,7 @@ if post.edited && !post.locked
             ind = 0 if ind == -1
             if selt.size > 0
                             ind = selector(selt, header: p_("Forum", "Select post"), start_index: ind, cancel_index: -1)
-              @form.index = sr[ind] * 3 if ind != -1
+              @form.index = sr[ind] * POST_FIELDS if ind != -1
               @form.focus
             else
               alert(p_("Forum", "The entered phrase cannot be found."))
@@ -3917,32 +4204,32 @@ if post.edited && !post.locked
         @form.focus
       }
       m.option(p_("Forum", "Go to last post"), nil, ".") {
-        @form.index = @postscount * 3 - 3
+        @form.index = (@postscount - 1) * POST_FIELDS
         @form.focus
       }
       if @readposts < @postscount && @readposts>=0
         m.option(p_("Forum", "Go to first new post"), nil, "u") {
-          @form.index = @readposts * 3
+          @form.index = @readposts * POST_FIELDS
           @form.focus
         }
       end
     }
-    if @form.index < @postscount * 3 && Session.logged?
+    if @form.index < @postscount * POST_FIELDS && Session.logged?
       menu.option(p_("Forum", "Mention post"), nil, "w") {
-      mention(@thread, @posts[@form.index / 3].id)
+      mention(@thread, @posts[@form.index / POST_FIELDS].id)
       }
     end
-    if @form.index < @posts.size * 3
+    if @form.index < @posts.size * POST_FIELDS
       if @type!=2
       menu.option(p_("Forum", "Listen to the thread")) {
         if speech_output_nvda? and @type == 0
           text = ""
-          for pst in @posts[@form.index / 3..@posts.size]
+          for pst in @posts[@form.index / POST_FIELDS..@posts.size]
             text += pst.author + "\r\n" + pst.post + "\r\n" + pst.date + "\r\n\r\n"
           end
           speak(text)
         else
-          cur = @form.index / 3 - 1
+          cur = @form.index / POST_FIELDS - 1
           while cur < @posts.size
             loop_update
             if speech_actived == false and !(speech_output.pause_supported? && speech_output.paused?)
@@ -4027,13 +4314,13 @@ if post.edited && !post.locked
         end
       end
     }
-    if @form.index < @postscount * 3 && (((Session.moderator == 1 && @threadclass.forum.group.recommended) || (@threadclass != nil && @threadclass.forum.group.role == 2)) || (@posts[@form.index / 3].author == Session.name && @threadclass.forum.group.role==1))
-      post=@posts[@form.index/3]
+    if @form.index < @postscount * POST_FIELDS && (((Session.moderator == 1 && @threadclass.forum.group.recommended) || (@threadclass != nil && @threadclass.forum.group.role == 2)) || (@posts[@form.index / POST_FIELDS].author == Session.name && @threadclass.forum.group.role==1))
+      post=@posts[@form.index / POST_FIELDS]
       menu.submenu(p_("Forum", "Moderation")) { |m|
         if post.audio_url.to_s==""
                     if !post.locked
           m.option(p_("Forum", "Edit post"), nil, "e") {
-            edit_post(@posts[@form.index/3])
+            edit_post(@posts[@form.index / POST_FIELDS])
           }
         end
         end
@@ -4069,7 +4356,7 @@ if post.edited && !post.locked
             destination = selector(selt, header: p_("Forum", "Post destination"), start_index: curr, cancel_index: -1)
             if destination != -1
               if forum_attempt(nil) {
-                EltenLink::Forum.move_post(elten_link, post_id: @posts[@form.index / 3].id, thread_id: mthreads[destination].id)
+                EltenLink::Forum.move_post(elten_link, post_id: @posts[@form.index / POST_FIELDS].id, thread_id: mthreads[destination].id)
               }
                 alert(p_("Forum", "The post has been moved."))
                 @lastpostindex = @form.index
@@ -4082,7 +4369,7 @@ if post.edited && !post.locked
           m.option(s) {
           locked = post.locked ? 0 : 1
           if forum_attempt(nil) {
-            EltenLink::Forum.set_post_locked(elten_link, post_id: @posts[@form.index / 3].id, locked: locked)
+            EltenLink::Forum.set_post_locked(elten_link, post_id: @posts[@form.index / POST_FIELDS].id, locked: locked)
           }
             post.locked=!post.locked
             if post.locked
@@ -4100,7 +4387,7 @@ if post.edited && !post.locked
                 if @posts.size == 1
                   EltenLink::Forum.delete_thread(elten_link, thread_id: @thread)
                 else
-                  EltenLink::Forum.delete_post(elten_link, post_id: @posts[@form.index / 3].id)
+                  EltenLink::Forum.delete_post(elten_link, post_id: @posts[@form.index / POST_FIELDS].id)
                 end
               }
                 alert(p_("Forum", "Are you sure you want to delete this post?"))
@@ -4126,7 +4413,7 @@ if post.edited && !post.locked
             dest = selector(sels, header: p_("Forum", "Place post above"), start_index: @form.index, cancel_index: -1)
             if dest != -1
               if forum_attempt(nil) {
-                EltenLink::Forum.reorder_post(elten_link, post_id: @posts[@form.index / 3].id, before_post_id: ((dest<@posts.size)?(@posts[dest].id):(0)))
+                EltenLink::Forum.reorder_post(elten_link, post_id: @posts[@form.index / POST_FIELDS].id, before_post_id: ((dest<@posts.size)?(@posts[dest].id):(0)))
               }
                 alert(p_("Forum", "The post has been repositioned."))
               end
@@ -4189,7 +4476,7 @@ if post.edited && !post.locked
 
   def moderation_mass_posts
     form = Form.new([
-    lst_posts = ListBox.new(@posts.each_with_index.map{|ps,index|(index+1).to_s+": "+ps.author+": "+(ps.transcription.strip!="" ? ps.transcription[0...5000] : ps.post[0...5000])}, header: p_("Forum", "Posts"), index: @form.index/3, flags: ListBox::Flags::MultiSelection),
+    lst_posts = ListBox.new(@posts.each_with_index.map{|ps,index|(index+1).to_s+": "+ps.author+": "+(ps.transcription.strip!="" ? ps.transcription[0...5000] : ps.post[0...5000])}, header: p_("Forum", "Posts"), index: @form.index / POST_FIELDS, flags: ListBox::Flags::MultiSelection),
     edt_post = EditBox.new(p_("Forum", "Post content"), type: EditBox::Flags::ReadOnly, text: ""),
     btn_move = Button.new(p_("Forum", "Move to another forum")),
     btn_reorder = Button.new(p_("Forum", "Move within this thread")),
@@ -4651,7 +4938,7 @@ form.wait
     refr=true
     }
     end
-    if @form.index/3<@posts.size
+    if @form.index / POST_FIELDS < @posts.size
     menu.option(p_("Forum", "New bookmark"), nil, "n") {
     newbookmark
     refr=true
@@ -4662,7 +4949,7 @@ form.wait
       loop_update
       sel.update
       if sel.selected?
-        @form.index=bookmarks[sel.index].postnum*3
+        @form.index=bookmarks[sel.index].postnum * POST_FIELDS
         @form.focus
         break
         end
@@ -4693,11 +4980,11 @@ form.wait
       end
       
       def newbookmark
-        return if @form.index/3>=@posts.size
+        return if @form.index / POST_FIELDS >= @posts.size
         description=input_text(p_("Forum", "Bookmark description"), flags: 0,text: "",escapable: true)
         return if description==nil or description==""
         if forum_attempt(nil) {
-          EltenLink::Forum.create_bookmark(elten_link, description: description, thread_id: @thread, post_id: @posts[@form.index/3].id)
+          EltenLink::Forum.create_bookmark(elten_link, description: description, thread_id: @thread, post_id: @posts[@form.index / POST_FIELDS].id)
         }
           alert(p_("Forum", "Bookmark created"))
         end
@@ -5385,7 +5672,9 @@ attr_accessor :applyglobalbans
 end
 
 class Struct_Forum_Forum
+  attr_accessor :has_templates
   attr_accessor :id
+  attr_accessor :meta
   attr_accessor :group
   attr_accessor :fullname
   attr_accessor :threads
@@ -5399,6 +5688,8 @@ class Struct_Forum_Forum
 
   def initialize(id = 0)
     @id = id.to_i
+    @meta = ""
+    @has_templates = false
     @group = Struct_Forum_Group.new(0)
     @fullname = ""
     @posts = 0
@@ -5415,6 +5706,7 @@ end
 
 class Struct_Forum_Thread
   attr_accessor :id
+  attr_accessor :meta
   attr_accessor :name
   attr_accessor :posts
   attr_accessor :readposts
@@ -5430,6 +5722,7 @@ attr_accessor :offered
 
   def initialize(id = 0, name = "")
     @id = id
+    @meta = ""
     @name = name
     @posts = 0
     @readposts = 0
@@ -5446,6 +5739,7 @@ end
 
 class Struct_Forum_Post
   attr_accessor :id
+  attr_accessor :meta
   attr_accessor :author
   attr_accessor :post
   attr_accessor :authorname
@@ -5453,6 +5747,7 @@ class Struct_Forum_Post
   attr_accessor :date
   attr_accessor :attachments
   attr_accessor :polls
+  attr_accessor :questions_count
   attr_accessor :liked
 attr_accessor :edited
 attr_accessor :locked
@@ -5466,6 +5761,7 @@ attr_accessor :trashed
 
   def initialize(id = 0)
     @id = id
+    @meta = ""
     @author = ""
     @post = ""
     @authorname = ""
@@ -5473,6 +5769,7 @@ attr_accessor :trashed
     @date = ""
     @attachments = []
     @polls = []
+    @questions_count = 0
     @liked=false
     @edited=false
     @locked=false

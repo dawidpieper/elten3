@@ -31,16 +31,13 @@ Treat existing code as evidence of how Elten reached its present state, not as a
 
 ## Planning a change
 
-GitHub Issues are intentionally disabled. Development discussion, bug triage and milestone work take place in the dedicated EltenLink beta-testing groups:
-
-- [Polish beta testing](https://elten.link/forum/group/110)
-- [English beta testing](https://elten.link/forum/group/111)
+GitHub Issues are intentionally disabled. Development discussion, bug triage and milestone work take place in the [Elten beta-testing group](https://elten.link/forum/group/112).
 
 Contributions are welcome, and the great majority of proposed changes are accepted. Small fixes and contained improvements can normally proceed directly to a pull request.
 
-Before investing substantial work, however, presenting the idea in the appropriate beta-testing group is strongly recommended. Early discussion can reveal an existing implementation constraint, refine the expected behaviour, or show that the feature would fit better as an application hosted by Elten than as part of the core client. It can also establish that a proposal is unlikely to be accepted into the core before considerable implementation time is spent.
+Before investing substantial work, however, presenting the idea in the beta-testing group is strongly recommended. Early discussion can reveal an existing implementation constraint, refine the expected behaviour, or show that the feature would fit better as an application hosted by Elten than as part of the core client. It can also establish that a proposal is unlikely to be accepted into the core before considerable implementation time is spent.
 
-This recommendation is not an approval gate. A pull request will not be rejected merely because it was not discussed on the forum first. The purpose is to reduce the risk of avoidable or misdirected work when a change is broad, introduces a public interface, affects application packages or requires a significant redesign. The Polish group currently has the more complete tagging, triage and milestone history; the English group remains the correct place for discussion in English.
+This recommendation is not an approval gate. A pull request will not be rejected merely because it was not discussed on the forum first. The purpose is to reduce the risk of avoidable or misdirected work when a change is broad, introduces a public interface, affects application packages or requires a significant redesign.
 
 ## Making changes
 
@@ -138,9 +135,33 @@ Do not post a suspected vulnerability to a public forum. Follow the private repo
 
 ### Ordinary defects
 
-Report an ordinary defect in the appropriate beta-testing forum listed under [Planning a change](#planning-a-change). Follow the current reporting form and instructions published there.
+Report an ordinary defect in the beta-testing group linked under [Planning a change](#planning-a-change). Follow the current reporting form and instructions published there.
 
 Do not include tokens, credentials or private message content in a public report. If the defect may have a security impact, stop and use the [private security process](security.md) instead.
+
+## Linking ELTEN issues
+
+Link an existing forum issue when a change addresses or relates to it. Put declarations on separate lines in the pull request description:
+
+`Elten-Fixes: <thread ID or full thread URL>` identifies an issue this change is intended to resolve.
+
+`Elten-Refs: <thread ID or full thread URL>` identifies a related issue without claiming to resolve it.
+
+Separate multiple targets with commas; a PR may contain both declarations. If both refer to the same issue, Fixes takes precedence. These are ELTEN forum thread IDs, not GitHub pull request numbers. Explicit declarations also work in commit messages.
+
+Full links such as `https://elten.link/forum/thread/<ID>` are accepted, including language-prefixed forms such as `/pl/forum/thread/<ID>` or `/de/forum/thread/<ID>`. A plain thread link in the PR description is treated as a reference. Add an explicit Fixes declaration when the PR contains a solution.
+
+An existing contributor can also add declarations in a PR conversation comment.
+
+The integration combines the PR description and eligible comments. To withdraw an association, edit or remove its declaration at the source; another declaration elsewhere can keep it active. Hidden HTML comments, including template instructions, and the integration's own comments are ignored.
+
+References do not move issues or schedule them for release. Fixes declared in an unmerged PR also leave the issue in place. Once merged into a tracked branch, an active fix is scheduled for the next release; when included in a release, the issue moves to testing and receives a confirmation question. Targets must belong to an issue forum in the beta-testing group.
+
+An existing forum thread is not required for every contribution. If none applies, put `Elten-Refs: none` on its own line in the PR description. This acknowledges that no issue link is needed and suppresses the bot's reminder. It does not cancel other references or fixes declared in the description or eligible comments.
+
+For a PR without an explicit reference, fix or `Elten-Refs: none`, the bot may post one non-blocking reminder. Drafts are checked when marked ready for review. Empty declarations and hidden template examples do not count. The bot removes its reminder after a declaration is added and does not post it again if it is deleted or the PR is reopened. A PR containing only a plain thread link receives a hint explaining the difference between a reference and a fix.
+
+Discuss implementation and review the code on GitHub. Report testing results in the relevant ELTEN thread and use its attached release question to confirm whether the issue is resolved for you.
 
 ## Submitting a pull request
 

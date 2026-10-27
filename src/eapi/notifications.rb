@@ -16,7 +16,7 @@ module EltenAPI
       VIRTUAL_UPDATE_RETRY_INTERVAL = 60.0
       INITIAL_RUNTIME_STATE_TIMEOUT = 5.0
       STREAM_CONTROL_INTERVAL = 6.0
-      STREAM_CONTROL_TIMEOUT = 2.5
+      STREAM_CONTROL_TIMEOUT = 10.0
       STREAM_RETRY_INTERVAL = 60.0
       STREAM_OPEN_TIMEOUT = 20.0
       STREAM_FAST_RECONNECT_TIMEOUT = 5.0
@@ -247,6 +247,10 @@ module EltenAPI
         @stream_generation = 0
         @stream_supported = nil
         @stream_capability_request_id = 0
+        @server_data_request_id = 0
+        @server_data_revision = nil
+        @server_data_request = nil
+        @server_data_retry_at = 0.0
         @stream_connected = false
         @stream_opening = false
         @stream_retry_at = 0.0
@@ -286,6 +290,7 @@ module EltenAPI
               drain_stream_responses
               drain_stream_controls
               drain_background_responses
+              refresh_server_data(key, now)
               clear_stale_requests(now)
               @feed_request_pending = false if @feed_request_pending == true && now - (@feed_request_started_at || 0) > 30
               @virtual_update_request_pending = false if @virtual_update_request_pending == true && now - (@virtual_update_request_started_at || 0) > REQUEST_STALE_AFTER
@@ -339,6 +344,10 @@ module EltenAPI
         @sigids = []
         @stream_supported = nil
         @stream_capability_request_id = 0
+        @server_data_request_id = 0
+        @server_data_revision = nil
+        @server_data_request = nil
+        @server_data_retry_at = 0.0
         @stream_connected = false
         @stream_opening = false
         @stream_retry_at = 0.0
@@ -510,7 +519,16 @@ module EltenAPI
           return
         end
         if @stream_control_pending && now - @stream_control_started_at.to_f > STREAM_CONTROL_TIMEOUT
-          stream_failed(now, reason: "control timeout")
+          reason = "control timeout (waiting %.1fs, last frame %.1fs ago)" % [
+            now - @stream_control_started_at, now - @stream_last_frame_at.to_f
+          ]
+          if @stream_connected && !@stream_control_retried && @stream_last_frame_at.to_f > @stream_control_started_at
+            stop_stream_control
+            Log.warning("Realtime stream #{reason}; retrying control")
+            send_stream_control(key, window_active?, retrying: true)
+          else
+            stream_failed(now, reason: reason)
+          end
           return
         end
         if !@stream_connected && !@stream_opening
@@ -528,7 +546,7 @@ module EltenAPI
         return if @stream_control_pending
         return unless urgent || now >= @next_stream_control_at.to_f
 
-        send_stream_control(key, shown, now)
+        send_stream_control(key, shown)
       end
 
       def start_stream(key)
@@ -577,6 +595,7 @@ module EltenAPI
       end
 
       def stop_stream_request
+        stop_stream_control
         @stream_request_data[:cancelled] = true if @stream_request_data.is_a?(Hash)
         @stream_cancellation.cancel if @stream_cancellation != nil && !@stream_cancellation.cancelled?
         @stream_cancellation = nil
@@ -585,7 +604,19 @@ module EltenAPI
         nil
       end
 
-      def send_stream_control(key, shown, now)
+      def stop_stream_control
+        cancellation = @stream_control_cancellation
+        @stream_control_cancellation = nil
+        @stream_control_pending = false
+        @stream_control_id = nil
+        @stream_control_started_at = nil
+        @stream_control_retried = false
+        cancellation.cancel if cancellation != nil && !cancellation.cancelled?
+      rescue Exception
+        nil
+      end
+
+      def send_stream_control(key, shown, retrying: false)
         name, token = key
         acknowledgements = @pending_signal_acks.keys.first(200)
         params = {
@@ -602,8 +633,15 @@ module EltenAPI
         client_params, client_serial = client_update_params(key)
         params.merge!(client_params)
         @stream_control_pending = true
-        @stream_control_started_at = now
-        elten_link.e_json_request("POST", path, params, [key, @stream_generation, acknowledgements, shown, client_serial]) do |answer, data|
+        @stream_control_serial = @stream_control_serial.to_i + 1
+        @stream_control_id = @stream_control_serial
+        @stream_control_retried = retrying
+        @stream_control_cancellation = EltenAPI::Tasks::CancellationToken.new if defined?(EltenAPI::Tasks::CancellationToken)
+        @stream_control_started_at = monotonic_time
+        elten_link.e_json_request(
+          "POST", path, params, [key, @stream_generation, @stream_control_id, acknowledgements, shown, client_serial],
+          cancellation_token: @stream_control_cancellation
+        ) do |answer, data|
           @stream_controls << [answer, data]
         end
       rescue Exception => e
@@ -613,10 +651,15 @@ module EltenAPI
       def drain_stream_controls(limit=10)
         limit.times do
           answer, data = @stream_controls.pop(true)
-          key, generation, acknowledgements, shown, client_serial = data
+          key, generation, control_id, acknowledgements, shown, client_serial = data
           next unless key == @session_key && generation.to_i == @stream_generation.to_i
+          next unless @stream_control_pending && control_id == @stream_control_id
 
           @stream_control_pending = false
+          @stream_control_id = nil
+          @stream_control_cancellation = nil
+          @stream_control_started_at = nil
+          @stream_control_retried = false
           payload = answer.is_a?(String) ? JSON.load(answer) : nil
           accepted = payload.is_a?(Hash) && payload["success"] == true && payload.dig("data", "accepted") == true
           unless accepted
@@ -812,6 +855,7 @@ module EltenAPI
 
       def handle_status_data(response, key, calibrating=false, request_id=0, refresh_ticket=nil, stream: false)
         return if key != @session_key
+        handle_server_data(response, request_id)
         handle_auctions(response)
         if response["time"].is_a?(Integer)
           server_time = response["time"].to_i
@@ -833,6 +877,48 @@ module EltenAPI
         complete_runtime_state_refresh(key, refresh_ticket)
       rescue Exception
         Log.error("Notification response error: #{$!.class}: #{$!.message}")
+      end
+
+      def handle_server_data(response, request_id)
+        revision = response["client_data_revision"]
+        return unless revision.is_a?(String) && revision.match?(/\A[0-9a-f]{64}\z/)
+        return if request_id < @server_data_request_id.to_i
+
+        @server_data_request_id = request_id
+        @server_data_retry_at = 0.0 if revision != @server_data_revision
+        @server_data_revision = revision
+      end
+
+      def refresh_server_data(key, now)
+        return if @server_data_revision == nil || @server_data_revision == ServerData.revision
+        return if @server_data_request != nil || now < @server_data_retry_at.to_f
+
+        request = @server_data_request = [key, @server_data_revision]
+        Thread.new do
+          Thread.current.report_on_exception = false
+          answer = nil
+          begin
+            answer = EltenLink::System.server_data(elten_link)
+          rescue StandardError => error
+            Log.warning("Server data request failed: #{error.class}: #{error.message}")
+          ensure
+            @background_responses << ["server_data", answer, request]
+          end
+        end
+      rescue StandardError
+        @server_data_request = nil
+        @server_data_retry_at = now + 60.0
+        raise
+      end
+
+      def handle_server_data_response(answer, request)
+        return unless request.equal?(@server_data_request)
+
+        @server_data_request = nil
+        return if request[0] != @session_key || request[1] != @server_data_revision
+
+        @server_data_retry_at = monotonic_time + 60.0
+        ServerData.__send__(:receive, answer) if answer != nil && answer.revision == @server_data_revision
       end
 
       def handle_auctions(response)
@@ -1152,6 +1238,8 @@ module EltenAPI
             end
           when "missed_call"
             handle_missed_call_response(answer, data)
+          when "server_data"
+            handle_server_data_response(answer, data)
           when "virtual_updates"
             begin
               handle_virtual_updates_response(answer, data)

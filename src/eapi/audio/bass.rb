@@ -657,38 +657,36 @@ module Bass
               end
     
   def self.init(hWnd, samplerate = 48000)
-return if @init==true
-    @init=true
+    return if @init == true
     BASS_SetConfig.call(36, 1)
     BASS_SetConfig.call(42, 1)
-      devs=[]
-     card=-1
-     card=@setdeviceoninit if @setdeviceoninit!=nil
-    @@device=card
-        if BASS_Init.call(card, samplerate, 4, hWnd, nil) == 0
-      raise(error_name)
+    card = @setdeviceoninit || -1
+    @@device = card
+    device = ensure_output_device(card, hWnd, samplerate)
+    if BASS_SetDevice.call(device) == 0
+      raise RuntimeError, "Cannot select audio output device #{device}: #{error_name}"
     end
-    @output_device_id = BASS_GetDevice.call
+    @output_device_id = device
     plugins = ["bassopus", "bassflac", "bassmidi", "basswebm", "basswma", "bass_aac", "bass_ac3", "bass_spx", "basshls", "bassalac"]
-        plugins.each do |pl|
-              Log.debug("Loading Bass plugin #{pl}")
-          plugin_path = EltenRuntimePaths.absolute_library_file(pl)
-          if BASS_PluginLoad.call(plugin_path, 0) == 0
-            error=BASS_ErrorGetCode.call
-            Log.warning("Failed to load Bass plugin #{pl}: #{error_name(error)} (#{plugin_path})") if error!=14
-          end
+    plugins.each do |pl|
+      Log.debug("Loading Bass plugin #{pl}")
+      plugin_path = EltenRuntimePaths.absolute_library_file(pl)
+      if BASS_PluginLoad.call(plugin_path, 0) == 0
+        error = BASS_ErrorGetCode.call
+        Log.warning("Failed to load Bass plugin #{pl}: #{error_name(error)} (#{plugin_path})") if error != 14
+      end
     end
-        BASS_SetConfig.call(0, 1000)
-BASS_SetConfig.call(1, 100)
-BASS_SetConfig.call(11, 3000)
-BASS_SetConfig.call(12, 10000)
-BASS_SetConfig.call(15, 25)
-BASS_SetConfigPtr.call(16, "Elten")
-BASS_SetConfig.call(21, 1)
-BASS_SetConfig.call(0x20000, 0)    
-BASS_SetDevice.call(card) if card>0
-prewarm_url_loader
-        end
+    BASS_SetConfig.call(0, 1000)
+    BASS_SetConfig.call(1, 100)
+    BASS_SetConfig.call(11, 3000)
+    BASS_SetConfig.call(12, 10000)
+    BASS_SetConfig.call(15, 25)
+    BASS_SetConfigPtr.call(16, "Elten")
+    BASS_SetConfig.call(21, 1)
+    BASS_SetConfig.call(0x20000, 0)
+    @init = true
+    prewarm_url_loader
+  end
 
   def self.free
     devices = [output_device_id, *(@additional_output_devices || [])].uniq

@@ -3,10 +3,11 @@
 
 module EltenLink
   class LoginResult
-    attr_reader :name, :token, :moderator, :fullname, :gender, :languages, :greeting, :auto_login_token, :issued_at, :premium_packages, :client_updated
+    attr_reader :name, :token, :moderator, :fullname, :gender, :languages, :greeting, :auto_login_token, :issued_at, :premium_packages, :client_updated, :server_data
 
     def initialize(data)
       @client_updated = data["client_updated"] == true
+      @server_data = data["client_data"]
       @name = data["name"].to_s
       @token = data["token"].to_s
       @moderator = data["moderator"] ? 1 : 0
