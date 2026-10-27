@@ -918,10 +918,20 @@ end
 def self.waiting_channel_id
   @@waiting_channel_id
   end
+  def self.unique_channel_rows(rows)
+    seen_uuids={}
+    rows.reverse_each.with_object([]) do |channel, unique|
+      uuid=channel['uuid'].to_s
+      next if uuid!="" && seen_uuids[uuid]
+      seen_uuids[uuid]=true if uuid!=""
+      unique.push(channel)
+    end.reverse
+  end
+  private_class_method :unique_channel_rows
   def self.channels
     channels=[]
   if @@channels.is_a?(Array)
-    for cha in @@channels
+    for cha in unique_channel_rows(@@channels)
             ch=Channel.new
       ch.id=cha['id'].to_i
       ch.name=cha['name'].to_s
