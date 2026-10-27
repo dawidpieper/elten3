@@ -793,7 +793,6 @@ def self.create(name="", public=true, bitrate=64, framesize=60, vbr_type=1, code
     edit_params=params.merge('channel'=>@@created)
     safe(nil) {@@core.edit_channel(@@created, edit_params) if @@core!=nil}
   end
-  delay(1) if @@created!=nil
   return @@created
 end
 def self.edit(id, name, public, bitrate, framesize, vbr_type, codec_application, prediction_disabled, fec, password, spatialization, channels, lang, width, height, key_len, waiting_type, permanent, motd, allow_guests, conference_mode, blacklist_policy=nil, p2p_enabled=nil, p2p_participants_limit=nil)
