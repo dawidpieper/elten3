@@ -1952,6 +1952,16 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
     result=nil
     btn_cancel.on(:press) {form.resume}
     btn_search.on(:press) {
+    if lst_phrasein.multiselections.empty?
+      alert(p_("Forum", "Select at least one place to search"))
+      lst_phrasein.focus
+      next
+    end
+    if obj==nil && lst_threadin.multiselections.empty?
+      alert(p_("Forum", "Select at least one group category to search"))
+      lst_threadin.focus
+      next
+    end
     result = Struct_Forum_SearchQuery.new(edt_query.text)
     result.phrase_in.clear
     result.thread_in.clear
