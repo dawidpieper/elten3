@@ -216,6 +216,7 @@ url=nil
             last=@vindex
             @ch=false
             macos_character_movement=false
+            directional_selection_collapse=false
             navigation_action=keyboard_action_pressed?(:text_start, :text_end, :text_line_start, :text_line_end, :text_previous_word, :text_next_word, :text_previous_paragraph, :text_next_paragraph)
           if navigation_action==:text_start
             @vindex=0
@@ -239,24 +240,22 @@ url=nil
           elsif navigation_action==:text_next_paragraph
             @vindex=next_paragraph_index(@vindex)
             announce_navigation_position
+          elsif key_pressed?(:key_right) && !navigation_modifier_held? && !raw_key_held?(:key_shift) && @index!=@check
+            @vindex=selection_bounds[1]
+            @ch=true
+            directional_selection_collapse=true
+            announce_navigation_character(true)
+          elsif key_pressed?(:key_left) && !navigation_modifier_held? && !raw_key_held?(:key_shift) && @index!=@check
+            @vindex=selection_bounds[0]
+            @ch=true
+            directional_selection_collapse=true
+            announce_navigation_character
           elsif EltenAPI::KeyboardScheme.macos_character_navigation? && key_pressed?(:key_right) && !navigation_modifier_held?
             macos_character_movement=true
-            if !raw_key_held?(:key_shift) && @index!=@check
-              @vindex=[@index,@check].max
-              @ch=true
-              announce_navigation_character(true)
-            else
-              move_character_macos(:right)
-            end
+            move_character_macos(:right)
           elsif EltenAPI::KeyboardScheme.macos_character_navigation? && key_pressed?(:key_left) && !navigation_modifier_held?
             macos_character_movement=true
-            if !raw_key_held?(:key_shift) && @index!=@check
-              @vindex=[@index,@check].min
-              @ch=true
-              announce_navigation_character
-            else
-              move_character_macos(:left)
-            end
+            move_character_macos(:left)
           elsif key_pressed?(:key_right) && !navigation_modifier_held?
                                   @vindex=char_borders(@vindex)[1]
           if @vindex>=text_len
@@ -298,6 +297,12 @@ espeech(p_("EAPI_Form", "End of line"))
                 @vindex=ind
               end
             elsif key_pressed?(:key_up) and !raw_key_held?(:key_insert) && !navigation_modifier_held?
+              if !raw_key_held?(:key_shift) && @index!=@check
+                @vindex=selection_bounds[0]
+                @ch=true
+                directional_selection_collapse=true
+                announce_navigation_position
+              else
               b=line_beginning
               e=line_ending
                             if b==0
@@ -313,7 +318,14 @@ espeech(p_("EAPI_Form", "End of line"))
                                 @vindex=bm+l
                 espeech(em>0?(text_range(bm,em-1)):"")
                 end
+              end
             elsif key_pressed?(:key_down) and !raw_key_held?(:key_insert) && !navigation_modifier_held?
+              if !raw_key_held?(:key_shift) && @index!=@check
+                @vindex=selection_bounds[1]
+                @ch=true
+                directional_selection_collapse=true
+                announce_navigation_position
+              else
               b=line_beginning
               e=line_ending
               if e==text_len
@@ -329,6 +341,7 @@ espeech(p_("EAPI_Form", "End of line"))
                                 @vindex=bp+l
                 espeech(text_range(bp,ep-1))
                 end
+              end
         end
                                                         if key_pressed?(:key_page_up) && !modifier_held?(:command)
                     if line_beginning==0
@@ -365,7 +378,7 @@ espeech(p_("EAPI_Form", "End of line"))
         end
         if macos_character_movement
           announce_macos_selection_change(previous_selection, selection_bounds) if raw_key_held?(:key_shift)
-        elsif (lastcheck!="" || checked) && lastcheck!=get_check
+        elsif !directional_selection_collapse && (lastcheck!="" || checked) && lastcheck!=get_check
                                     if @index!=@check
                                       chk=get_check
                                       if chk.include?(lastcheck)
