@@ -20,7 +20,7 @@ module EltenKeyboard
   ABI = defined?(Fiddle::Function::STDCALL) ? Fiddle::Function::STDCALL : Fiddle::Function::DEFAULT
   USER32 = Fiddle.dlopen("user32.dll")
   GET_KEYBOARD_STATE = Fiddle::Function.new(USER32["GetKeyboardState"], [Fiddle::TYPE_VOIDP], Fiddle::TYPE_INT, ABI)
-  GET_ASYNC_KEY_STATE = Fiddle::Function.new(USER32["GetAsyncKeyState"], [Fiddle::TYPE_INT], Fiddle.const_defined?(:TYPE_SHORT) ? Fiddle::TYPE_SHORT : Fiddle::TYPE_INT, ABI)
+  GET_ASYNC_KEY_STATE = Fiddle::Function.new(USER32["GetAsyncKeyState"], [Fiddle::TYPE_INT], Fiddle.const_defined?(:TYPE_SHORT) ? Fiddle::TYPE_SHORT : Fiddle::TYPE_INT, ABI, need_gvl: true)
   SYSTEM_PARAMETERS_INFO = Fiddle::Function.new(USER32["SystemParametersInfoW"], [Fiddle::TYPE_INT, Fiddle::TYPE_INT, Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT], Fiddle::TYPE_INT, ABI)
   TO_UNICODE = Fiddle::Function.new(USER32["ToUnicode"], [Fiddle::TYPE_INT, Fiddle::TYPE_INT, Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT, Fiddle::TYPE_INT], Fiddle::TYPE_INT, ABI)
   MAP_VIRTUAL_KEY = Fiddle::Function.new(USER32["MapVirtualKeyW"], [Fiddle::TYPE_INT, Fiddle::TYPE_INT], Fiddle::TYPE_INT, ABI)
