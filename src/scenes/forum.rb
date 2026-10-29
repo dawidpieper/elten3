@@ -4122,11 +4122,11 @@ if forum_attempt(nil) {
 }
   post.liked=!post.liked
   if post.liked
-    alert(p_("Forum", "This post is now liked"))
+    speak(p_("Forum", "This post is now liked"))
     post.likes+=1
   else
     post.likes-=1
-    alert(p_("forum", "This post is no longer liked"))
+    speak(p_("forum", "This post is no longer liked"))
   end
   update_post_field(@form.fields[@form.index / POST_FIELDS *  POST_FIELDS], post)
 end
