@@ -122,19 +122,19 @@ module EltenAPI
         data = snapshot
         target = mode
         if !empty?(data) && target == "disabled" && editor
-          selected = selector([p_("Drafts", "Discard"), p_("Drafts", "Return to editing"),
+          selected = selector([p_("Drafts", "Return to editing"), p_("Drafts", "Discard"),
             p_("Drafts", "Save locally"), p_("Drafts", "Save on the server")],
             header: p_("Drafts", "What would you like to do with the draft?"),
-            start_index: 1, cancel_index: 1, flags: Controls::ListBox::Flags::AnyDir)
-          return discard(detach: detach) if selected == 0
+            cancel_index: 0, flags: Controls::ListBox::Flags::AnyDir)
+          return discard(detach: detach) if selected == 1
           return false unless [2, 3].include?(selected)
           target = MODES[selected - 1]
           LocalConfig[@config_key] = target
         elsif !empty?(data) && target == "disabled"
-          selected = selector([p_("Drafts", "Discard"), p_("Drafts", "Return to editing"), p_("Drafts", "Remember")],
-            header: p_("Drafts", "What would you like to do with the draft?"), start_index: 1, cancel_index: 1, flags: Controls::ListBox::Flags::AnyDir)
+          selected = selector([p_("Drafts", "Return to editing"), p_("Drafts", "Discard"), p_("Drafts", "Remember")],
+            header: p_("Drafts", "What would you like to do with the draft?"), cancel_index: 0, flags: Controls::ListBox::Flags::AnyDir)
           case selected
-          when 0
+          when 1
             return discard(detach: detach)
           when 2
             target = selector([p_("Drafts", "Remember locally"), p_("Drafts", "Remember on the server"), _("Cancel")],
