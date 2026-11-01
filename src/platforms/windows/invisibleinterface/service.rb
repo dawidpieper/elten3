@@ -826,7 +826,7 @@ module EltenAPI
       end
 
       def conference
-        $conference
+        Conference.core
       end
 
       def config_cards
