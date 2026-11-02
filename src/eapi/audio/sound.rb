@@ -664,6 +664,8 @@ class Sound
   FLOAT_SAMPLE_BYTES = 4
   EFFECT_QUEUE_POLL_SECONDS = FRAME_MILLISECONDS / 2000.0
   INTERACTIVE_EFFECT_BUFFER_SECONDS = FRAME_MILLISECONDS / 1000.0
+  LOW_LATENCY_EFFECT_BUFFER_SECONDS = FRAME_MILLISECONDS * 2 / 1000.0
+  LOW_LATENCY_EFFECT_QUEUE_POLL_SECONDS = 0.005
   PCM_FORMATS = {
     s16le: [0, 2],
     float: [Bass::BASS_SAMPLE_FLOAT, 4],
@@ -848,7 +850,12 @@ class Sound
 
   def effect_buffer=(value)
     @effect_buffer = normalize_effect_buffer(value)
-    @effect_buffer_seconds = @effect_buffer == :interactive ? INTERACTIVE_EFFECT_BUFFER_SECONDS : nil
+    @effect_buffer_seconds = case @effect_buffer
+    when :interactive
+      INTERACTIVE_EFFECT_BUFFER_SECONDS
+    when :low_latency
+      LOW_LATENCY_EFFECT_BUFFER_SECONDS
+    end
   end
 
   def output_device=(device)
@@ -1103,9 +1110,13 @@ class Sound
   end
 
   def effects_latency_ms
-    update_period = [Bass::BASS_GetConfig.call(BASS_CONFIG_UPDATE_PERIOD).to_f, 0.0].max
+    buffer_ms = if @effect_buffer == :low_latency
+      LOW_LATENCY_EFFECT_BUFFER_SECONDS * 1000.0
+    else
+      [Bass::BASS_GetConfig.call(BASS_CONFIG_UPDATE_PERIOD).to_f, 0.0].max
+    end
     effects = @effects_mutex.synchronize { @effects.dup }
-    update_period + effects.sum { |effect| declared_effect_latency_ms(effect) }
+    buffer_ms + effects.sum { |effect| declared_effect_latency_ms(effect) }
   end
 
   def effect_playback_seconds
@@ -1913,7 +1924,7 @@ class Sound
       end
       if effect_queue_full?(output_frame_bytes, freq, output_channels)
         start_effect_output if @effect_buffer_seconds != nil
-        sleep(EFFECT_QUEUE_POLL_SECONDS)
+        sleep(@effect_buffer == :low_latency ? LOW_LATENCY_EFFECT_QUEUE_POLL_SECONDS : EFFECT_QUEUE_POLL_SECONDS)
         next
       end
       read = Bass::BASS_ChannelGetData.call(read_channel, buffer, frame_bytes)
@@ -2125,10 +2136,12 @@ class Sound
 
     pending_bytes = effect_pending_bytes
     bytes_per_second = [frequency.to_i, 1].max * [channels.to_i, 1].max * FLOAT_SAMPLE_BYTES
-    update_milliseconds = Bass::BASS_GetConfig.call(BASS_CONFIG_UPDATE_PERIOD).to_i
-    minimum_seconds = ([update_milliseconds, 0].max + FRAME_MILLISECONDS) / 1000.0
-    limit_seconds = [seconds, minimum_seconds].max
-    limit_bytes = [(limit_seconds * bytes_per_second).round, next_frame_bytes.to_i].max
+    if @effect_buffer != :low_latency
+      update_milliseconds = Bass::BASS_GetConfig.call(BASS_CONFIG_UPDATE_PERIOD).to_i
+      minimum_seconds = ([update_milliseconds, 0].max + FRAME_MILLISECONDS) / 1000.0
+      seconds = [seconds, minimum_seconds].max
+    end
+    limit_bytes = [(seconds * bytes_per_second).round, next_frame_bytes.to_i].max
     pending_bytes + next_frame_bytes.to_i > limit_bytes
   rescue Exception
     false
@@ -2180,8 +2193,8 @@ class Sound
     return nil if value == nil
 
     preset = value.respond_to?(:to_sym) ? value.to_sym : nil
-    return preset if [:eager, :interactive].include?(preset)
-    raise ArgumentError, "effect_buffer must be nil, :eager, or :interactive"
+    return preset if [:eager, :interactive, :low_latency].include?(preset)
+    raise ArgumentError, "effect_buffer must be nil, :eager, :interactive, or :low_latency"
   end
 
   def configure_effect_buffer(preset, seconds)
