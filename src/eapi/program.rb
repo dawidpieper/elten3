@@ -1020,7 +1020,7 @@ module Programs
       nil
     end
 
-    def create_spatial_sound(position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil)
+    def create_spatial_sound(position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, hrtf: nil, spatial_blend: 1.0)
       options = { :sample => sample, :loop => loop }
       if effect_buffer == nil && effect_buffer_seconds == nil
         options[:effect_buffer] = :interactive
@@ -1030,7 +1030,7 @@ module Programs
       end
       sound = create_sound(**options)
       return nil if sound == nil
-      sound.spatialize(position: position, interpolation: interpolation)
+      sound.spatialize(position: position, interpolation: interpolation, hrtf: hrtf, spatial_blend: spatial_blend)
       sound
     rescue Exception => e
       Log.warning("Program spatial sound asset #{@name} failed: #{e.class}: #{e.message}")

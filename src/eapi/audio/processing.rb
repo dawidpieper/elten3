@@ -270,7 +270,9 @@ module Audio
     end
 
     def duration
-      @delegate == nil ? @source.duration : @delegate.duration
+      return @delegate.duration if @delegate != nil
+      tail = @effect.respond_to?(:tail_duration) ? @effect.tail_duration : 0.0
+      @source.duration != nil && tail != nil ? @source.duration + tail : nil
     end
 
     def metadata
@@ -287,9 +289,12 @@ module Audio
       instance.reset if instance.respond_to?(:reset)
       processing_frames = [(@source.format.sample_rate * 0.02).round, 1].max
       @source.each_buffer(:chunk_frames => processing_frames) do |buffer|
-        data = instance.process(buffer.data, @source.format.sample_rate, @source.format.channels).to_s.b
+        data = SoundEffect.process_frame(instance, buffer.data, @source.format.sample_rate, @source.format.channels)
         @format.frames_for_bytes(data.bytesize)
         yield Buffer.new(:data => data, :format => @format, :metadata => buffer.metadata)
+      end
+      SoundEffect.each_tail([instance], @source.format.sample_rate, @source.format.channels) do |data|
+        yield Buffer.new(:data => data, :format => @format, :metadata => metadata)
       end
       self
     ensure

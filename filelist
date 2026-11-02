@@ -113,6 +113,13 @@ src/eapi/audio/format.rb
 src/eapi/audio/source.rb
 src/eapi/audio/sound.rb
 src/eapi/audio/soundpool.rb
+src/eapi/audio/spatial.rb
+src/eapi/audio/steamaudio.rb
+src/eapi/audio/steamaudio/native.rb
+src/eapi/audio/steamaudio/simulation.rb
+src/eapi/audio/steamaudio/spatial_renderer.rb
+src/eapi/audio/spatial_emitter.rb
+src/eapi/audio/spatial_scene.rb
 src/eapi/audio/fx/audio3d.rb
 src/eapi/audio/fx/effects.rb
 src/scenes/debug.rb

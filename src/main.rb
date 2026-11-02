@@ -136,6 +136,7 @@ rescue Exception => error
   NVDA.join if defined?(NVDA)
   NVDA.destroy if defined?(NVDA)
     EltenAPI::InvisibleInterface.stop if defined?(EltenAPI::InvisibleInterface)
+    SteamAudio.close_resources if defined?(SteamAudio)
     Audio3DEffect.free if defined?(Audio3DEffect)
     EltenAPI::Conference.shutdown if defined?(EltenAPI::Conference)
     EltenLink.close if defined?(EltenLink)

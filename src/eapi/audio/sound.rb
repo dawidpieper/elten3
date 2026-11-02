@@ -637,6 +637,41 @@ class SoundEffect
     audio
   end
 
+  def process_final(audio, frequency, channels)
+    process(audio, frequency, channels)
+  end
+
+  def self.process_frame(effect, audio, frequency, channels)
+    method = audio.bytesize < frequency * channels * 4 / 50 && effect.respond_to?(:process_final) ? :process_final : :process
+    effect.public_send(method, audio, frequency, channels).to_s.b
+  end
+
+  def tail
+    "".b
+  end
+
+  def tail_duration
+    0.0
+  end
+
+  def self.each_tail(effects, frequency, channels)
+    return enum_for(__method__, effects, frequency, channels) if !block_given?
+    effects.each_with_index do |effect, index|
+      channels = effect.output_channels(channels, frequency) if effect.respond_to?(:output_channels)
+      next if !effect.respond_to?(:tail)
+      loop do
+        audio = effect.tail.to_s.b
+        break if audio.empty?
+        output_channels = channels
+        effects.drop(index + 1).each do |following|
+          audio = process_frame(following, audio, frequency, output_channels)
+          output_channels = following.output_channels(output_channels, frequency) if following.respond_to?(:output_channels)
+        end
+        yield audio if !audio.empty?
+      end
+    end
+  end
+
   def reset
   end
 
@@ -1140,15 +1175,20 @@ class Sound
     effect_playback_seconds
   end
 
-  def spatialize(position: nil, interpolation: :bilinear)
+  def spatialize(position: nil, interpolation: :bilinear, hrtf: nil, spatial_blend: 1.0)
     fail(RuntimeError, "Audio3DEffect is unavailable") if !defined?(::Audio3DEffect)
+    if defined?(Audio::SpatialEmitter) && @effects.any? { |effect| effect.is_a?(Audio::SpatialEmitter) }
+      raise ArgumentError, "Sound already belongs to a spatial scene"
+    end
     position = Audio3DEffect::ORIGIN if position == nil
-    if @spatial_effect == nil || !@effects.include?(@spatial_effect)
-      effect = Audio3DEffect.new(position: position, interpolation: interpolation)
+    if @spatial_effect == nil || !@effects.include?(@spatial_effect) || @spatial_effect.hrtf_profile != hrtf
+      effect = Audio3DEffect.new(position: position, interpolation: interpolation, hrtf: hrtf, spatial_blend: spatial_blend)
+      effect_remove(@spatial_effect) if spatial?
       effect_add(effect)
       @spatial_effect = effect
     else
       @spatial_effect.position = position
+      @spatial_effect.spatial_blend = spatial_blend
       @spatial_effect.interpolation = interpolation
     end
     self
@@ -1929,23 +1969,35 @@ class Sound
       end
       read = Bass::BASS_ChannelGetData.call(read_channel, buffer, frame_bytes)
       if read.to_i <= 0
-        if Bass::BASS_ChannelIsActive.call(read_channel).to_i == BASS_ACTIVE_STOPPED
+        if Bass::BASS_ChannelIsActive.call(read_channel).to_i != BASS_ACTIVE_STOPPED
+          sleep(FRAME_MILLISECONDS / 1000.0)
+          next
+        end
+        audio = @effects_mutex.synchronize do
+          @effect_tail ||= SoundEffect.each_tail(@effects.reject { |effect| native_effect?(effect) }, freq, source_channels)
+          begin
+            @effect_tail.next
+          rescue StopIteration
+            nil
+          end
+        end
+        if audio == nil
           start_effect_output if @effect_buffer_seconds != nil
           end_effect_output
           @processing_playing = false
+          next
         end
-        sleep(FRAME_MILLISECONDS / 1000.0)
-        next
-      end
-      audio = buffer.byteslice(0, read).to_s.b
-      frame_duration = read.to_f / ([freq, 1].max * [source_channels, 1].max * FLOAT_SAMPLE_BYTES)
-      apply_spatial_automation(effect_output_written_seconds, frame_duration)
-      channels_now = source_channels
-      @effects_mutex.synchronize do
-        @effects.each do |effect|
-          next if native_effect?(effect)
-          audio = effect.process(audio, freq, channels_now).to_s.b
-          channels_now = effect.output_channels(channels_now, freq) if effect.respond_to?(:output_channels)
+      else
+        audio = buffer.byteslice(0, read).to_s.b
+        frame_duration = read.to_f / ([freq, 1].max * [source_channels, 1].max * FLOAT_SAMPLE_BYTES)
+        apply_spatial_automation(effect_output_written_seconds, frame_duration)
+        channels_now = source_channels
+        @effects_mutex.synchronize do
+          @effects.each do |effect|
+            next if native_effect?(effect)
+            audio = SoundEffect.process_frame(effect, audio, freq, channels_now)
+            channels_now = effect.output_channels(channels_now, freq) if effect.respond_to?(:output_channels)
+          end
         end
       end
       if audio.bytesize > 0
@@ -1963,7 +2015,10 @@ class Sound
   end
 
   def reset_effects
-    @effects_mutex.synchronize { @effects.each { |effect| effect.reset if effect.respond_to?(:reset) } }
+    @effects_mutex.synchronize do
+      @effect_tail = nil
+      @effects.each { |effect| effect.reset if effect.respond_to?(:reset) }
+    end
   end
 
   def native_effect?(effect)
