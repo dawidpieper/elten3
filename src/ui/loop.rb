@@ -54,6 +54,35 @@ def dispatch_notification(event, batch_sounds=nil)
   end
 end
 
+def dispatch_local_notifications
+  pending, changed = Programs::LocalNotifications.drain
+  if changed
+    $main_notifications_changed = true
+    Session.notifications_update
+  end
+  return if EltenAPI::UI.notifications_muted?
+
+  batch_sounds = {}
+  pending.each do |notification|
+    next unless notification.active?
+    presentation = notification.presentation
+    next if presentation.default_suppressed?
+
+    dispatch_notification({
+      "func" => "notif",
+      "alert" => presentation.alert,
+      "sound" => presentation.sound,
+      "id" => notification.id,
+      "local" => true,
+      "type" => notification.type,
+      "metadata" => notification.metadata,
+      "presentation_metadata" => presentation.metadata
+    }, batch_sounds)
+  end
+rescue Exception => error
+  Log.error("Local notification dispatch failed: #{error.class}: #{error.message}")
+end
+
 def dispatch_parallel_scene_events
   return unless Thread.current.equal?($currentthread) && !Thread.current.equal?($mainthread)
   scene = Thread.current.thread_variable_get(:elten_scene)
@@ -114,6 +143,7 @@ end
        EltenAPI::Controls::ListBox.tick_audio_players if defined?(EltenAPI::Controls::ListBox)
        Sound.update_slide_events if defined?(Sound) && Thread.current == $mainthread
        Programs::NotificationLifecycles.tick if defined?(Programs::NotificationLifecycles) && Thread.current == $mainthread
+       dispatch_local_notifications if defined?(Programs::LocalNotifications) && Thread.current == $mainthread
        $getkeychar_cache_serial=nil
        $getkeychar_cache=nil
        EltenWindow.begin_input_frame

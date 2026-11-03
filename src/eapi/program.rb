@@ -454,6 +454,10 @@ module Programs
       freeze
     end
 
+    def local?
+      false
+    end
+
     def lifecycle(interval: 900, expires_after_receipt: nil, &block)
       NotificationLifecycle.new(interval: interval, expires_after_receipt: expires_after_receipt, &block)
     end
@@ -471,10 +475,21 @@ module Programs
     end
 
     def main
+      if @notification.local? && !Programs::LocalNotifications.include?(@notification)
+        $scene = Scene_Main.new
+        return
+      end
+
       program = @program_class.new
       with_scene_context(program) do
         runtime = Programs.runtime_for(@program_class)
-        result = Programs.with_runtime(runtime) { program.notification_action(@action, @notification) }
+        result = Programs.with_runtime(runtime) do
+          if @notification.local? && @action.respond_to?(:call)
+            @action.call(@notification)
+          else
+            program.notification_action(@action, @notification)
+          end
+        end
         program.finalize(result, reason: :notification)
       end
     rescue Exception => error
@@ -3562,6 +3577,12 @@ class Program
       )
     end
 
+    def notify_local(body, title: nil, sound: "notification", action: nil, metadata: {},
+      type: "", expires_in: 0, lifecycle: nil, &block)
+      Programs::LocalNotifications.create(self, body, title: title, sound: sound, action: action,
+        metadata: metadata, type: type, expires_in: expires_in, lifecycle: lifecycle, &block)
+    end
+
     def send_notification(user, type:, metadata: {}, expires_in: 0, key: nil)
       definition = required_server_app_definition
       raise Programs::ProgramError, "Server application UUID is not set" if definition.uuid == nil
@@ -3774,6 +3795,12 @@ class Program
 
   def server_app_uuid
     self.class.server_app_uuid
+  end
+
+  def notify_local(body, title: nil, sound: "notification", action: nil, metadata: {},
+    type: "", expires_in: 0, lifecycle: nil, &block)
+    self.class.notify_local(body, title: title, sound: sound, action: action,
+      metadata: metadata, type: type, expires_in: expires_in, lifecycle: lifecycle, &block)
   end
 
   def send_notification(user, type:, metadata: {}, expires_in: 0, key: nil)

@@ -32,6 +32,10 @@ module NotificationGroups
     def virtual?
       virtual == true
     end
+
+    def local?
+      virtual? && app_notification != nil && app_notification.local?
+    end
   end
 
   @@virtual_notification_revoked = {}
@@ -283,7 +287,28 @@ module NotificationGroups
   end
 
   def collect_virtual_notification_groups
-    NotificationGroups.virtual_notification_groups
+    groups = NotificationGroups.virtual_notification_groups
+    Programs::LocalNotifications.list(include_revoked: true).each do |notification|
+      group = NotificationGroup.new(
+        key: notification.id,
+        cat: "app",
+        category: notification.program.name.to_s,
+        date: notification.created_at,
+        revoked: notification.revoked?,
+        ids: [],
+        payload: {},
+        payloads: [],
+        event_count: 1,
+        virtual: true,
+        program_class: notification.program,
+        app_notification: notification,
+        presentation: notification.presentation
+      )
+      group.action = action_for(group.cat, group.payload, group: group)
+      group.label = group_label(group)
+      groups << group
+    end
+    groups
   end
 
   def installed_program_update_payload
@@ -298,7 +323,7 @@ module NotificationGroups
     virtual_groups.to_a.each_with_object([]) do |group, result|
       next unless group.virtual?
 
-      group.revoked = virtual_notification_revoked?(group.key)
+      group.revoked = group.local? ? group.app_notification.revoked? : virtual_notification_revoked?(group.key)
       group.label = group_label(group)
       result << group if include_revoked == true || !group.revoked
     end
@@ -309,7 +334,11 @@ module NotificationGroups
   end
 
   def revoke_virtual_notification(group)
-    @@virtual_notification_revoked[group.key.to_s] = true
+    if group.local?
+      return false unless group.app_notification.revoke
+    else
+      @@virtual_notification_revoked[group.key.to_s] = true
+    end
     group.revoked = true
     $main_notifications_changed = true
     Session.notifications_update if defined?(Session)
@@ -1071,6 +1100,7 @@ module NotificationGroups
 
   def open_notification_group(group)
     return false if group == nil
+    return false if group.local? && !Programs::LocalNotifications.include?(group.app_notification)
 
     if group.action != nil
       group.action.call
@@ -1104,10 +1134,12 @@ module NotificationGroups
   end
 
   def revoke_all_notification_groups(groups=nil)
-    EltenLink::Notifications.revoke_all(elten_link, app_uuids: Programs.notification_app_uuids)
-    EltenAPI::NotificationService.revoke_active_notifications
     groups.to_a.each do |group|
       revoke_virtual_notification(group) if group.virtual? && !group.revoked
+    end
+    if groups == nil || groups.any? { |group| !group.virtual? && !group.revoked && !group.ids.empty? }
+      EltenLink::Notifications.revoke_all(elten_link, app_uuids: Programs.notification_app_uuids)
+      EltenAPI::NotificationService.revoke_active_notifications
     end
     $main_notifications_changed = true
     Session.notifications_update if defined?(Session)
