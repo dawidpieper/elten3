@@ -454,6 +454,10 @@ module Programs
       freeze
     end
 
+    def lifecycle(interval: 900, expires_after_receipt: nil, &block)
+      NotificationLifecycle.new(interval: interval, expires_after_receipt: expires_after_receipt, &block)
+    end
+
     def presentation(title: "", body: "", sound: "notification", action: nil, metadata: {})
       NotificationPresentation.new(title: title, body: body, sound: sound, action: action, metadata: metadata)
     end
@@ -3218,6 +3222,10 @@ class Program
       nil
     end
 
+    def notification_lifecycle(_notification)
+      nil
+    end
+
     def notification_received(_notification, _presentation)
     end
 
@@ -3554,7 +3562,7 @@ class Program
       )
     end
 
-    def send_notification(user, type:, metadata: {}, expires_in: 0)
+    def send_notification(user, type:, metadata: {}, expires_in: 0, key: nil)
       definition = required_server_app_definition
       raise Programs::ProgramError, "Server application UUID is not set" if definition.uuid == nil
       raise Programs::ProgramError, "Server application does not declare notification support" if !definition.notifications?
@@ -3565,8 +3573,17 @@ class Program
         user: user,
         type: type,
         metadata: metadata,
-        expires_in: expires_in
+        expires_in: expires_in,
+        key: key
       )
+    end
+
+    def revoke_sent_notification(user, key:)
+      definition = required_server_app_definition
+      raise Programs::ProgramError, "Server application UUID is not set" if definition.uuid == nil
+      raise Programs::ProgramError, "Server application does not declare notification support" if !definition.notifications?
+
+      EltenLink::Apps.revoke_notification(EltenLink.client(self), appid: definition.uuid, user: user, key: key)
     end
 
     def server_table(name, uuid = nil)
@@ -3759,8 +3776,12 @@ class Program
     self.class.server_app_uuid
   end
 
-  def send_notification(user, type:, metadata: {}, expires_in: 0)
-    self.class.send_notification(user, type: type, metadata: metadata, expires_in: expires_in)
+  def send_notification(user, type:, metadata: {}, expires_in: 0, key: nil)
+    self.class.send_notification(user, type: type, metadata: metadata, expires_in: expires_in, key: key)
+  end
+
+  def revoke_sent_notification(user, key:)
+    self.class.revoke_sent_notification(user, key: key)
   end
 
   def notification_action(_action, _notification)

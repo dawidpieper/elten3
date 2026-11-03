@@ -154,6 +154,24 @@ module EltenAPI
         true
       end
 
+      def update_active_notification(notification)
+        ensure_state
+        return false unless notification.is_a?(EltenLink::Notification)
+        changed = @active_notifications_mutex.synchronize do
+          next false if @session_key != session_key
+          index = @active_notifications.index { |current| current.id == notification.id }
+          next false if index == nil || @active_notifications[index].update_time > notification.update_time
+
+          @active_notifications[index] = notification
+          @active_notifications = normalize_active_notifications(@active_notifications)
+          @active_notifications_hash = ""
+          @active_notifications_request_id = @request_serial.to_i + 1
+          true
+        end
+        enqueue_event("func" => "notifications") if changed
+        changed
+      end
+
       def revoke_active_notifications(ids=nil)
         ensure_state
         values = ids == nil ? nil : Array(ids).flatten.map(&:to_i).select(&:positive?).uniq

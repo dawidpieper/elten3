@@ -587,19 +587,30 @@ module EltenLink
         "/api/v1/apps/live-sessions/#{query_escape(session_id.to_s)}"
       end
 
-      def notify(client, appid:, user:, type:, metadata: {}, expires_in: 0)
-        client.api_data(
-          "POST",
-          "/api/v1/apps/notifications",
-          {
-            "appid" => appid.to_s,
-            "user" => user.to_s,
-            "type" => type.to_s,
-            "metadata" => metadata,
-            "expires_in" => expires_in.to_i
-          }
-        )
+      def notify(client, appid:, user:, type:, metadata: {}, expires_in: 0, key: nil)
+        params = {
+          "appid" => appid.to_s,
+          "user" => user.to_s,
+          "type" => type.to_s,
+          "metadata" => metadata,
+          "expires_in" => expires_in.to_i
+        }
+        params["key"] = key if key != nil
+        client.api_data("POST", "/api/v1/apps/notifications", params)
         true
+      end
+
+      def revoke_notification(client, appid:, user:, key:)
+        client.api_data("PATCH", "/api/v1/apps/notifications/revoke",
+          { "appid" => appid.to_s, "user" => user.to_s, "key" => key })
+        true
+      end
+
+      def notification_lifecycle(client, appid:, id:, expires_after_receipt:, headers: nil, cancellation_token: nil)
+        data = client.api_data("PATCH", "/api/v1/apps/notifications/#{id.to_i}/lifecycle",
+          { "appid" => appid.to_s, "expires_after_receipt" => expires_after_receipt },
+          headers: headers, cancellation_token: cancellation_token)
+        Notifications.from_data(data["notification"])
       end
 
       def register(client, name:, data: nil, tables: nil, tables_protected: false, notifications: false, max_public_resources_bytes: nil, max_private_resources_bytes_per_user: nil)

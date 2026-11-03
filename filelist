@@ -253,6 +253,7 @@ src/eapi/runner.rb
 src/eapi/program_package_metadata.rb
 src/eapi/unsigned_package_builder.rb
 src/eapi/program.rb
+src/eapi/program_notifications.rb
 src/eapi/program_installer.rb
 src/eapi/scheduler.rb
 src/eapi/extensions.rb

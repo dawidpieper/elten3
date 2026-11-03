@@ -113,6 +113,7 @@ end
        $input_frame_serial=($input_frame_serial||0)+1
        EltenAPI::Controls::ListBox.tick_audio_players if defined?(EltenAPI::Controls::ListBox)
        Sound.update_slide_events if defined?(Sound) && Thread.current == $mainthread
+       Programs::NotificationLifecycles.tick if defined?(Programs::NotificationLifecycles) && Thread.current == $mainthread
        $getkeychar_cache_serial=nil
        $getkeychar_cache=nil
        EltenWindow.begin_input_frame

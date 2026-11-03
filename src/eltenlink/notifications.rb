@@ -29,8 +29,9 @@ module EltenLink
         )
       end
 
-      def revoke(client, id)
-        client.api_data("PATCH", "/api/v1/notifications/#{id.to_i}/revoke")
+      def revoke(client, id, headers: nil, cancellation_token: nil)
+        client.api_data("PATCH", "/api/v1/notifications/#{id.to_i}/revoke",
+          headers: headers, cancellation_token: cancellation_token)
         true
       end
 
