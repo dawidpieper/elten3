@@ -1011,13 +1011,22 @@ module Programs
           sound = ::Sound.new(**options)
         end
       end
-      return sound if sound.opened?
-      sound.close rescue nil
-      nil
+      if !sound.opened?
+        sound.close rescue nil
+        return nil
+      end
     rescue Exception => e
       Log.warning("Program sound asset #{@name} failed: #{e.class}: #{e.message}")
       sound.close rescue nil
       nil
+    else
+      begin
+        yield sound if block_given?
+      rescue Exception
+        sound.close rescue nil
+        raise
+      end
+      sound
     end
 
     def create_spatial_sound(position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, hrtf: nil, spatial_blend: 1.0)
@@ -1031,11 +1040,18 @@ module Programs
       sound = create_sound(**options)
       return nil if sound == nil
       sound.spatialize(position: position, interpolation: interpolation, hrtf: hrtf, spatial_blend: spatial_blend)
-      sound
     rescue Exception => e
       Log.warning("Program spatial sound asset #{@name} failed: #{e.class}: #{e.message}")
       sound.close rescue nil
       nil
+    else
+      begin
+        yield sound if block_given?
+      rescue Exception
+        sound.close rescue nil
+        raise
+      end
+      sound
     end
 
     def play(volume: 100, pitch: 100, pan: 50, ignore_elten_volume: false)
@@ -1347,17 +1363,17 @@ module Programs
       asset == nil ? nil : asset.data
     end
 
-    def create_sound_from_asset(name, sample: false, loop: false, effect_buffer: nil, effect_buffer_seconds: nil)
+    def create_sound_from_asset(name, sample: false, loop: false, effect_buffer: nil, effect_buffer_seconds: nil, &block)
       asset = sound_asset(name)
       return nil if asset == nil
-      return asset.create_sound(sample: sample, loop: loop) if effect_buffer == nil && effect_buffer_seconds == nil
+      return asset.create_sound(sample: sample, loop: loop, &block) if effect_buffer == nil && effect_buffer_seconds == nil
       options = { :sample => sample, :loop => loop }
       options[:effect_buffer] = effect_buffer if effect_buffer != nil
       options[:effect_buffer_seconds] = effect_buffer_seconds if effect_buffer_seconds != nil
-      asset.create_sound(**options)
+      asset.create_sound(**options, &block)
     end
 
-    def create_spatial_sound_from_asset(name, position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil)
+    def create_spatial_sound_from_asset(name, position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, &block)
       asset = sound_asset(name)
       return nil if asset == nil
       asset.create_spatial_sound(
@@ -1366,7 +1382,8 @@ module Programs
         loop: loop,
         interpolation: interpolation,
         effect_buffer: effect_buffer,
-        effect_buffer_seconds: effect_buffer_seconds
+        effect_buffer_seconds: effect_buffer_seconds,
+        &block
       )
     end
 
@@ -1401,11 +1418,24 @@ module Programs
       end
       return nil if sound == nil
       sound.volume = volume.to_f
-      sound_pool(max_voices: max_voices).play(sound)
     rescue Exception => e
       Log.warning("Managed program sound #{name} failed: #{e.class}: #{e.message}")
       sound.close rescue nil
       nil
+    else
+      begin
+        yield sound if block_given?
+      rescue Exception
+        sound.close rescue nil
+        raise
+      end
+      begin
+        sound_pool(max_voices: max_voices).play(sound)
+      rescue Exception => e
+        Log.warning("Managed program sound #{name} failed: #{e.class}: #{e.message}")
+        sound.close rescue nil
+        nil
+      end
     end
 
     def close_sound_pool
@@ -3344,16 +3374,16 @@ class Program
       @app_runtime == nil ? nil : @app_runtime.sound_asset_data(name)
     end
 
-    def create_sound_from_asset(name, sample: false, loop: false, effect_buffer: nil, effect_buffer_seconds: nil)
+    def create_sound_from_asset(name, sample: false, loop: false, effect_buffer: nil, effect_buffer_seconds: nil, &block)
       return nil if @app_runtime == nil
-      return @app_runtime.create_sound_from_asset(name, sample: sample, loop: loop) if effect_buffer == nil && effect_buffer_seconds == nil
+      return @app_runtime.create_sound_from_asset(name, sample: sample, loop: loop, &block) if effect_buffer == nil && effect_buffer_seconds == nil
       options = { :sample => sample, :loop => loop }
       options[:effect_buffer] = effect_buffer if effect_buffer != nil
       options[:effect_buffer_seconds] = effect_buffer_seconds if effect_buffer_seconds != nil
-      @app_runtime.create_sound_from_asset(name, **options)
+      @app_runtime.create_sound_from_asset(name, **options, &block)
     end
 
-    def create_spatial_sound_from_asset(name, position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil)
+    def create_spatial_sound_from_asset(name, position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, &block)
       return nil if @app_runtime == nil
       @app_runtime.create_spatial_sound_from_asset(
         name,
@@ -3362,7 +3392,8 @@ class Program
         loop: loop,
         interpolation: interpolation,
         effect_buffer: effect_buffer,
-        effect_buffer_seconds: effect_buffer_seconds
+        effect_buffer_seconds: effect_buffer_seconds,
+        &block
       )
     end
 
@@ -3370,7 +3401,7 @@ class Program
       @app_runtime == nil ? nil : @app_runtime.sound_pool(max_voices: max_voices)
     end
 
-    def play_sound_from_asset(name, volume: 1.0, sample: false, loop: false, spatial: nil, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, max_voices: SoundPool::DEFAULT_MAX_VOICES)
+    def play_sound_from_asset(name, volume: 1.0, sample: false, loop: false, spatial: nil, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, max_voices: SoundPool::DEFAULT_MAX_VOICES, &block)
       return nil if @app_runtime == nil
       @app_runtime.play_sound_from_asset(
         name,
@@ -3381,7 +3412,8 @@ class Program
         interpolation: interpolation,
         effect_buffer: effect_buffer,
         effect_buffer_seconds: effect_buffer_seconds,
-        max_voices: max_voices
+        max_voices: max_voices,
+        &block
       )
     end
 
@@ -3792,15 +3824,15 @@ class Program
     self.class.sound_asset_data(name)
   end
 
-  def create_sound_from_asset(name, sample: false, loop: false, effect_buffer: nil, effect_buffer_seconds: nil)
-    return self.class.create_sound_from_asset(name, sample: sample, loop: loop) if effect_buffer == nil && effect_buffer_seconds == nil
+  def create_sound_from_asset(name, sample: false, loop: false, effect_buffer: nil, effect_buffer_seconds: nil, &block)
+    return self.class.create_sound_from_asset(name, sample: sample, loop: loop, &block) if effect_buffer == nil && effect_buffer_seconds == nil
     options = { :sample => sample, :loop => loop }
     options[:effect_buffer] = effect_buffer if effect_buffer != nil
     options[:effect_buffer_seconds] = effect_buffer_seconds if effect_buffer_seconds != nil
-    self.class.create_sound_from_asset(name, **options)
+    self.class.create_sound_from_asset(name, **options, &block)
   end
 
-  def create_spatial_sound_from_asset(name, position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil)
+  def create_spatial_sound_from_asset(name, position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, &block)
     self.class.create_spatial_sound_from_asset(
       name,
       position: position,
@@ -3808,7 +3840,8 @@ class Program
       loop: loop,
       interpolation: interpolation,
       effect_buffer: effect_buffer,
-      effect_buffer_seconds: effect_buffer_seconds
+      effect_buffer_seconds: effect_buffer_seconds,
+      &block
     )
   end
 
@@ -3816,7 +3849,7 @@ class Program
     self.class.sound_pool(max_voices: max_voices)
   end
 
-  def play_sound_from_asset(name, volume: 1.0, sample: false, loop: false, spatial: nil, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, max_voices: SoundPool::DEFAULT_MAX_VOICES)
+  def play_sound_from_asset(name, volume: 1.0, sample: false, loop: false, spatial: nil, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, max_voices: SoundPool::DEFAULT_MAX_VOICES, &block)
     self.class.play_sound_from_asset(
       name,
       volume: volume,
@@ -3826,7 +3859,8 @@ class Program
       interpolation: interpolation,
       effect_buffer: effect_buffer,
       effect_buffer_seconds: effect_buffer_seconds,
-      max_voices: max_voices
+      max_voices: max_voices,
+      &block
     )
   end
 
