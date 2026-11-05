@@ -38,12 +38,14 @@ module EltenLink
   end
 
   class CalendarEvent
-    attr_accessor :id, :calendar_id, :author, :starttime, :endtime, :frequency, :name, :description, :public_calendar
+    attr_accessor :id, :calendar_id, :author, :frequency, :name, :description, :public_calendar
+    attr_reader :starttime, :endtime, :timezone
 
-    def initialize(id: 0, calendar_id: 0, author: nil, starttime: nil, endtime: nil, frequency: 0, name: "", description: "", public_calendar: false)
+    def initialize(id: 0, calendar_id: 0, author: nil, starttime: nil, endtime: nil, frequency: 0, name: "", description: "", public_calendar: false, timezone: nil)
       @id = id.to_i
       @calendar_id = calendar_id.to_i
       @author = author.to_s
+      @timezone = timezone.to_s.empty? ? nil : timezone.to_s
       @starttime = time_value(starttime)
       @endtime = time_value(endtime)
       @frequency = frequency.to_i
@@ -53,15 +55,30 @@ module EltenLink
       @public_calendar = public_calendar == true
     end
 
+    def starttime=(value)
+      @starttime = time_value(value)
+    end
+
+    def endtime=(value)
+      @endtime = time_value(value)
+    end
+
+    def timezone=(value)
+      @timezone = value.to_s.empty? ? nil : value.to_s
+      @starttime = TimeZones.local(@timezone, @starttime.getlocal)
+      @endtime = TimeZones.local(@timezone, @endtime.getlocal)
+    end
+
     def all_day?
-      @starttime.year == @endtime.year && @starttime.yday == @endtime.yday &&
-        @starttime.hour == 0 && @starttime.min == 0 && @starttime.sec == 0 &&
-        @endtime.hour == 23 && @endtime.min == 59 && @endtime.sec == 59
+      @starttime.year == @endtime.year && @starttime.yday == @endtime.yday && all_day_series?
     end
 
     def all_day_series?
-      @starttime.hour == 0 && @starttime.min == 0 && @starttime.sec == 0 &&
-        @endtime.hour == 23 && @endtime.min == 59 && @endtime.sec == 59
+      return false unless @endtime.hour == 23 && @endtime.min == 59 && @endtime.sec == 59
+      return true if @starttime.hour == 0 && @starttime.min == 0 && @starttime.sec == 0
+      return false if @timezone == nil
+
+      @starttime == TimeZones.local_times(@timezone, start_date, resolve: true).first
     end
 
     def public_calendar?
@@ -89,14 +106,16 @@ module EltenLink
 
     def occurrences_on(value)
       date = date_value(value)
-      return [self] if !recurring? && start_date <= date && date <= end_date
-      return [] if !recurring?
+      if !recurring?
+        return display_date(@starttime) <= date && date <= display_date(@endtime) ? [self] : []
+      end
 
-      [date - 1, date].filter_map do |start|
+      first, last = source_dates(date)
+      ((first - 1)..last).filter_map do |start|
         occurrence = occurrence_on(start)
         next if occurrence == nil
 
-        occurrence if date_value(occurrence.starttime) <= date && date <= date_value(occurrence.endtime)
+        occurrence if display_date(occurrence.starttime) <= date && date <= display_date(occurrence.endtime)
       end
     end
 
@@ -108,8 +127,13 @@ module EltenLink
         return nil
       end
 
-      candidate = @frequency == -1 ? monthly_date_on_or_after(target) : interval_date_on_or_after(target)
-      candidate if candidate != nil && occurrence_on(candidate) != nil
+      loop do
+        candidate = @frequency == -1 ? monthly_date_on_or_after(target) : interval_date_on_or_after(target)
+        return nil if candidate == nil
+        return candidate if occurrence_on(candidate) != nil
+
+        target = candidate + 1
+      end
     end
 
     def occurrence_date_on_or_before(value)
@@ -134,46 +158,79 @@ module EltenLink
     end
 
     def event_date_on_or_after(value)
-      target = date_value(value)
-      return target unless occurrences_on(target).empty?
-
-      occurrence_date_on_or_after(target)
+      adjacent_event_date(date_value(value), 1)
     end
 
     def event_date_on_or_before(value)
-      target = date_value(value)
-      return target unless occurrences_on(target).empty?
-
-      occurrence_date = occurrence_date_on_or_before(target)
-      return nil if occurrence_date == nil
-
-      occurrence = occurrence_on(occurrence_date)
-      [date_value(occurrence.endtime), target].min if occurrence != nil
+      adjacent_event_date(date_value(value), -1)
     end
 
     def next_occurrence(now=Time.now)
       return self if !recurring? && @endtime >= now
       return nil if !recurring?
 
-      today = date_value(now)
-      previous_date = occurrence_date_on_or_before(today)
+      today = date_value(TimeZones.local(@timezone, now))
+      previous_date = occurrence_date_on_or_before(today - 1)
       previous = occurrence_on(previous_date) if previous_date != nil
       return previous if previous != nil && previous.endtime >= now
 
-      next_date = occurrence_date_on_or_after(today + 1)
-      occurrence_on(next_date) if next_date != nil
+      next_date = occurrence_date_on_or_after(today)
+      while next_date != nil
+        occurrence = occurrence_on(next_date)
+        return occurrence if occurrence.endtime >= now
+
+        next_date = occurrence_date_on_or_after(next_date + 1)
+      end
+      nil
     end
 
     private
 
     def time_value(value)
-      value.is_a?(Time) ? value : Time.at(value.to_i)
+      TimeZones.local(@timezone, value.is_a?(Time) ? value : Time.at(value.to_i))
     end
 
     def date_value(value)
       return value if value.is_a?(Date)
 
       Date.new(value.year, value.month, value.day)
+    end
+
+    def display_date(time)
+      date_value(@timezone != nil && !all_day_series? ? time.getlocal : time)
+    end
+
+    def source_dates(date)
+      return [date, date] if @timezone == nil || all_day_series?
+
+      [Time.local(date.year, date.month, date.day),
+       Time.local(date.year, date.month, date.day, 23, 59, 59)].map do |time|
+        date_value(TimeZones.local(@timezone, time))
+      end
+    end
+
+    def adjacent_event_date(target, direction)
+      if !recurring?
+        first, last = display_date(@starttime), display_date(@endtime)
+        return nil if target > last && direction > 0 || target < first && direction < 0
+
+        return direction > 0 ? [first, target].max : [last, target].min
+      end
+
+      first, last = source_dates(target)
+      cursor = direction > 0 ? first - 1 : last
+      loop do
+        candidate = direction > 0 ? occurrence_date_on_or_after(cursor) : occurrence_date_on_or_before(cursor)
+        return nil if candidate == nil
+
+        occurrence = occurrence_on(candidate)
+        if direction > 0
+          return [display_date(occurrence.starttime), target].max if display_date(occurrence.endtime) >= target
+        else
+          return [display_date(occurrence.endtime), target].min if display_date(occurrence.starttime) <= target
+        end
+        cursor = candidate + direction
+      end
     end
 
     def start_date
@@ -196,12 +253,27 @@ module EltenLink
     end
 
     def build_occurrence(date)
+      if @timezone != nil && all_day_series?
+        first = TimeZones.local_times(@timezone, date, resolve: true).first
+        last = TimeZones.local_times(@timezone, date, 23, 59, 59, resolve: true).last
+        return nil if date_value(first) != date || first < @starttime || last > @endtime
+
+        return CalendarEventOccurrence.new(self, first, last)
+      end
+
       start_seconds = seconds_since_midnight(@starttime)
       end_seconds = seconds_since_midnight(@endtime)
       occurrence_end_date = end_seconds < start_seconds ? date + 1 : date
-      occurrence_start = local_time(date, @starttime)
-      occurrence_end = local_time(occurrence_end_date, @endtime)
-      return nil if occurrence_start < @starttime || occurrence_end > @endtime
+      occurrence_start = date == start_date ? @starttime : local_time(date, @starttime)
+      shift = seconds_since_midnight(occurrence_start) - start_seconds
+      if shift > 0
+        shifted_end = Time.utc(occurrence_end_date.year, occurrence_end_date.month, occurrence_end_date.day,
+          @endtime.hour, @endtime.min, @endtime.sec) + shift
+        occurrence_end = local_time(date_value(shifted_end), shifted_end)
+      else
+        occurrence_end = occurrence_end_date == end_date ? @endtime : local_time(occurrence_end_date, @endtime)
+      end
+      return nil if date_value(occurrence_start) != date || occurrence_start < @starttime || occurrence_end > @endtime || occurrence_end < occurrence_start
 
       CalendarEventOccurrence.new(self, occurrence_start, occurrence_end)
     end
@@ -211,7 +283,7 @@ module EltenLink
     end
 
     def local_time(date, source)
-      Time.local(date.year, date.month, date.day, source.hour, source.min, source.sec)
+      TimeZones.local_times(@timezone, date, source.hour, source.min, source.sec, resolve: true).first
     end
 
     def interval_date_on_or_after(target)
@@ -278,14 +350,12 @@ module EltenLink
       @endtime = endtime
     end
 
-    [:id, :calendar_id, :author, :frequency, :name, :description, :public_calendar].each do |method|
+    [:id, :calendar_id, :author, :frequency, :name, :description, :public_calendar, :timezone].each do |method|
       define_method(method) { @series_event.public_send(method) }
     end
 
     def all_day?
-      @starttime.year == @endtime.year && @starttime.yday == @endtime.yday &&
-        @starttime.hour == 0 && @starttime.min == 0 && @starttime.sec == 0 &&
-        @endtime.hour == 23 && @endtime.min == 59 && @endtime.sec == 59
+      @starttime.year == @endtime.year && @starttime.yday == @endtime.yday && all_day_series?
     end
 
     def public_calendar?
@@ -388,7 +458,7 @@ module EltenLink
         data["events"].to_a.map { |row| event_from(row) }
       end
 
-      def create_event(client, calendar, name:, description: "", starttime:, endtime:, frequency: 0)
+      def create_event(client, calendar, name:, description: "", starttime:, endtime:, frequency: 0, timezone: nil)
         data = client.api_data(
           "POST",
           "/api/v1/calendars/#{calendar_id(calendar)}/events",
@@ -397,19 +467,21 @@ module EltenLink
             "description" => description,
             "starttime" => time_to_i(starttime),
             "endtime" => time_to_i(endtime),
-            "frequency" => frequency.to_i
+            "frequency" => frequency.to_i,
+            "timezone" => timezone
           }
         )
         data["id"].to_i
       end
 
-      def update_event(client, calendar, event, name: nil, description: nil, starttime: nil, endtime: nil, frequency: nil)
+      def update_event(client, calendar, event, name: nil, description: nil, starttime: nil, endtime: nil, frequency: nil, timezone: :unchanged)
         params = {}
         params["name"] = name if name != nil
         params["description"] = description if description != nil
         params["starttime"] = time_to_i(starttime) if starttime != nil
         params["endtime"] = time_to_i(endtime) if endtime != nil
         params["frequency"] = frequency.to_i if frequency != nil
+        params["timezone"] = timezone unless timezone == :unchanged
         client.api_data("PATCH", "/api/v1/calendars/#{calendar_id(calendar)}/events/#{event_id(event)}", params)
         true
       end
@@ -484,6 +556,7 @@ module EltenLink
           frequency: row["frequency"],
           name: row["name"],
           description: row["description"],
+          timezone: row["timezone"],
           public_calendar: truthy?(row["public"])
         )
       end

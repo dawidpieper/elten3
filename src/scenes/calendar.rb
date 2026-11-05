@@ -16,12 +16,14 @@ module CalendarSceneHelpers
   end
 
   def event_label(event, calendar=nil)
+    starttime = event.timezone == nil || event.all_day_series? ? event.starttime : event.starttime.getlocal
+    endtime = event.timezone == nil || event.all_day_series? ? event.endtime : event.endtime.getlocal
     range = if event.all_day?
               p_("Calendar", "All day")
-            elsif same_day?(event.starttime, event.endtime)
-              "#{format_date(event.starttime, false, false)}-#{sprintf("%02d:%02d", event.endtime.hour, event.endtime.min)}"
+            elsif same_day?(starttime, endtime)
+              "#{format_date(starttime, false, false)}-#{sprintf("%02d:%02d", endtime.hour, endtime.min)}"
             else
-              "#{format_date(event.starttime, false, false)} - #{format_date(event.endtime, false, false)}"
+              "#{format_date(starttime, false, false)} - #{format_date(endtime, false, false)}"
             end
     parts = [event.name.to_s, range]
     parts << calendar_event_recurrence_label(event) if event.recurring?
@@ -34,6 +36,12 @@ module CalendarSceneHelpers
     if event.recurring?
       series = calendar_event_series(event)
       text += "\r\n#{p_("Calendar", "Series range: %{start} - %{end}") % { start: format_date(series.starttime), end: format_date(series.endtime) }}"
+    end
+    if event.timezone != nil
+      text += "\r\n#{p_("Calendar", "Time zone")}: #{event.timezone}"
+      unless event.all_day_series?
+        text += "\r\n#{format_date(event.starttime, false, false)} - #{format_date(event.endtime, false, false)}"
+      end
     end
     text += "\r\n#{event.description}" if event.description.to_s != ""
     input_text(p_("Calendar", "Event details"), flags: EditBox::Flags::MultiLine | EditBox::Flags::ReadOnly, text: text, escapable: true)
@@ -68,6 +76,7 @@ module CalendarSceneHelpers
     custom_frequency = frequency_index == 4 ? event.frequency.to_s : "2"
     time_types = [p_("Calendar", "All-day event"), p_("Calendar", "Timed event")]
     time_type_index = event == nil || event.all_day_series? ? 0 : 1
+    timezone = event == nil ? EltenLink::TimeZones.system : event.timezone
     name = event == nil ? "" : event.name.to_s
     description = event == nil ? "" : event.description.to_s
 
@@ -80,6 +89,7 @@ module CalendarSceneHelpers
       btn_start = DateButton.new(p_("Calendar", "Start date"), (min_year..max_year), include_hour: false),
       btn_end = DateButton.new(p_("Calendar", "End date"), (min_year..max_year), include_hour: false),
       lst_time_type = ListBox.new(time_types, header: p_("Calendar", "Event time"), index: time_type_index),
+      btn_timezone = Button.new(""),
       lst_start_hour = ListBox.new(hours, header: p_("Calendar", "Start hour"), index: starttime.hour),
       lst_start_minute = ListBox.new(minutes, header: p_("Calendar", "Start minute"), index: starttime.min),
       lst_end_hour = ListBox.new(hours, header: p_("Calendar", "End hour"), index: endtime.hour),
@@ -90,6 +100,22 @@ module CalendarSceneHelpers
     btn_start.setdate(starttime.year, starttime.month, starttime.day, 0, 0, 0)
     btn_end.setdate(endtime.year, endtime.month, endtime.day, 0, 0, 0)
     form = Form.new(fields)
+    timezone_label = proc { btn_timezone.label = "#{p_("Calendar", "Time zone")}: #{timezone || p_("Calendar", "Not specified")}" }
+    timezone_label.call
+    btn_timezone.on(:press) do
+      timezone_date = btn_start.year.to_i > 0 ? Date.new(btn_start.year, btn_start.month, btn_start.day) : date
+      zones = EltenLink::TimeZones.identifiers.dup
+      zones << timezone if timezone != nil && !zones.include?(timezone)
+      choices = zones.map { |zone| [zone, EltenLink::TimeZones.label(zone, timezone_date)] }.sort_by { |_, label| label.downcase }
+      choices.unshift([nil, p_("Calendar", "Not specified")])
+      zones, labels = choices.transpose
+      selected = selector(labels, header: p_("Calendar", "Time zone"), start_index: zones.index(timezone) || 0, cancel_index: -1)
+      if selected >= 0
+        timezone = zones[selected]
+        timezone_label.call
+      end
+      btn_timezone.focus
+    end
     time_fields = [lst_start_hour, lst_start_minute, lst_end_hour, lst_end_minute]
     lst_frequency.on(:move) do
       lst_frequency.index == 4 ? form.show(edt_frequency) : form.hide(edt_frequency)
@@ -106,7 +132,7 @@ module CalendarSceneHelpers
       [edt_name.text.to_s, edt_description.text.to_s, lst_calendar.index, lst_frequency.index,
        edt_frequency.text.to_s, btn_start.year, btn_start.month, btn_start.day,
        btn_end.year, btn_end.month, btn_end.day, lst_time_type.index,
-       lst_start_hour.index, lst_start_minute.index, lst_end_hour.index, lst_end_minute.index]
+       lst_start_hour.index, lst_start_minute.index, lst_end_hour.index, lst_end_minute.index, timezone]
     end
     initial_state = current_state.call
     dialog_open
@@ -137,17 +163,27 @@ module CalendarSceneHelpers
           end
         end
         begin
+          start_date = Date.new(btn_start.year, btn_start.month, btn_start.day)
+          end_date = Date.new(btn_end.year, btn_end.month, btn_end.day)
           times = if lst_time_type.index == 0
                     [
-                      Time.local(btn_start.year, btn_start.month, btn_start.day, 0, 0, 0),
-                      Time.local(btn_end.year, btn_end.month, btn_end.day, 23, 59, 59)
+                      EltenLink::TimeZones.local_times(timezone, start_date, resolve: true).first,
+                      EltenLink::TimeZones.local_times(timezone, end_date, 23, 59, 59, resolve: true).last
                     ]
                   else
                     [
-                      Time.local(btn_start.year, btn_start.month, btn_start.day, lst_start_hour.index, lst_start_minute.index, 0),
-                      Time.local(btn_end.year, btn_end.month, btn_end.day, lst_end_hour.index, lst_end_minute.index, 0)
+                      calendar_event_time(timezone, start_date, lst_start_hour.index, lst_start_minute.index, event&.starttime),
+                      calendar_event_time(timezone, end_date, lst_end_hour.index, lst_end_minute.index, event&.endtime)
                     ]
                   end
+          next if times.any?(&:nil?)
+          if times[0].to_date != start_date || times[1].to_date != end_date
+            alert(p_("Calendar", "This date does not exist in the selected time zone. Choose another date."))
+            next
+          end
+        rescue TZInfo::PeriodNotFound
+          alert(p_("Calendar", "This time does not exist in the selected time zone because the clocks move forwards. Choose another time."))
+          next
         rescue ArgumentError
           alert(p_("Calendar", "Select a valid date and time range"))
           next
@@ -170,8 +206,26 @@ module CalendarSceneHelpers
       description: edt_description.text.to_s,
       starttime: times[0],
       endtime: times[1],
-      frequency: frequency
+      frequency: frequency,
+      timezone: timezone
     }
+  end
+
+  def calendar_event_time(timezone, date, hour, minute, previous=nil)
+    times = EltenLink::TimeZones.local_times(timezone, date, hour, minute)
+    return times.first if times.size == 1
+    return times.find { |time| time == previous } if times.include?(previous)
+
+    labels = times.map { |time| "#{time.strftime("%H:%M %Z")} (#{EltenLink::TimeZones.offset_label(time.utc_offset)})" }
+    selected = selector(
+      labels,
+      header: p_("Calendar", "%{time} occurs twice in this time zone. Choose which occurrence to use.") % {
+        time: "#{date} #{format("%02d:%02d", hour, minute)}"
+      },
+      cancel_index: -1,
+      flags: ListBox::Flags::AnyDir
+    )
+    times[selected] if selected >= 0
   end
 
   def can_manage_calendar_events?(calendar)
@@ -198,7 +252,8 @@ module CalendarSceneHelpers
         description: values[:description],
         starttime: values[:starttime],
         endtime: values[:endtime],
-        frequency: values[:frequency]
+        frequency: values[:frequency],
+        timezone: values[:timezone]
       )
       alert(p_("Calendar", "The event has been added"))
     else
@@ -210,7 +265,8 @@ module CalendarSceneHelpers
         description: values[:description],
         starttime: values[:starttime],
         endtime: values[:endtime],
-        frequency: values[:frequency]
+        frequency: values[:frequency],
+        timezone: values[:timezone]
       )
       alert(p_("Calendar", "The event has been updated"))
     end

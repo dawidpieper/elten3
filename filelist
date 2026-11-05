@@ -63,6 +63,7 @@ src/eltenlink/polls.rb
 src/eltenlink/messages.rb
 src/eltenlink/blog.rb
 src/eltenlink/notes.rb
+src/eltenlink/time_zones.rb
 src/eltenlink/calendars.rb
 src/eltenlink/tasks.rb
 src/eltenlink/forum_template.rb

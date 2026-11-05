@@ -64,6 +64,18 @@ module EltenSystemHelpers
       0
     end
 
+    def current_timezone
+      identifier = ENV["TZ"].to_s.delete_prefix(":")
+      return identifier unless identifier.empty? || identifier.start_with?("/")
+
+      path = identifier.empty? ? "/etc/localtime" : identifier
+      path = File.realpath(path) if File.exist?(path)
+      return path.split("/zoneinfo/", 2).last if path.include?("/zoneinfo/")
+      File.read("/etc/timezone").strip if File.file?("/etc/timezone")
+    rescue SystemCallError
+      nil
+    end
+
     def current_locale_name
       locale = LinuxSystemNative.current_locale_name
       locale = ENV["LANG"].to_s.split(".").first if locale.to_s == ""
