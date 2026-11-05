@@ -33,7 +33,7 @@ module EltenLink
 
       def info(client, attachment)
         key = attachment.to_s
-        return @info_cache[key] if @info_cache[key] != nil
+        return @info_cache[key] if @info_cache.key?(key)
 
         payload = client.api_payload("GET", "/api/v1/attachments/#{key.urlenc}")
         return nil unless payload.is_a?(Hash) && payload["success"]
@@ -42,6 +42,24 @@ module EltenLink
         @info_cache[key] = attachment_info
         @name_cache[key] = attachment_info.name
         attachment_info
+      end
+
+      def cache_infos(rows, ids: [])
+        infos = ids.to_h { |id| [id.to_s, nil] }
+        rows.each do |row|
+          key = row["id"].to_s
+          next if key.empty?
+
+          infos[key] = build_info(row, key)
+        end
+        infos.each do |key, info|
+          @info_cache[key] = info
+          if info == nil
+            @name_cache.delete(key)
+          else
+            @name_cache[key] = info.name
+          end
+        end
       end
 
       def send_file(client, file)

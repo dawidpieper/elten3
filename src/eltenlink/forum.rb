@@ -112,12 +112,14 @@ module EltenLink
 
       def thread(client, thread_id:)
         data = client.api_data("GET", "/api/v1/forum/#{thread_id.to_i}")
+        posts = data["posts"].to_a.map { |row| build_post(row) }
+        Attachments.cache_infos(data["attachments"], ids: posts.flat_map(&:attachments)) if data["attachments"].is_a?(Array)
         ForumThreadPage.new(
           time: data["time"].to_i,
           count: data["count"].to_i,
           read_posts: data["read_posts"].to_i,
           followed: truthy?(data["followed"]),
-          posts: data["posts"].to_a.map { |row| build_post(row) }
+          posts: posts
         )
       end
 
