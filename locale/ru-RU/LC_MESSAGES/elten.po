@@ -8,7 +8,7 @@ msgstr ""
 "Project-Id-Version: Elten 3.0\n"
 "Report-Msgid-Bugs-To: dawidpieper@o2.pl\n"
 "POT-Creation-Date: 2026-10-27 13:09+0100\n"
-"PO-Revision-Date: 2026-10-27 19:13+0300\n"
+"PO-Revision-Date: 2026-11-04 15:53+0300\n"
 "Last-Translator: Danil Kostenkov <danilkostenkov38@gmail.com>\n"
 "Language-Team: monstricek, russiandan2019\n"
 "Language: ru\n"
@@ -9111,7 +9111,7 @@ msgstr "Добавить опрос"
 #: src/scenes/forum.rb:3139 src/scenes/forum.rb:3887
 msgctxt "Forum"
 msgid "Attach a file"
-msgstr "Добавить файл"
+msgstr "Добавить вложение"
 
 #: src/scenes/forum.rb:3188
 msgctxt "Forum"
@@ -11327,7 +11327,7 @@ msgstr "Ваш ответ"
 #: src/scenes/messages.rb:655
 msgctxt "Messages"
 msgid "Compose"
-msgstr "Написать"
+msgstr "Записать"
 
 #: src/scenes/messages.rb:746 src/scenes/messages.rb:978
 msgctxt "Messages"
