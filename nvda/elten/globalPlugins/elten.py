@@ -244,6 +244,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if(speech.speakTypedCharacters==stc):
 			speech.speakTypedCharacters=ostc
 		time.sleep(0.1)
+		if(braille.handler!=None and braille.handler.buffer==eltenbraille):
+			braille.handler.buffer=braille.handler.mainBuffer
+			queueHandler.queueFunction(queueHandler.eventQueue,braille.handler.update)
 
 def elten_command(ac):
 	global eltenmod
