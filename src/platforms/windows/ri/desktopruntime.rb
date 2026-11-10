@@ -325,7 +325,9 @@ module EltenWindow
   GET_MESSAGE = Fiddle::Function.new(USER32["GetMessageW"], [PTR, HANDLE, INT, INT], INT, ABI)
   TRANSLATE_MESSAGE = Fiddle::Function.new(USER32["TranslateMessage"], [PTR], INT, ABI)
   DISPATCH_MESSAGE = Fiddle::Function.new(USER32["DispatchMessageW"], [PTR], HANDLE, ABI)
-  POST_MESSAGE = Fiddle::Function.new(USER32["PostMessageW"], [HANDLE, INT, HANDLE, HANDLE], INT, ABI)
+  # This non-blocking wake-up runs for every UI update. Releasing the GVL for
+  # such a short call can delay the UI thread behind a CPU-bound Ruby worker.
+  POST_MESSAGE = Fiddle::Function.new(USER32["PostMessageW"], [HANDLE, INT, HANDLE, HANDLE], INT, ABI, need_gvl: true)
   POST_THREAD_MESSAGE = Fiddle::Function.new(USER32["PostThreadMessageW"], [INT, INT, HANDLE, HANDLE], INT, ABI)
   DESTROY_WINDOW = Fiddle::Function.new(USER32["DestroyWindow"], [HANDLE], INT, ABI)
   DEF_WINDOW_PROC = Fiddle::Function.new(USER32["DefWindowProcW"], [HANDLE, INT, HANDLE, HANDLE], HANDLE, ABI)
@@ -336,14 +338,15 @@ module EltenWindow
   # release/reacquire stalls when a Ruby worker is CPU-bound.
   GET_FOREGROUND_WINDOW = Fiddle::Function.new(USER32["GetForegroundWindow"], [], HANDLE, ABI, need_gvl: true)
   GET_PARENT = Fiddle::Function.new(USER32["GetParent"], [HANDLE], HANDLE, ABI, need_gvl: true)
-  IS_ICONIC = Fiddle::Function.new(USER32["IsIconic"], [HANDLE], INT, ABI)
+  IS_ICONIC = Fiddle::Function.new(USER32["IsIconic"], [HANDLE], INT, ABI, need_gvl: true)
   GET_WINDOW_LONG = Fiddle::Function.new(USER32["GetWindowLongW"], [HANDLE, INT], INT, ABI)
   SET_WINDOW_LONG = Fiddle::Function.new(USER32["SetWindowLongW"], [HANDLE, INT, INT], INT, ABI)
   SET_FOREGROUND_WINDOW = Fiddle::Function.new(USER32["SetForegroundWindow"], [HANDLE], INT, ABI)
   SET_ACTIVE_WINDOW = Fiddle::Function.new(USER32["SetActiveWindow"], [HANDLE], HANDLE, ABI)
   SET_FOCUS = Fiddle::Function.new(USER32["SetFocus"], [HANDLE], HANDLE, ABI)
   MESSAGE_BOX = Fiddle::Function.new(USER32["MessageBoxW"], [HANDLE, PTR, PTR, INT], INT, ABI)
-  GET_KEYBOARD_STATE = Fiddle::Function.new(USER32["GetKeyboardState"], [PTR], INT, ABI)
+  # The window thread captures this snapshot for every input frame.
+  GET_KEYBOARD_STATE = Fiddle::Function.new(USER32["GetKeyboardState"], [PTR], INT, ABI, need_gvl: true)
   SET_KEYBOARD_STATE = Fiddle::Function.new(USER32["SetKeyboardState"], [PTR], INT, ABI)
   WINDOW_TITLE = "Elten"
   WS_CAPTION = 0x00C00000
@@ -1470,7 +1473,7 @@ module EltenTray
       user32 = Fiddle.dlopen("user32")
       @shell_notify_icon = Fiddle::Function.new(shell32["Shell_NotifyIconW"], [Fiddle::TYPE_INT, Fiddle::TYPE_VOIDP], Fiddle::TYPE_INT)
       @load_icon = Fiddle::Function.new(user32["LoadIconW"], [INTPTR, INTPTR], INTPTR)
-      @get_async_key_state = Fiddle::Function.new(user32["GetAsyncKeyState"], [Fiddle::TYPE_INT], Fiddle::TYPE_SHORT)
+      @get_async_key_state = Fiddle::Function.new(user32["GetAsyncKeyState"], [Fiddle::TYPE_INT], Fiddle::TYPE_SHORT, Fiddle::Function::DEFAULT, need_gvl: true)
     end
 
     def key_down?(key)
