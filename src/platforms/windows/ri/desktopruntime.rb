@@ -711,7 +711,8 @@ module EltenWindow
     def keyboard_state
       window_state_monitor.synchronize do
         @keyboard_state ||= ("\0" * 256)
-        normalize_altgr_keyboard_state(@keyboard_state.dup)
+        state = normalize_activation_suppressed_keyboard_state(@keyboard_state.dup)
+        normalize_altgr_keyboard_state(state)
       end
     end
 
@@ -724,6 +725,7 @@ module EltenWindow
       clear_native_keyboard_state
       window_state_monitor.synchronize do
         @keyboard_state = "\0" * 256
+        @activation_suppressed_keys = Array.new(256, false)
         clear_character_queue
         clear_key_events
       end
@@ -831,7 +833,8 @@ module EltenWindow
       window_state_monitor.synchronize do
         @keyboard_state ||= ("\0" * 256)
         @key_event_queue ||= []
-        state = normalize_altgr_keyboard_state(@keyboard_state.dup)
+        state = normalize_activation_suppressed_keyboard_state(@keyboard_state.dup)
+        state = normalize_altgr_keyboard_state(state)
         events = normalize_altgr_key_events(@key_event_queue)
         @key_event_queue = []
         clear_finished_altgr_character_input
@@ -987,6 +990,7 @@ module EltenWindow
         @activation_input_started_at = now
         @activation_ignore_min_until = nil
         @activation_ignore_max_until = nil
+        @activation_suppressed_keys = Array.new(256, false)
         clear_character_queue
         clear_key_events
         EltenKeyboard.clear_state
@@ -1032,6 +1036,9 @@ module EltenWindow
     def finish_activation_ignore(state = nil)
       window_state_monitor.synchronize do
         state ||= capture_keyboard_state_raw
+        # A key pressed before activation must stay hidden through key-up;
+        # otherwise its autorepeat can surface as a fresh press afterwards.
+        suppress_activation_keys_held_in(state)
         @keyboard_state = state
         EltenKeyboard.sync_physical_state
         clear_activation_guard
@@ -1281,8 +1288,15 @@ module EltenWindow
       press_state = capture_key_event_state if down
       window_state_monitor.synchronize do
         @key_message_down ||= Array.new(256, false)
+        @activation_suppressed_keys ||= Array.new(256, false)
+        if @activation_suppressed_keys[key] == true
+          @activation_suppressed_keys[key] = false if !down
+          @key_message_down[key] = false
+          next
+        end
         next if event == :repeat && @key_message_down[key] != true
         @key_message_down[key] = down
+        press_state = normalize_activation_suppressed_keyboard_state(press_state) if press_state != nil
         @right_alt_down = down if key == VK_MENU && extended_key_message?(lparam)
         if @altgr_character_input == true && altgr_modifier_key?(key)
           if down == false
@@ -1354,6 +1368,29 @@ module EltenWindow
       return state if @altgr_character_input != true
       [VK_CONTROL, VK_LCONTROL, VK_MENU].each do |key|
         state.setbyte(key, state.getbyte(key).to_i & 0x7f)
+      end
+      state
+    end
+
+    def suppress_activation_keys_held_in(state)
+      state = state.to_s.byteslice(0, 256).to_s.ljust(256, "\0")
+      @activation_suppressed_keys = Array.new(256, false)
+      for key in 0...256
+        @activation_suppressed_keys[key] = (state.getbyte(key).to_i & 0x80) != 0
+      end
+      true
+    end
+
+    def normalize_activation_suppressed_keyboard_state(state)
+      state = state.to_s.byteslice(0, 256).to_s.ljust(256, "\0")
+      return state if @activation_suppressed_keys == nil
+      for key in 0...256
+        next if @activation_suppressed_keys[key] != true
+        if (state.getbyte(key).to_i & 0x80) != 0
+          state.setbyte(key, state.getbyte(key).to_i & 0x7f)
+        else
+          @activation_suppressed_keys[key] = false
+        end
       end
       state
     end
