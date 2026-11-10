@@ -58,6 +58,18 @@ eltenpipein=None
 eltenpipeout=None
 eltenpipest=None
 
+def elten_close_pipes():
+	global eltenpipein
+	global eltenpipeout
+	global eltenpipest
+	for pipe in (eltenpipein, eltenpipeout, eltenpipest):
+		if(pipe is None): continue
+		try: pipe.close()
+		except: pass
+	eltenpipein=None
+	eltenpipeout=None
+	eltenpipest=None
+
 
 
 ostc = speech.speakTypedCharacters
@@ -92,7 +104,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					if(appModuleHandler.getAppModuleForNVDAObject(api.getForegroundObject())==eltenmod): time.sleep(0.001)
 					else: time.sleep(0.1)
 					str=eltenpipein.readline()
-					if(len(str)>0):
+					if(len(str)==0):
+						elten_close_pipes()
+						nvdapipeid=""
+					else:
 						if(is_python_3_or_above): str=str.decode("utf-8", errors="ignore")
 						j = json.loads(str)
 						id=j['id']
@@ -119,22 +134,23 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 							eltenpipest=open("\\\\.\\pipe\\"+nvdapipeid+"st", 'wb', 0)
 							eltenqueue['statuses'].append("connected")
 							if(is_python_3_or_above): 							eltenqueue['statuses'].append("cbckindexing")
+							wrongpipeid=""
 						except:
 							log.exception("Elten pipe")
+							elten_close_pipes()
 							wrongpipeid=pipeid
 							nvdapipeid=""
 							try: os.remove(nvdapipefile)
 							except: pass
 				elif(nvdapipeid!=""):
 					nvdapipeid=""
-					eltenpipein.close()
-					eltenpipeout.close()
-					eltenpipest.close()
-					eltenpipein=None
-					eltenpipeout=None
-					eltenpipest=None
+					elten_close_pipes()
 			except Exception as Argument:
 				log.exception("Elten: main thread")
+				elten_close_pipes()
+				nvdapipeid=""
+				time.sleep(0.05)
+		elten_close_pipes()
 
 	def elten_braille_thread(threadName=None):
 		global stopThreads
@@ -222,7 +238,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		thread.start_new_thread ( elten_queue_thread, ('elten_queue', ))
 
 	def terminate(self):
+		global stopThreads
 		stopThreads=True
+		elten_close_pipes()
 		time.sleep(0.1)
 
 def elten_command(ac):
