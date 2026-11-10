@@ -1006,18 +1006,23 @@ module EltenWindow
     end
 
     def acknowledge_activation_input
+      acknowledged_now = false
       delay = window_state_monitor.synchronize do
         return false if @activation_input_guard_active != true
         return true if @activation_input_acknowledged == true
         now = monotonic_time
+        started_at = @activation_input_started_at || now
         @activation_input_acknowledged = true
-        @activation_ignore_min_until = now + KEYBOARD_ACTIVATION_MIN_DELAY
-        @activation_ignore_max_until = now + KEYBOARD_ACTIVATION_MAX_DELAY
-        now - @activation_input_started_at.to_f
+        acknowledged_now = true
+        # A delayed UI acknowledgement must not start a fresh ignore window.
+        @activation_ignore_min_until = started_at + KEYBOARD_ACTIVATION_MIN_DELAY
+        @activation_ignore_max_until = started_at + KEYBOARD_ACTIVATION_MAX_DELAY
+        now - started_at
       end
       if delay >= ACTIVATION_ACK_WARNING_SECONDS && defined?(Log)
         Log.warning("Windows input activation waited %.3f seconds for UI acknowledgement" % delay)
       end
+      activation_input_blocked? if acknowledged_now
       true
     rescue Exception
       clear_activation_guard
