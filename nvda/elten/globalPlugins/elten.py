@@ -241,6 +241,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		global stopThreads
 		stopThreads=True
 		elten_close_pipes()
+		if(speech.speakTypedCharacters==stc):
+			speech.speakTypedCharacters=ostc
 		time.sleep(0.1)
 
 def elten_command(ac):
