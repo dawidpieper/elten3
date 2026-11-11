@@ -597,7 +597,11 @@ setvolume(volume)
 @thread=Thread.new{thread}
 end
 def set_mixer(mixer)
+return if @channel_mixer==mixer
+@mutex.synchronize {
+@channel_mixer=mixer
 Bass::BASS_Mixer_StreamAddChannel.call(mixer, @stream, 0)
+}
 end
 def setvolume(volume)
 if volume.is_a?(Array)
@@ -1005,7 +1009,11 @@ update_position
 @thread=Thread.new{thread}
 end
 def set_mixer(mixer)
+return if @target_mixer==mixer
+@mutex.synchronize {
+@target_mixer=mixer
 Bass::BASS_Mixer_StreamAddChannel.call(mixer, @stream, 0)
+}
 end
 def update_position
 @listener_x, @listener_y, @listener_dir = @position.x, @position.y, @position.dir
@@ -1435,7 +1443,11 @@ end
 @locally_muted = (mt==true)
 end
 def set_mixer(mixer)
+return if @target_mixer==mixer
+@mutex.synchronize {
+@target_mixer=mixer
 Bass::BASS_Mixer_StreamAddChannel.call(mixer, @listener, 0)
+}
 end
 def free
 @sources.each{|s|s.free}
