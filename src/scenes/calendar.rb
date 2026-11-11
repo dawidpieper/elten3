@@ -336,11 +336,10 @@ class Scene_Calendar
       $scene = Scene_Main.new
       return
     end
-    unless load_calendars
-      $scene = Scene_Main.new
+    unless load_calendars && load_events
+      $scene = @return_scene || Scene_Main.new
       return
     end
-    load_events
     @grid = CalendarGrid.new(date: @selected_date, header: calendar_grid_header) do |date|
       calendar_day_note(date)
     end
@@ -404,44 +403,44 @@ class Scene_Calendar
       end
     end
     menu.option(_("Refresh"), nil, "r") do
-      if load_calendars
-        load_events
-        @grid.focus
-      end
+      load_events if load_calendars
+      @grid.focus
     end
   end
 
   def load_calendars
-    @calendars = preview_mode? ? [@preview_calendar] : EltenLink::Calendars.list(elten_link)
-    if @calendars.empty?
+    calendars = preview_mode? ? [@preview_calendar] : EltenLink::Calendars.list(elten_link)
+    if calendars.empty?
       alert(p_("Calendar", "No calendars are available"))
       return false
     end
-    if @filter_calendar_id != nil && !@calendars.any? { |calendar| calendar.id == @filter_calendar_id }
+    @calendars = calendars
+    if @filter_calendar_id != nil && !calendars.any? { |calendar| calendar.id == @filter_calendar_id }
       @filter_calendar_id = nil
     end
     @grid.header = calendar_grid_header if @grid != nil
     true
   rescue EltenLink::Error => error
-    Log.warning("Calendar list failed: #{error.message}")
-    alert(_("Error"))
+    cancelled = error.code.to_s == "cancelled"
+    Log.warning("Calendar list failed: #{error.message}") unless cancelled
+    alert(_("Error")) unless cancelled
     false
   end
 
   def load_events
-    @all_events = if preview_mode?
-                    EltenLink::Calendars.events(elten_link, @preview_calendar)
-                  else
-                    EltenLink::Calendars.all_events(elten_link)
-                  end
-    mark_public_calendar_events(@all_events, @calendars)
+    events = if preview_mode?
+               EltenLink::Calendars.events(elten_link, @preview_calendar)
+             else
+               EltenLink::Calendars.all_events(elten_link)
+             end
+    mark_public_calendar_events(events, @calendars)
+    @all_events = events
     apply_event_filter
     true
   rescue EltenLink::Error => error
-    Log.warning("Calendar event list failed: #{error.message}")
-    @all_events = []
-    apply_event_filter
-    alert(_("Error"))
+    cancelled = error.code.to_s == "cancelled"
+    Log.warning("Calendar event list failed: #{error.message}") unless cancelled
+    alert(_("Error")) unless cancelled
     false
   end
 
@@ -1054,10 +1053,17 @@ class Scene_Calendar_Upcoming
     @return_scene = return_scene
   end
 
-  def main(index=0)
-    load_upcoming
-    @sel = ListBox.new(@events.map { |event| event_label(event, calendar_for(event)) }, header: p_("Calendar", "Upcoming events"), index: index, quiet: false)
-    @sel.bind_context { |menu| context(menu) }
+  def main
+    unless load_upcoming
+      return_to_calendar
+      return
+    end
+    if @events.empty?
+      alert(p_("Calendar", "no events"))
+      return_to_calendar
+      return
+    end
+    build_list
     loop do
       loop_update
       @sel.update
@@ -1066,13 +1072,22 @@ class Scene_Calendar_Upcoming
       end
       show_event_details(current_event, calendar_for(current_event)) if @sel.selected? && current_event != nil
       if @refresh
-        selected = @sel.index
         @refresh = false
-        main(selected)
-        return
+        refresh
       end
       break if $scene != self
     end
+  end
+
+  def build_list
+    @sel = ListBox.new(
+      @events.map { |event| event_label(event, calendar_for(event)) },
+      header: p_("Calendar", "Upcoming events"),
+      index: 0,
+      quiet: false,
+      keys: event_keys
+    )
+    @sel.bind_context { |menu| context(menu) }
   end
 
   def context(menu)
@@ -1092,28 +1107,49 @@ class Scene_Calendar_Upcoming
     menu.option(_("Refresh"), nil, "r") { @refresh = true }
   end
 
+  def refresh
+    return @sel.focus unless load_upcoming
+    if @events.empty?
+      alert(p_("Calendar", "no events"))
+      return_to_calendar
+      return
+    end
+    @sel.update_options(
+      @events.map { |event| event_label(event, calendar_for(event)) },
+      keys: event_keys
+    )
+    @sel.focus
+  end
+
   def load_upcoming
-    @calendars = preview_mode? ? [@preview_calendar] : EltenLink::Calendars.list(elten_link)
+    calendars = preview_mode? ? [@preview_calendar] : EltenLink::Calendars.list(elten_link)
     now = Time.now
     events = if preview_mode?
                EltenLink::Calendars.events(elten_link, @preview_calendar)
              else
                EltenLink::Calendars.all_events(elten_link)
              end
-    mark_public_calendar_events(events, @calendars)
+    mark_public_calendar_events(events, calendars)
     events.select! { |event| event.endtime.to_i >= now.to_i }
     if @return_filter_id == nil
       events.reject!(&:public_calendar?)
     else
       events.select! { |event| event.calendar_id == @return_filter_id }
     end
-    @events = events.filter_map { |event| event.next_occurrence(now) }
-    @events.sort_by! { |event| [event.starttime.to_i, event.endtime.to_i, event.id] }
+    upcoming_events = events.filter_map { |event| event.next_occurrence(now) }
+    upcoming_events.sort_by! { |event| [event.starttime.to_i, event.endtime.to_i, event.id] }
+    @calendars = calendars
+    @events = upcoming_events
+    true
   rescue EltenLink::Error => error
-    Log.warning("Upcoming calendars failed: #{error.message}")
-    @calendars = []
-    @events = []
-    alert(_("Error"))
+    cancelled = error.code.to_s == "cancelled"
+    Log.warning("Upcoming calendars failed: #{error.message}") unless cancelled
+    alert(_("Error")) unless cancelled
+    false
+  end
+
+  def event_keys
+    @events.map { |event| [event.calendar_id, event.id] }
   end
 
   def current_event
@@ -1128,5 +1164,9 @@ class Scene_Calendar_Upcoming
 
   def preview_mode?
     @preview_calendar != nil
+  end
+
+  def return_to_calendar
+    $scene = @return_scene || Scene_Calendar.new(@return_filter_id, @return_date)
   end
 end
