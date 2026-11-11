@@ -2124,13 +2124,6 @@ end
 end
 }
 }
-changed=false
-edt_title.on(:delete) {changed=true}
-edt_title.on(:insert) {changed=true}
-edt_post.on(:delete) {changed=true}
-edt_post.on(:insert) {changed=true}
-edt_excerpt.on(:delete) {changed=true}
-edt_excerpt.on(:insert) {changed=true}
 for i in 0...@categories.size
   lst_categories.selected[i] = true if @categories[i].id == @category
 end
@@ -2203,7 +2196,6 @@ ph = EltenLink::Client.absolute_api_url(ph)
           alert(p_("Blog", "The audio saved with this draft is no longer available on this device."))
         end
       end
-      changed = true if data["text"] != ""
     end
     @lasteditor=lst_editor.index
     lst_editor.on(:move) {
@@ -2365,7 +2357,8 @@ if suc
     audio_url = audio_source
   end
   content = nil
-  if changed || btn_audio.source_changed?
+  text_changed = @post==0 ? text.to_s!="" : text!=original_editor_state["text"]
+  if text_changed || btn_audio.source_changed?
     audio_content = audio_url == nil ? nil : %Q([audio src="#{audio_url}"][/audio])
     content = [text.to_s, audio_content].reject { |part| part.to_s.strip == "" }.join("\n\n")
   end
