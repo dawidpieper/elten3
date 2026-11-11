@@ -87,6 +87,30 @@ class WaitingUser
 attr_accessor :id, :name
 end
 
+class FrameQueue
+Limit = 512
+
+def initialize
+@frames={}
+@mutex=Mutex.new
+end
+
+def push(key, frame)
+@mutex.synchronize do
+@frames[key]=frame
+@frames.shift while @frames.size>Limit
+end
+end
+
+def pop_if_above(buffer_size)
+@mutex.synchronize do
+return nil if @frames.size<=buffer_size
+key=@frames.keys.min
+@frames.delete(key)
+end
+end
+end
+
 class Transmitter
 attr_reader :decoder, :stream
 attr_reader :listener_x, :listener_y, :transmitter_x, :transmitter_y
@@ -131,7 +155,7 @@ ch=2 if spatialization==1 || spatialization==2
 setvolume(volume)
 @sec=0
 @fsec=0
-@queue={}
+@queue=FrameQueue.new
 @starttime=Time.now.to_f
 @lasttime=Time.now.to_f
 @ogg_mutex=Mutex.new
@@ -290,7 +314,8 @@ if @thread!=nil && @thread.status!=false
 n=index
 n+=65535 if n<100
 if @lastindex<index || index<100
-@queue[n]=@lastqueue=[frame, type, x, y, index, frame_id]
+@lastqueue=[frame, type, x, y, index, frame_id]
+@queue.push(n, @lastqueue)
 @thread.wakeup
 @lastindex=index
 end
@@ -390,11 +415,10 @@ break if @closing
 ab=$conferencesaudiobuffer||0
 ab=0 if ab<0
 ab=400 if ab>400
-while @queue.size>ab && !@closing
-key=@queue.keys.sort.first
-ar = @queue[key]
+while !@closing
+ar = @queue.pop_if_above(ab)
+break if ar==nil
 frame, type, x, y, index, frame_id = ar
-@queue.delete(key)
 fid=frame_id
 fid+=60000 if fid>0 && fid<100 && last_frame_id>59000
 lostframes=0
@@ -589,7 +613,7 @@ ch=2 if spatialization==1 || spatialization==2
 setvolume(volume)
 @sec=0
 @fsec=0
-@queue={}
+@queue=FrameQueue.new
 @starttime=Time.now.to_f
 @lasttime=Time.now.to_f
 @ogg_mutex=Mutex.new
@@ -753,7 +777,8 @@ if @thread!=nil && @thread.status!=false
 n=index
 n+=65535 if n<100
 if @lastindex<index || index<100
-@queue[n]=@lastqueue=[frame, index, frame_id]
+@lastqueue=[frame, index, frame_id]
+@queue.push(n, @lastqueue)
 @thread.wakeup
 @lastindex=index
 end
@@ -855,11 +880,10 @@ break if @closing
 ab=$conferencesaudiobuffer||0
 ab=0 if ab<0
 ab=400 if ab>400
-while @queue.size>ab && !@closing
-key=@queue.keys.sort.first
-ar = @queue[key]
+while !@closing
+ar = @queue.pop_if_above(ab)
+break if ar==nil
 frame, index, frame_id = ar
-@queue.delete(key)
 fid=frame_id
 fid+=60000 if fid>0 && fid<100 && last_frame_id>59000
 lostframes=0
