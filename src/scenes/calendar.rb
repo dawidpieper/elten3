@@ -644,6 +644,8 @@ class Scene_Calendar_Management
           index = entries.index { |entry| calendar_for_entry(entry).id == target_id } ||
             [@sel.index, entries.size - 1].min
           build_list([index, 0].max)
+        else
+          @sel.focus
         end
       end
       break if $scene != self
@@ -695,12 +697,15 @@ class Scene_Calendar_Management
   end
 
   def load_management
-    @calendars = EltenLink::Calendars.list(elten_link)
-    @invitations = EltenLink::Calendars.invitations(elten_link)
+    calendars = EltenLink::Calendars.list(elten_link)
+    invitations = EltenLink::Calendars.invitations(elten_link)
+    @calendars = calendars
+    @invitations = invitations
     true
   rescue EltenLink::Error => error
-    Log.warning("Calendar management list failed: #{error.message}")
-    alert(_("Error"))
+    cancelled = error.code.to_s == "cancelled"
+    Log.warning("Calendar management list failed: #{error.message}") unless cancelled
+    alert(_("Error")) unless cancelled
     false
   end
 
@@ -921,6 +926,11 @@ class Scene_Calendar_Public
       return_to_management
       return
     end
+    if @all_calendars.empty?
+      alert(p_("Calendar", "No calendars are available"))
+      return_to_management
+      return
+    end
     build_list(@selected_calendar_id)
     loop do
       loop_update
@@ -935,13 +945,15 @@ class Scene_Calendar_Public
   end
 
   def load_public_calendars
-    @all_calendars = EltenLink::Calendars.list_public(elten_link)
-    @all_calendars.reject! { |calendar| @invitation_ids.include?(calendar.id) }
+    calendars = EltenLink::Calendars.list_public(elten_link)
+    calendars.reject! { |calendar| @invitation_ids.include?(calendar.id) }
+    @all_calendars = calendars
     apply_language_filter
     true
   rescue EltenLink::Error => error
-    Log.warning("Public calendar list failed: #{error.message}")
-    alert(_("Error"))
+    cancelled = error.code.to_s == "cancelled"
+    Log.warning("Public calendar list failed: #{error.message}") unless cancelled
+    alert(_("Error")) unless cancelled
     false
   end
 
@@ -987,7 +999,14 @@ class Scene_Calendar_Public
     end
     menu.option(_("Refresh"), nil, "r") do
       if load_public_calendars
-        build_list(calendar && calendar.id)
+        if @all_calendars.empty?
+          alert(p_("Calendar", "No calendars are available"))
+          return_to_management
+        else
+          build_list(calendar && calendar.id)
+        end
+      else
+        @sel.focus
       end
     end
   end

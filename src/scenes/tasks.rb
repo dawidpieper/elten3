@@ -473,6 +473,8 @@ class Scene_Tasks
         if load_tasks
           index = @tasks.index { |task| task.id == selected_id } || [@sel.index, @tasks.size - 1].min
           build_list([index, 0].max)
+        else
+          @sel.focus
         end
       end
       break if $scene != self
@@ -487,24 +489,27 @@ class Scene_Tasks
   end
 
   def load_tasks
-    @projects = EltenLink::Tasks.projects(elten_link)
-    @participants_by_project = EltenLink::Tasks.participants(elten_link)
-    if @filter_project_id != nil && !@projects.any? { |project| project.id == @filter_project_id }
-      @filter_project_id = nil
+    projects = EltenLink::Tasks.projects(elten_link)
+    participants_by_project = EltenLink::Tasks.participants(elten_link)
+    filter_project_id = @filter_project_id
+    if filter_project_id != nil && !projects.any? { |project| project.id == filter_project_id }
+      filter_project_id = nil
     end
-    @tasks = EltenLink::Tasks.list(
+    tasks = EltenLink::Tasks.list(
       elten_link,
-      project: @filter_project_id,
+      project: filter_project_id,
       parent: 0,
       status: @status
     )
+    @projects = projects
+    @participants_by_project = participants_by_project
+    @filter_project_id = filter_project_id
+    @tasks = tasks
     true
   rescue EltenLink::Error => error
-    Log.warning("Tasks list failed: #{error.message}")
-    @projects = []
-    @participants_by_project = {}
-    @tasks = []
-    alert(_("Error"))
+    cancelled = error.code.to_s == "cancelled"
+    Log.warning("Tasks list failed: #{error.message}") unless cancelled
+    alert(_("Error")) unless cancelled
     false
   end
 
