@@ -2271,7 +2271,10 @@ loop do
   @form.update
   if key_pressed?(:key_escape) or btn_cancel.pressed?
     if @draft ? @draft.close(detach: false) : (editor_state.call == original_editor_state || confirm(p_("Blog", "Are you sure you want to cancel creating this post?")))
-      break if @draft && @draft.last_close_action == :saved
+      if @draft && @draft.last_close_action == :saved
+        alert(p_("Blog", "The draft has been saved. To continue editing it, open the new post editor for this blog again."))
+        break
+      end
       break if btn_audio.delete_audio==true
   end
   end
