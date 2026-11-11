@@ -1816,6 +1816,7 @@ class Scene_WelcomeWizard
   end
 
   def apply_social_changes
+    followed_feed_users = @state[:follow_feed_users].to_a
     @state[:follow_blog_ids].to_a.each do |blog_id|
       suggestion = @blog_suggestions.find { |item| item.blog.id.to_s == blog_id.to_s }
       blog_name = suggestion == nil ? blog_id.to_s : suggestion.blog.name.to_s
@@ -1824,7 +1825,7 @@ class Scene_WelcomeWizard
         true
       end
     end
-    @state[:follow_feed_users].to_a.each do |user|
+    followed_feed_users.each do |user|
       perform(p_("WelcomeWizard", "Follow %{user} on the feed") % { user: user }) do
         EltenLink::Feeds.follow(elten_link, user, follow: true)
         true
@@ -1837,7 +1838,11 @@ class Scene_WelcomeWizard
         true
       end
     end
-    Session.feeds_clear if (@state[:follow_feed_users] || @state[:feed_greeting]) && Session.respond_to?(:feeds_clear)
+    if followed_feed_users.any? || @state[:feed_greeting]
+      NotificationService.reset_feeds if defined?(NotificationService)
+      EltenAPI::InvisibleInterface.reset_feeds if defined?(EltenAPI::InvisibleInterface)
+      Session.feeds_clear if Session.respond_to?(:feeds_clear)
+    end
   end
 
   def apply_program_changes
