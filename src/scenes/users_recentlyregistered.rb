@@ -6,18 +6,17 @@
 
 class Scene_Users_RecentlyRegistered
   def main
-    begin
-      onl = EltenLink::Users.recently_registered(elten_link, limit: 50)
-    rescue EltenLink::Error => e
-      Log.warning("Recently registered users list failed: #{e.message}")
-      onl = []
-      alert(_("Error"))
+    onl = load_users
+    return return_to_main if onl == nil
+    if onl.empty?
+      alert(p_("Users_RecentlyRegistered", "No recently registered users were found."))
+      return return_to_main
     end
             selt = []
     for i in 0..onl.size - 1
       selt[i] = user_with_status(onl[i])
       end
-    @sel = ListBox.new(selt,header: p_("Users_RecentlyRegistered", "Recently registered users"), index: 0, flags: 0, quiet: false)
+    @sel = ListBox.new(selt,header: p_("Users_RecentlyRegistered", "Recently registered users"), index: 0, flags: 0, quiet: false, keys: onl)
             apply_user_status_states(@sel, onl)
             @onl = onl
             @sel.bind_context{|menu|context(menu)}
@@ -28,17 +27,42 @@ loop_update
         $scene = Scene_Main.new
         break
       end
-      if key_pressed?(:key_enter)
+      if key_pressed?(:key_enter) and @onl.size > 0
                 usermenu(@onl[@sel.index],false)
         end
       break if $scene != self
       end
     end
     def context(menu)
-menu.useroption(@onl[@sel.index])
+menu.useroption(@onl[@sel.index]) if @onl.size > 0
 menu.option(_("Refresh"), nil, "r") {
-initialize
-main
+refresh
 }
 end
+
+  def load_users
+    EltenLink::Users.recently_registered(elten_link, limit: 50)
+  rescue EltenLink::Error => e
+    cancelled = e.code.to_s == "cancelled"
+    Log.warning("Recently registered users list failed: #{e.message}") unless cancelled
+    alert(_("Error")) unless cancelled
+    nil
+  end
+
+  def refresh
+    users = load_users
+    return @sel.focus if users == nil
+    if users.empty?
+      alert(p_("Users_RecentlyRegistered", "No recently registered users were found."))
+      return @sel.focus
+    end
+    @onl = users
+    @sel.update_options(@onl.map { |user| user_with_status(user) }, keys: @onl)
+    apply_user_status_states(@sel, @onl)
+    @sel.focus
+  end
+
+  def return_to_main
+    $scene = Scene_Main.new
+  end
 end

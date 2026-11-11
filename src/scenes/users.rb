@@ -6,33 +6,17 @@
 
 class Scene_Users
   def main
-    begin
-      usr = EltenLink::Users.list(elten_link)
-      err = 0
-    rescue EltenLink::Error => e
-      Log.warning("Users list failed: #{e.message}")
-      usr = []
-      err = e.code.to_i
-    end
-    case err
-    when -1
-      alert(_("Database Error"))
-      $scene = Scene_Main.new
-      return
-      when -2
-        alert(_("Token expired"))
-        $scene = Scene_Main.new
-        return
-        when -3
-          alert(_("You do not have permission to do this"))
-          $scene = Scene_Main.new
-          return
+    usr = load_users
+    return return_to_main if usr == nil
+    if usr.empty?
+      alert(p_("Users", "No users were found."))
+      return return_to_main
     end
         selt = []
     for i in 0..usr.size - 1
       selt[i] = user_with_status(usr[i])
       end
-    @sel = ListBox.new(selt,header: p_("Users", "List of users"), index: 0, flags: 0, quiet: false)
+    @sel = ListBox.new(selt,header: p_("Users", "List of users"), index: 0, flags: 0, quiet: false, keys: usr)
     apply_user_status_states(@sel, usr)
         @usr = usr
     @sel.bind_context{|menu|context(menu)}
@@ -43,16 +27,52 @@ loop_update
         $scene = Scene_Main.new
         break
       end
-      if key_pressed?(:key_enter)
+      if key_pressed?(:key_enter) and @usr.size > 0
                 usermenu(@usr[@sel.index],false)
                         end
       break if $scene != self
       end
     end
     def context(menu)
-menu.useroption(@usr[@sel.index])
+menu.useroption(@usr[@sel.index]) if @usr.size > 0
 menu.option(_("Refresh"), nil, "r") {
-main
+refresh
 }
 end
+
+  def load_users
+    EltenLink::Users.list(elten_link)
+  rescue EltenLink::Error => e
+    cancelled = e.code.to_s == "cancelled"
+    Log.warning("Users list failed: #{e.message}") unless cancelled
+    return nil if cancelled
+    case e.code.to_i
+    when -1
+      alert(_("Database Error"))
+    when -2
+      alert(_("Token expired"))
+    when -3
+      alert(_("You do not have permission to do this"))
+    else
+      alert(_("Error"))
+    end
+    nil
+  end
+
+  def refresh
+    users = load_users
+    return @sel.focus if users == nil
+    if users.empty?
+      alert(p_("Users", "No users were found."))
+      return @sel.focus
+    end
+    @usr = users
+    @sel.update_options(@usr.map { |user| user_with_status(user) }, keys: @usr)
+    apply_user_status_states(@sel, @usr)
+    @sel.focus
+  end
+
+  def return_to_main
+    $scene = Scene_Main.new
+  end
 end

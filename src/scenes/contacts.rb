@@ -18,9 +18,13 @@ class Scene_Contacts
         @contact = EltenLink::Contacts.list(elten_link, birthday: @type == 1)
         err = 0
       rescue EltenLink::Error => e
+        if e.code.to_s == "cancelled"
+          $scene = Scene_Main.new
+          return
+        end
         Log.warning("Contacts list failed: #{e.message}")
-        @contact = []
         err = e.code.to_i
+        err = :other if err == 0
       end
     case err
     when -1
@@ -31,10 +35,22 @@ class Scene_Contacts
         alert(_("Token expired"))
         $scene = Scene_Loading.new
         return
+      when :other
+        alert(_("Error"))
+        $scene = Scene_Main.new
+        return
+      else
+        if err != 0
+          alert(_("Error"))
+          $scene = Scene_Main.new
+          return
+        end
       end
       if @contact.size < 1
         alert(p_("Contacts", "Empty list"))
-              end
+        $scene = Scene_Main.new
+        return
+      end
       selt = []
       for i in 0..@contact.size - 1
         selt[i] = user_with_status(@contact[i])

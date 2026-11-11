@@ -6,19 +6,18 @@
 
 class Scene_Online
   def main
-    begin
-      @onl = EltenLink::Users.online(elten_link)
-    rescue EltenLink::Error => e
-      Log.warning("Online list failed: #{e.message}")
-      @onl = []
-      alert(_("Error"))
+    @onl = load_users
+    return return_to_main if @onl == nil
+    if @onl.empty?
+      alert(p_("Online", "No users are currently online."))
+      return return_to_main
     end
                 selt = []
     for u in @onl
       selt.push(user_with_status(u, false))
     end
     cnt=@onl.size
-    @sel = ListBox.new(selt,header: (np_("Online", "%{count} user online", "%{count} users online", cnt))%{:count=>cnt}, index: 0, flags: 0, quiet: false)
+    @sel = ListBox.new(selt,header: (np_("Online", "%{count} user online", "%{count} users online", cnt))%{:count=>cnt}, index: 0, flags: 0, quiet: false, keys: @onl)
     apply_user_status_states(@sel, @onl, false)
     @sel.bind_context {|menu|context(menu)}
             loop do
@@ -28,7 +27,7 @@ loop_update
         $scene = Scene_Main.new
         break
       end
-      if key_pressed?(:key_enter)
+      if key_pressed?(:key_enter) and @onl.size > 0
                 usermenu(@onl[@sel.index],false)
         end
       if key_pressed?(:key_tab) and @onl.size > 0
@@ -38,10 +37,36 @@ loop_update
       end
     end
     def context(menu)
-menu.useroption(@onl[@sel.index])
+menu.useroption(@onl[@sel.index]) if @onl.size > 0
 menu.option(_("Refresh"), nil, "r") {
-            initialize
-  main
+  refresh
 }
 end
+
+  def load_users
+    EltenLink::Users.online(elten_link)
+  rescue EltenLink::Error => e
+    cancelled = e.code.to_s == "cancelled"
+    Log.warning("Online list failed: #{e.message}") unless cancelled
+    alert(_("Error")) unless cancelled
+    nil
+  end
+
+  def refresh
+    users = load_users
+    return @sel.focus if users == nil
+    if users.empty?
+      alert(p_("Online", "No users are currently online."))
+      return @sel.focus
+    end
+    @onl = users
+    @sel.update_options(@onl.map { |user| user_with_status(user, false) }, keys: @onl)
+    @sel.header = np_("Online", "%{count} user online", "%{count} users online", @onl.size) % { count: @onl.size }
+    apply_user_status_states(@sel, @onl, false)
+    @sel.focus
+  end
+
+  def return_to_main
+    $scene = Scene_Main.new
+  end
 end

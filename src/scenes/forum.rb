@@ -415,7 +415,7 @@ return forumsmain(@preparam)
         if @preparam == -3
           @grpindex[0] = @groups.size + 2
           @grpsetindex = @query.id if @query.is_a?(Struct_Forum_Group)
-          usequery
+          return $scene = (@return_scene || Scene_Main.new) unless usequery
         end
         threadsmain(@preparam)
       end
@@ -457,10 +457,16 @@ end
   def groupsmain(type = -1)
     type = (@lastlist || 0) if type == -1
     ll = @lastlist
+    previous_cat = @cat
     @lastlist = type
     index = 0
     @cat = type
-    groupsload(type, ll)
+    if groupsload(type, ll) == false
+      @lastlist = ll
+      @cat = previous_cat
+      @grpsel.focus if @grpsel != nil
+      return
+    end
     loop do
       loop_update
       @grpsel.update
@@ -722,7 +728,8 @@ end
       end
       grpselh = [nil, p_("Forum", "Administrator"), nil, p_("Forum", "Forums"), p_("Forum", "Threads"), p_("Forum", "posts"), p_("Forum", "Unread")]
     when 8 #Popular
-      grp = forum_fetch([], nil) { EltenLink::Forum.popular_groups(elten_link, threads: @threads) }
+      grp = forum_fetch(nil, nil) { EltenLink::Forum.popular_groups(elten_link, threads: @threads) }
+      return false if grp == nil
       @sgroups = []
         for l in grp
           g = nil
@@ -809,8 +816,8 @@ return result
     elsif index == @grpheadindex + @sgroups.size + 12
       @query = searcher_getquery
             if @query != nil
-        usequery
-        return threadsmain(-3)
+        return threadsmain(-3) if usequery
+        @grpsel.focus
       end
     else
       g = @sgroups[index - @grpheadindex]
@@ -818,8 +825,7 @@ return result
       if g.role == 1 or g.role == 2 or g.public
         if allThreads
           @query = g
-          usequery
-          threadsmain(-3)
+          threadsmain(-3) if usequery
         else
            forumsmain(g.id) if g.role == 1 or g.role == 2 or g.public
          end
@@ -896,8 +902,7 @@ return result
         menu.option(p_("Forum", "Search"), nil, "f") {
         @query=searcher_getquery(@sgroups[@grpsel.index - @grpheadindex])
         if @query != nil
-        usequery
-        threadsmain(-3)
+        threadsmain(-3) if usequery
       else
         @grpsel.focus
       end
@@ -938,30 +943,30 @@ return result
           t = Time.at(g.created)
           s += p_("Forum", "Founded on") + ": " + format_date(t, true) + "\n"
         end
-        acs = forum_fetch([], nil) { EltenLink::Forum.group_most_active_members(elten_link, group_id: g.id) }
+        acs = forum_fetch(nil, nil) { EltenLink::Forum.group_most_active_members(elten_link, group_id: g.id) }
+        next if acs == nil
         s += p_("Forum", "The most active members") + ": " + acs.map { |x| x.to_s.delete("\r\n") }.join(", ") + "\n" if acs.size > 0
         s += "\r\n\n"
         group_size = forum_fetch(nil, nil) { EltenLink::Forum.group_size(elten_link, group_id: g.id) }
-        if group_size != nil
-          s += p_("Forum", "Group size") + "\n"
-          {
-            p_("Forum", "Audio posts") => group_size.audio,
-            p_("Forum", "Attachments") => group_size.attachments,
-            p_("Forum", "Text") => group_size.text,
-            p_("Forum", "Overall size") => group_size.total
-          }.each do |label, size|
-            a = size.to_i
-            if a > 0
-              s += label + ": "
-              if a >= 1048576
-                s += ((a / 1048576.0 * 10.0).round / 10.0).to_s + "MB"
-              elsif a < 1048576 and a >= 1024
-                s += ((a / 1024.0 * 10.0).round / 10.0).to_s + "kB"
-              else
-                s += a.to_s + "B"
-              end
-              s += "\n"
+        next if group_size == nil
+        s += p_("Forum", "Group size") + "\n"
+        {
+          p_("Forum", "Audio posts") => group_size.audio,
+          p_("Forum", "Attachments") => group_size.attachments,
+          p_("Forum", "Text") => group_size.text,
+          p_("Forum", "Overall size") => group_size.total
+        }.each do |label, size|
+          a = size.to_i
+          if a > 0
+            s += label + ": "
+            if a >= 1048576
+              s += ((a / 1048576.0 * 10.0).round / 10.0).to_s + "MB"
+            elsif a < 1048576 and a >= 1024
+              s += ((a / 1024.0 * 10.0).round / 10.0).to_s + "kB"
+            else
+              s += a.to_s + "B"
             end
+            s += "\n"
           end
         end
         s += "\n\n" + g.description if g.description != nil && g.description != ""
@@ -1276,7 +1281,9 @@ end
               selh=[nil, p_("Forum", "Reported by"), p_("Forum", "Thread"), p_("Forum", "Reported at"), p_("Forum", "Status"), p_("Forum", "Comment"), p_("Forum", "Suggested action")]
               sel = TableBox.new(selh, [], index: 0, header: p_("Forum", "Reported posts"))
               rfr=Proc.new {
-              all_reports=forum_fetch([], nil) { EltenLink::Forum.group_reports(elten_link, group_id: group.id) }
+              loaded_reports=forum_fetch(nil, nil) { EltenLink::Forum.group_reports(elten_link, group_id: group.id) }
+                            next false if loaded_reports == nil
+                            all_reports=loaded_reports
                             reports=all_reports.dup
                             reports=all_reports.select{|r|!r.solved} if all==false
                             selt = reports.map{|r|
@@ -1290,8 +1297,9 @@ end
                             sel.reload
                             sel.clear_row_states
                             reports.each_with_index{|report,i|sel.set_row_state(i, forum_solved_status) if report.solved}
+                            true
 }
-                          rfr.call
+                          return unless rfr.call
                           if initial_report_id.to_i>0
                             if reports.none?{|report|report.id==initial_report_id.to_i} && all_reports.any?{|report|report.id==initial_report_id.to_i}
                               all=true
@@ -1601,7 +1609,9 @@ rfr.call
 sel = TableBox.new([nil, p_("Forum", "Action"), p_("Forum", "Group"), p_("Forum", "Forum"), p_("Forum", "Thread"), p_("Forum", "New group"), p_("Forum", "New forum"), p_("Forum", "New thread"), p_("Forum", "Old status"), p_("Forum", "New status"), p_("Forum", "Time")], [], index: 0, header: p_("Forum", "Log"))
 log=[]
                rfr = Proc.new {
-log = forum_fetch([], nil) { EltenLink::Forum.group_log(elten_link, group_id: group.id) }
+loaded_log = forum_fetch(nil, nil) { EltenLink::Forum.group_log(elten_link, group_id: group.id) }
+next false if loaded_log == nil
+log = loaded_log
   selt = log.map{|e|
 user=e.user
 action=e.action
@@ -1669,8 +1679,9 @@ begin
   }
   }
   sel.reload
+  true
 }
-rfr.call
+return unless rfr.call
 sel.focus
 loop do
   loop_update
@@ -1687,7 +1698,8 @@ loop do
       inherits=[]
       bantimes=[]
 rfr=Proc.new {
-      members = forum_fetch([], nil) { EltenLink::Forum.group_members(elten_link, group_id: group.id) }
+      members = forum_fetch(nil, nil) { EltenLink::Forum.group_members(elten_link, group_id: group.id) }
+      next false if members == nil
       selt = []
       users = []
       roles = []
@@ -1718,8 +1730,9 @@ rfr=Proc.new {
       end
       sel.options=selt
       apply_user_status_states(sel, users)
+      true
 }
-rfr.call
+return unless rfr.call
 sel.focus
 chpr=Proc.new{|cat|
               if forum_attempt(nil) {
@@ -1993,8 +2006,11 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
   def open_forum_search(scope=nil, fallback_control=nil)
     @query=searcher_getquery(scope)
     if @query != nil
-      usequery
-      threadsmain(-3)
+      if usequery
+        threadsmain(-3)
+      elsif fallback_control != nil
+        fallback_control.focus
+      end
     elsif fallback_control != nil
       fallback_control.focus
     end
@@ -2098,6 +2114,7 @@ end
 def forumtagsedit(forum)
   return if forum.group.role!=2
   tags = forumtags(forum)
+  return if tags == nil
   selt=[]
   for t in tags
     selt.push(t[1]+": "+t[2..-1].join(", "))
@@ -2199,7 +2216,9 @@ form.focus
     end
   
   def forumtags(forum)
-    forum_fetch([], nil) { EltenLink::Forum.list_forum_tags(elten_link, forumid: forum.id) }.map { |tag|
+    tags = forum_fetch(nil, nil) { EltenLink::Forum.list_forum_tags(elten_link, forumid: forum.id) }
+    return nil if tags == nil
+    tags.map { |tag|
       [tag.id, tag.label] + tag.taglist.split(",")
     }
     end
@@ -2861,8 +2880,9 @@ threadopen(@thrsel.index)
         }
         if @sthreads[@thrsel.index].offered==0
         m.option(p_("Forum", "Offer this thread to another group"), nil, "o") {
-        users=[]
-forum_fetch([], nil) { EltenLink::Forum.group_members(elten_link, group_id: @sthreads[@thrsel.index].forum.group.id) }.each { |member| users.push(member.user) }
+        members=forum_fetch(nil, nil) { EltenLink::Forum.group_members(elten_link, group_id: @sthreads[@thrsel.index].forum.group.id) }
+        next if members == nil
+        users=members.map { |member| member.user }
         dgroups=[]
         for g in @groups
           dgroups.push(g) if g.role>0 and users.include?(g.founder) and g.id!=@sthreads[@thrsel.index].forum.group.id
@@ -3054,8 +3074,9 @@ when :move
               form.resume
               end
 when :offer
-          users=[]
-forum_fetch([], nil) { EltenLink::Forum.group_members(elten_link, group_id: @sthreads[@thrsel.index].forum.group.id) }.each { |member| users.push(member.user) }
+        members=forum_fetch(nil, nil) { EltenLink::Forum.group_members(elten_link, group_id: @sthreads[@thrsel.index].forum.group.id) }
+        next if members == nil
+        users=members.map { |member| member.user }
         dgroups=[]
         for g in @groups
           dgroups.push(g) if g.role>0 and users.include?(g.founder) and g.id!=@sthreads[@thrsel.index].forum.group.id
@@ -3457,7 +3478,8 @@ if flp[0..3] != "OggS"
         ids=[]
         @results = []
     if @query != "" and @query.is_a?(String)
-      sr = forum_fetch([], nil) { EltenLink::Forum.search(elten_link, query: @query) }
+      sr = forum_fetch(nil, nil) { EltenLink::Forum.search(elten_link, query: @query) }
+      return false if sr == nil
         for result in sr
             thread = @threads.find{|t|t.id==result.thread}
             @results.push(thread.id) if thread!=nil
@@ -3468,11 +3490,13 @@ if flp[0..3] != "OggS"
               scoped_threads = @query.threadids.each_with_object({}) { |threadid, result| result[threadid.to_i] = true }
             end
             if @query.phrase_in.include?(:content)
-      sr = forum_fetch([], nil) { EltenLink::Forum.search(elten_link, query: @query.phrase, transcriptions: @query.transcriptions) }
+      sr = forum_fetch(nil, nil) { EltenLink::Forum.search(elten_link, query: @query.phrase, transcriptions: @query.transcriptions) }
+      return false if sr == nil
       ids += sr.map(&:thread)
     end
     if @query.phrase_in.include?(:author)
-      sr = forum_fetch([], nil) { EltenLink::Forum.search(elten_link, query: @query.phrase, type: "author") }
+      sr = forum_fetch(nil, nil) { EltenLink::Forum.search(elten_link, query: @query.phrase, type: "author") }
+      return false if sr == nil
       ids += sr.map(&:thread)
     end
       phr=@query.phrase.downcase
@@ -3501,6 +3525,7 @@ if flp[0..3] != "OggS"
     else
       @threads.each { |t| @results.push(t.id) }
     end
+    true
   end
 end
 
@@ -4133,7 +4158,12 @@ end
 }
 end
 menu.option(p_("Forum", "Show post likes"), nil, "K") {
-users=forum_fetch([], nil) { EltenLink::Forum.post_likes(elten_link, post_id: post.id) }
+users=forum_fetch(nil, nil) { EltenLink::Forum.post_likes(elten_link, post_id: post.id) }
+next @form.focus if users == nil
+if users.empty?
+  alert(p_("Forum", "Nobody likes this post yet."))
+  next @form.focus
+end
 lst=ListBox.new(users, header: p_("Forum", "Users who like this post"), index: 0, flags: 0, quiet: false)
 loop do
  loop_update
@@ -4933,7 +4963,8 @@ form.wait
   
   def showbookmarks
     loop_update
-    bookmarks=forum_fetch([], nil) { EltenLink::Forum.list_bookmarks(elten_link, thread_id: @thread) }
+    bookmarks=forum_fetch(nil, nil) { EltenLink::Forum.list_bookmarks(elten_link, thread_id: @thread) }
+    return @form.focus if bookmarks == nil
     for b in bookmarks
       for i in 0...@posts.size
         b.postnum=i if @posts[i].id==b.post
