@@ -436,16 +436,17 @@ if form.fields[2]!=nil and form.fields[2].pressed?
     EltenLink::Messages.save_group(elten_link, name: form.fields[0].text, users: users, group_id: (c == nil ? nil : c.user), addusers: addusers)
   rescue EltenLink::Error
     alert(_("Error"))
+    form.focus
   else
     if c==nil
     alert(p_("Messages", "Conversation has been created"))
   else
     alert(p_("Messages", "Conversation has been modified"))
     end
-  end
   speech_wait
   load_users
   break
+  end
   end
     end
     loop_update
