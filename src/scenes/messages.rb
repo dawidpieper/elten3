@@ -483,7 +483,7 @@ if form.fields[2]!=nil and form.fields[2].pressed?
       end
     end
   def load_conversations(user,sp=nil,limit=@conversations_limit||20)
-    same_scope=user==@conversations_user && sp==@conversations_sp
+    same_scope=sp==@conversations_sp && (sp!=nil || user==@conversations_user)
     lastconversation=nil
     lastconversation=@conversations[@sel_conversations.index] if same_scope && @conversations.is_a?(Array) && @sel_conversations.is_a?(ListBox)
     if sp==nil
@@ -544,7 +544,7 @@ conversations=result.conversations
     @sel_conversations.update
     if key_pressed?(:key_enter) or key_pressed?(:key_right)
       if @sel_conversations.index<@conversations.size
-        @cat=2 if load_messages(@conversations_user||@conversations[@sel_conversations.index].lastuser,@conversations[@sel_conversations.index].subject,@conversations_sp)
+        @cat=2 if load_messages(conversation_user(@conversations[@sel_conversations.index]),@conversations[@sel_conversations.index].subject,@conversations_sp)
     else
       previous_index=@sel_conversations.index
       @sel_conversations.index-=1
@@ -573,11 +573,13 @@ conversations=result.conversations
     end
 def context_conversations(menu)
   if @conversations.size >0 and @sel_conversations.index<@conversations.size
+conversation=@conversations[@sel_conversations.index]
+user=conversation_user(conversation)
 menu.option(p_("Messages", "Reply in thread"), nil, "o") {
-  $scene = Scene_Messages_New.new(@user,"RE: "+@conversations[@sel_conversations.index].subject,"",export)
+  $scene = Scene_Messages_New.new(user,"RE: "+conversation.subject,"",export)
 }
 menu.option(p_("Messages", "Delete conversation"), nil, :del) {
-  deleteconversation(@conversations[@sel_conversations.index])
+  deleteconversation(conversation,user)
 }
 end
 if @conversations_sp!="new"
@@ -586,15 +588,18 @@ $scene = Scene_Messages_New.new(@user,"","",export)
 }
 end
 menu.option(_("Refresh"), nil, "r") {
-@sel_conversations.focus unless load_conversations(@user)
+@sel_conversations.focus unless load_conversations(@conversations_user||"",@conversations_sp,@conversations_limit||20)
 }
 end
-def deleteconversation(c)
-  return if @user==nil
-                         return if @user[0..0]=="["
-  confirm(p_("Messages", "Are you sure you want to delete the conversation %{conversationname} with %{user}?")%{:conversationname=>c.subject, :user=>@user}) do
+def conversation_user(conversation)
+  @conversations_user||conversation.lastuser
+end
+def deleteconversation(c,user=@user)
+  return if user==nil
+                         return if user[0..0]=="["
+  confirm(p_("Messages", "Are you sure you want to delete the conversation %{conversationname} with %{user}?")%{:conversationname=>c.subject, :user=>user}) do
     begin
-      EltenLink::Messages.delete_conversation(elten_link, user: @user, subject: c.subject)
+      EltenLink::Messages.delete_conversation(elten_link, user: user, subject: c.subject)
     rescue EltenLink::Error
       alert(_("Error"))
             return
