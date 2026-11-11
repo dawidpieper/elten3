@@ -2603,25 +2603,21 @@ if @transmitters[userid]!=nil
 @transmitters[userid].put(message, type, pos_x, pos_y, frame_id, index)
 end
 elsif type==2
+return if @transmitters[userid]==nil
 if p1==0
 cmessage=message
-if @transmitters[userid]!=nil
 cmessage = @transmitters[userid].chat_temp + message if @transmitters[userid].chat_temp!=nil
 @transmitters[userid].chat_temp=""
-end
 c = ChatMessage.new(userid, @transmitters[userid].username, cmessage)
 @chat.push(c)
-if @transmitters[userid]!=nil
 @fullsave_chat.write("#{Time.now.strftime("%Y-%m-%d %H:%M:%S")},#{userid},#{@transmitters[userid].username},\"#{cmessage.gsub("\\","\\\\").gsub("\"","\\\"")}\"\n") if @fullsave_chat!=nil
 @text_hooks.each{|h|h.call(@transmitters[userid].username, userid, cmessage)}
-end
 elsif p1==1
-if @transmitters[userid]!=nil
 @transmitters[userid].chat_temp||=""
 @transmitters[userid].chat_temp+=message
 end
-end
 elsif type==3
+return if @transmitters[userid]==nil
 if @whisper_sound!=nil
 Bass::BASS_ChannelSetAttribute.call(@whisper_sound, 2, ($volume/100.0)) if $volume!=nil
 Bass::BASS_ChannelPlay.call(@whisper_sound,0)
@@ -2630,6 +2626,7 @@ pos_x=@position.x
 pos_y=@position.y
 @transmitters[userid].put(message, type, pos_x, pos_y, 0, index)
 elsif type==4
+return if @transmitters[userid]==nil
 if @whisper_sound!=nil
 Bass::BASS_ChannelSetAttribute.call(@whisper_sound, 2, ($volume/100.0)) if $volume!=nil
 Bass::BASS_ChannelPlay.call(@whisper_sound,0)
