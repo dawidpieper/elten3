@@ -2219,14 +2219,17 @@ module Programs
 
     def initialize_program_class(cls)
       return if !cls.is_a?(Class)
+      runtime = runtime_for(cls)
       Thread.new do
         begin
-          cls.init
-          user_menu = cls.respond_to?(:user_menu_options) ? cls.user_menu_options : {}
-          if user_menu.is_a?(Hash) && !user_menu.empty?
-            $usermenuextra = {} if $usermenuextra == nil
-            user_menu.each do |key, value|
-              $usermenuextra[key] = [cls] + Array(value)
+          with_runtime(runtime) do
+            cls.init
+            user_menu = cls.respond_to?(:user_menu_options) ? cls.user_menu_options : {}
+            if user_menu.is_a?(Hash) && !user_menu.empty?
+              $usermenuextra = {} if $usermenuextra == nil
+              user_menu.each do |key, value|
+                $usermenuextra[key] = [cls] + Array(value)
+              end
             end
           end
         rescue Exception => e
