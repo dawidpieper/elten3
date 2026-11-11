@@ -1136,9 +1136,14 @@ def audiolimit
                  if (key_pressed?(:key_enter) or key_pressed?(:key_space)) and ((@form.index == 4 or @form.index == 8) or (key_held?(0x11) == true and key_pressed?(:key_enter)))
                        receiver = @form.fields[0].text if @form.fields[0]!=nil
                        receiver=@receiver if @form.fields[0]==nil
+                        if @form.fields[0]!=nil
                        receiver.sub!("@elten.me","")
-                       receiver=finduser(receiver) if receiver.include?("@")==false and finduser(receiver).upcase==receiver.upcase
-                       if (user_exists(receiver) == false or @form.index == 8 and (/^[a-zA-Z0-9.\-_\+]+@[a-zA-Z0-9\-.]+\.[a-zA-Z]{2,4}$/=~receiver)==nil) and @form.fields[0]!=nil
+                        if receiver.include?("@")==false
+                          found_receiver=finduser(receiver)
+                          receiver=found_receiver if found_receiver.upcase==receiver.upcase
+                        end
+                        end
+                        if @form.fields[0]!=nil and (user_exists(receiver) == false or @form.index == 8 and (/^[a-zA-Z0-9.\-_\+]+@[a-zA-Z0-9\-.]+\.[a-zA-Z]{2,4}$/=~receiver)==nil)
                          alert(p_("Messages", "The recipient cannot be found."))
                        elsif (/^[a-zA-Z0-9.\-_\+]+@[a-zA-Z0-9\-.]+\.[a-zA-Z]{2,4}$/=~receiver)!=nil
                          if confirm(p_("Messages", "Do you want to send this message as e-mail?"))
