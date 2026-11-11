@@ -166,8 +166,8 @@ module EltenAPI
         true
       end
 
-      def sent
-        discard(detach: false)
+      def sent(show_error: true)
+        discard(detach: false, show_error: show_error)
       end
 
       def detach
@@ -268,7 +268,7 @@ module EltenAPI
         true
       end
 
-      def discard(detach: true)
+      def discard(detach: true, show_error: true)
         @waiting = true
         finish_pending(true)
         targets = @known.select { |_, known| known }.keys
@@ -282,7 +282,7 @@ module EltenAPI
             true
           end
           unless finish_pending(true)
-            alert(p_("Drafts", "The draft could not be deleted."))
+            alert(p_("Drafts", "The draft could not be deleted.")) if show_error
             return false
           end
         end
@@ -290,7 +290,8 @@ module EltenAPI
         self.detach if detach
         true
       rescue StandardError => error
-        report_error(error, true)
+        Log.warning("Cannot delete draft: #{error.class}: #{error.message}")
+        alert(p_("Drafts", "The draft could not be deleted.")) if show_error
         false
       ensure
         @waiting = false

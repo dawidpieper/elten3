@@ -2044,8 +2044,8 @@ class Scene_Blog_PostEditor
     audio_draft_path=EltenPath.join(audio_directory, "audioblogpost-#{audio_draft_key}.opus")
     begin
     bt = EltenLink::Blog.categories(elten_link, blog: @owner)
-    rescue EltenLink::Error
-      alert(_("Error"))
+    rescue EltenLink::Error => error
+      show_publish_error(p_("Blog", "The post editor could not load categories. Details: %{error}"), error)
       speech_wait
       return $scene=Scene_Main.new
     end
@@ -2058,8 +2058,8 @@ class Scene_Blog_PostEditor
     end
         begin
         bt = EltenLink::Blog.tags_list(elten_link, blog: @owner)
-    rescue EltenLink::Error
-      alert(_("Error"))
+    rescue EltenLink::Error => error
+      show_publish_error(p_("Blog", "The post editor could not load tags. Details: %{error}"), error)
       speech_wait
       return $scene=Scene_Main.new
     end
@@ -2089,6 +2089,10 @@ lst_tags.bind_context{|menu|
 menu.option(p_("Blog", "Add tag to this post"), nil, "n") {
 tagname=input_text(p_("Blog", "Tag to add"), flags: 0, text: "", escapable: true)
 if tagname!=nil
+tagname=tagname.strip
+if tagname==""
+  alert(p_("Blog", "Enter a tag name."))
+else
 tagindex=-1
 for i in 0...@tags.size
   if @tags[i].name.downcase==tagname.downcase
@@ -2100,8 +2104,9 @@ if tagindex==-1 and confirm(p_("Blog", "This tag does not exist. Do you want to 
   tagid=-1
   begin
     tagid=EltenLink::Blog.tag_create(elten_link, blog: @owner, name: tagname).to_i
-  rescue EltenLink::Error
-    tagid=-1
+    alert(p_("Blog", "The tag could not be created because the server returned an invalid identifier.")) if tagid<=0
+  rescue EltenLink::Error => error
+    show_publish_error(p_("Blog", "The tag could not be created. Details: %{error}"), error)
   end
   if tagid>0
     @tags.push(Struct_Blog_Tag.new(tagid))
@@ -2115,6 +2120,7 @@ if tagindex>=0
   lst_tags.index=tagindex
   lst_tags.focus
   end
+end
 end
 }
 }
@@ -2131,8 +2137,8 @@ end
 if @post>0
   begin
   bt=EltenLink::Blog.post_details(elten_link, blog: @owner, post_id: @post)
-  rescue EltenLink::Error
-    alert(_("Error"))
+  rescue EltenLink::Error => error
+    show_publish_error(p_("Blog", "The post could not be loaded for editing. Details: %{error}"), error)
       speech_wait
       return $scene=Scene_Main.new
     end
@@ -2236,6 +2242,23 @@ else
  @form.hide(btn_scheduledate) 
 end
 }
+editor_state = proc {
+  {
+    "title" => edt_title.text,
+    "text" => lst_editor.index == 0 ? edt_post.text_html : edt_post.text,
+    "editor" => lst_editor.index,
+    "excerpt" => edt_excerpt.text,
+    "categories" => @categories.each_with_index.select { |_, index| lst_categories.selected[index] }.map { |category, _| category.id },
+    "tags" => @tags.each_with_index.select { |_, index| lst_tags.selected[index] }.map { |tag, _| tag.id },
+    "private" => lst_visibility.index,
+    "comments" => chk_comments.checked,
+    "schedule" => chk_schedule.checked,
+    "date" => [btn_scheduledate.year, btn_scheduledate.month, btn_scheduledate.day, btn_scheduledate.hour, btn_scheduledate.min, btn_scheduledate.sec],
+    "audio_source" => btn_audio.source,
+    "audio_changed" => btn_audio.source_changed?
+  }
+}
+original_editor_state = editor_state.call
 loop do
   loop_update
   #if btn_audio.empty?
@@ -2247,7 +2270,7 @@ loop do
     #end
   @form.update
   if key_pressed?(:key_escape) or btn_cancel.pressed?
-    if @draft ? @draft.close(detach: false) : (!(changed || btn_audio.source_changed?) || confirm(p_("Blog", "Are you sure you want to cancel creating this post?")))
+    if @draft ? @draft.close(detach: false) : (editor_state.call == original_editor_state || confirm(p_("Blog", "Are you sure you want to cancel creating this post?")))
       break if @draft && @draft.last_close_action == :saved
       break if btn_audio.delete_audio==true
   end
@@ -2291,9 +2314,9 @@ if suc
   date_value=Time.now.to_i if date_value==nil && resetdate
   excerpt = nil
   excerpt = edt_excerpt.text if edt_excerpt.text!="" || @post>0
-  audio_url = nil
+  audio_url = btn_audio.uploaded_source
   audio_source = btn_audio.source
-  if audio_source != nil && btn_audio.source_needs_upload?
+  if audio_source != nil && audio_url == nil && btn_audio.source_needs_upload?
     begin
       audio=btn_audio.get_recording_file(true)
       raise IOError, "Audio encoder did not return a file" if audio==nil
@@ -2321,6 +2344,7 @@ if suc
         btn_audio.focus
         next
       end
+      btn_audio.mark_uploaded_source(audio_url)
     rescue EltenLink::Error => error
       show_publish_error(p_("Blog", "The audio could not be uploaded. Details: %{error}"), error)
       @draft&.autosave
@@ -2334,7 +2358,7 @@ if suc
       btn_audio.focus
       next
     end
-  elsif audio_source != nil
+  elsif audio_source != nil && audio_url == nil
     audio_url = audio_source
   end
   content = nil
@@ -2357,8 +2381,12 @@ if suc
     @draft&.autosave
     next
   end
-        @draft.sent if @draft
-        alert(p_("Blog", "The post has been published."))
+        draft_deleted = @draft == nil || @draft.sent(show_error: false)
+        if draft_deleted
+          alert(p_("Blog", "The post has been published."))
+        else
+          alert(p_("Blog", "The post has been published, but its saved draft could not be deleted. If the old draft appears again, discard it instead of publishing it a second time."))
+        end
         btn_audio.delete_audio(true)
         break
       end

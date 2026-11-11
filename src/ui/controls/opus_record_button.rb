@@ -29,6 +29,7 @@ super(label)
     @status = 0
     @source_changed = false
     @source_needs_upload = false
+    @uploaded_source = nil
     @current_filename=@filename
     @form = Form.new([
     @btn_record = Button.new(p_("EAPI_Form", "record")),
@@ -53,6 +54,7 @@ super(label)
           @current_filename = @filename
     @source_changed = true
     @source_needs_upload = true
+    @uploaded_source = nil
     play_sound("recording_start")
     @status = 1
     @recorder = Recorder.opus_recording(@filename, @bitrate, @framesize, @application, @usevbr, @timelimit)
@@ -161,6 +163,7 @@ delete_audio
         @status=0
         @source_changed = true
         @source_needs_upload = false
+        @uploaded_source = nil
                 return true
       else
         return false
@@ -405,6 +408,7 @@ btn_save.on(:press) {
 @tags = tgs
 @source_changed = true
 @source_needs_upload = true
+@uploaded_source = nil
 alert(_("Saved"))
 form.resume
 }
@@ -433,6 +437,14 @@ form.resume
       def source_needs_upload?
         @status==2 && @source_needs_upload == true
       end
+      def uploaded_source
+        @status==2 ? @uploaded_source : nil
+      end
+      def mark_uploaded_source(file)
+        return if @status!=2
+        @uploaded_source = file
+        @source_needs_upload = false
+      end
       def source_duration
         return nil if @status!=2
         sound=nil
@@ -451,6 +463,7 @@ form.resume
         @current_filename = file
         @source_changed = changed
         @source_needs_upload = needs_upload
+        @uploaded_source = (!needs_upload && (file[0..4]=="http:" || file[0..5]=="https:")) ? file : nil
         @form.show(@btn_tags) if holds_premiumpackage("audiophile")
         @form.show(@btn_play)
         if file[0..4]=="http:" or file[0..5]=="https:"
