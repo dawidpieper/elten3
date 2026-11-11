@@ -1105,7 +1105,7 @@ until @closing
 if (sz=Bass::BASS_ChannelGetData.call(@source_mixer, buf, fsize))>0
 queue += buf.byteslice(0...sz)
 end
-while queue.size>fsize
+while queue.size>=fsize
 frame=queue.byteslice(0...fsize)
 queue=queue.byteslice(fsize..-1)
 update_position if @listener_x!=@position.x || @listener_y!=@position.y || @listener_dir != @position.dir
@@ -3291,7 +3291,7 @@ sf=@speexdsp_framesize if @speexdsp_framesize!=nil and @speexdsp_framesize>0
 sf*=48*2*2
 if $useechocancellation!=nil && $useechocancellation>0
 if (sz=Bass::BASS_ChannelGetData.call(@processor_mixer, buf, bufsize))>0
-audiobuf<<buf.byteslice(0..sz)
+audiobuf<<buf.byteslice(0...sz)
 audiobuf=audiobuf.byteslice(-sf..-1) if audiobuf.bytesize>sf
 @lastframe_mutex.synchronize {
 @lastframe=audiobuf
