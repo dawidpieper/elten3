@@ -40,12 +40,16 @@ module EltenAPI
 @redo=[]
 @undo=[]
 @formats=[]
-@@lastedits.push(self) if (@flags&Flags::MultiLine)>0 && (@flags&Flags::ReadOnly)==0
-@@lastedits.delete_at(0) while @@lastedits.size>20
+remember_last_edit(self) if (@flags&Flags::MultiLine)>0 && (@flags&Flags::ReadOnly)==0
 @permitted_characters=[]
 @denied_characters=[]
 focus if quiet==false
 end
+    def remember_last_edit(edit)
+      @@lastedits.push(edit)
+      @@lastedits.delete_at(0) while @@lastedits.size>20
+    end
+    private :remember_last_edit
     def idle_update_frame?
 return false if !keyboard_input_idle?
 return false if @audioplayer!=nil || (@audiotext!=nil && @audiotext!="") || @audiostream!=nil
@@ -600,7 +604,7 @@ eredo
     next if e==self
     t=(e.header+": "+e.text)[0...200]
     m.option(t, e) {|e|
-    @@lastedits.push(self.deep_dup) if @text!=""
+    remember_last_edit(self.deep_dup) if @text!=""
     set_text(e.text)
     }
     end
