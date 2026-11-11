@@ -1000,6 +1000,8 @@ def audiolimit
     end
      
      class Scene_Messages_New
+       EMAIL_RECIPIENT_PATTERN = /\A[^\s@]+@[^\s@]+\.[^\s@]+\z/.freeze
+
        def initialize(receiver="",subject="",text="",scene=false,cursor_at_start: false, draft_subjectless: false)
          @receiver = receiver
          @subject = subject
@@ -1142,16 +1144,19 @@ def audiolimit
                  if (key_pressed?(:key_enter) or key_pressed?(:key_space)) and ((@form.index == 4 or @form.index == 8) or (key_held?(0x11) == true and key_pressed?(:key_enter)))
                        receiver = @form.fields[0].text if @form.fields[0]!=nil
                        receiver=@receiver if @form.fields[0]==nil
+                       email_recipient=false
                         if @form.fields[0]!=nil
+                        receiver=receiver.to_s.strip
                         receiver.sub!(/@elten\.me\z/i,"")
-                        if receiver.include?("@")==false
+                        email_recipient=email_recipient?(receiver)
+                        if !email_recipient && receiver!=""
                           found_receiver=finduser(receiver)
                           receiver=found_receiver if found_receiver.upcase==receiver.upcase
                         end
                         end
-                        if @form.fields[0]!=nil and (user_exists(receiver) == false or @form.index == 8 and (/^[a-zA-Z0-9.\-_\+]+@[a-zA-Z0-9\-.]+\.[a-zA-Z]{2,4}$/=~receiver)==nil)
+                        if @form.fields[0]!=nil && !email_recipient && (receiver=="" || !user_exists(receiver))
                          alert(p_("Messages", "The recipient cannot be found."))
-                       elsif (/^[a-zA-Z0-9.\-_\+]+@[a-zA-Z0-9\-.]+\.[a-zA-Z]{2,4}$/=~receiver)!=nil
+                       elsif email_recipient
                          if confirm(p_("Messages", "Do you want to send this message as e-mail?"))
                            subject = @form.fields[1].text
                        text = @form.fields[2].text if @form.fields[2]!=nil
@@ -1223,6 +1228,9 @@ end
          @draft&.detach
        end
              private
+def email_recipient?(receiver)
+  EMAIL_RECIPIENT_PATTERN.match?(receiver.to_s)
+end
 def message_send_error(error)
   case error.code.to_s
   when "users.not_found", "messages.receiver_not_found"
