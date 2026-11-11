@@ -578,7 +578,7 @@ def self.begin_fullsave(dir)
 end
 def self.end_save
   safe {@@core.end_save if @@core!=nil}
-  @@saving=false
+  @@saving=safe(false) {@@core!=nil && @@core.saving?}
 end
 def self.set_device(dev)
   safe {@@core.set_device(dev) if @@core!=nil}

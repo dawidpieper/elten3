@@ -1491,6 +1491,7 @@ Bass.record_prepare
 @muted=false
 @stream_mutex = Mutex.new
 @saver_mutex=Mutex.new
+@fullsave_mutex=Mutex.new
 @lastframe_mutex=Mutex.new
 @saver_file=nil
 @saver_filename=nil
@@ -1593,12 +1594,14 @@ def begin_fullsave(dir)
 Dir.mkdir(dir) if !FileTest.exist?(dir)
 Dir.mkdir(dir+"/transmitters") if !FileTest.exist?(dir+"/transmitters")
 Dir.mkdir(dir+"/streams") if !FileTest.exist?(dir+"/streams")
+@fullsave_mutex.synchronize {
 @fullsave_dir=dir
 @fullsave_time=Time.now.to_f
 @fullsave_chat = File.open(dir+"/chat.csv", "wb")
 @fullsave_chat.write("time,transmitter,username,message\n")
 @fullsave_chat.write("#{Time.now.strftime("%Y-%m-%d %H:%M:%S")},0,,\"Begin of save\"\n")
 @fullsave_myrec=$vorbisrecorderinit.call(unicode(dir+"/myrec.ogg"), 48000, 2, 500000)
+}
 for t in @transmitters.keys
 @transmitters[t].begin_save(dir, t, @fullsave_time)
 end
@@ -1633,13 +1636,19 @@ end
 def end_save
 log(-1, "Conference: ending save")
 return if !saving?
+fullsave=false
+@fullsave_mutex.synchronize {
+fullsave=@fullsave_dir!=nil
+@fullsave_dir=nil
+@fullsave_time=nil
 if @fullsave_chat!=nil
 @fullsave_chat.close
 @fullsave_chat=nil
 end
-if @fullsave_dir!=nil
-@fullsave_dir=nil
-@fullsave_time=nil
+$vorbisrecorderclose.call(@fullsave_myrec) if @fullsave_myrec!=nil
+@fullsave_myrec=nil
+}
+if fullsave
 for t in @transmitters.values
 t.end_save
 end
@@ -1692,8 +1701,6 @@ $vorbisrecorderclose.call(@saver_file)
 }
 end
 end
-$vorbisrecorderclose.call(@fullsave_myrec) if @fullsave_myrec!=nil
-@fullsave_myrec=nil
 end
 def addg_card(cardid, listen=false)
 log(-1, "Conference: mixing card #{cardid}")
@@ -2616,7 +2623,9 @@ cmessage = @transmitters[userid].chat_temp + message if @transmitters[userid].ch
 @transmitters[userid].chat_temp=""
 c = ChatMessage.new(userid, @transmitters[userid].username, cmessage)
 @chat.push(c)
+@fullsave_mutex.synchronize {
 @fullsave_chat.write("#{Time.now.strftime("%Y-%m-%d %H:%M:%S")},#{userid},#{@transmitters[userid].username},\"#{cmessage.gsub("\\","\\\\").gsub("\"","\\\"")}\"\n") if @fullsave_chat!=nil
+}
 @text_hooks.each{|h|h.call(@transmitters[userid].username, userid, cmessage)}
 elsif p1==1
 @transmitters[userid].chat_temp||=""
@@ -2690,7 +2699,9 @@ if @transmitters[userid]!=nil
 end
 elsif type==101
 if @transmitters[userid]!=nil
+@fullsave_mutex.synchronize {
 @fullsave_chat.write("#{Time.now.strftime("%Y-%m-%d %H:%M:%S")},#{userid},#{@transmitters[userid].username},\"Dice roll: #{p2}\"\n") if @fullsave_chat!=nil
+}
 @diceroll_hooks.each{|h|h.call(@transmitters[userid].username, userid, p2, p1)}
 end
 end
@@ -3035,15 +3046,17 @@ vorqueued<<frame.b
 Bass::BASS_StreamPutData.call(@recordstream, frame, frame.bytesize)
 end
 end
-if @fullsave_myrec!=nil
-if vorqueued.bytesize>=48000*2*2
-fr = vorqueued.unpack("s"*(vorqueued.bytesize/2)).map{|s|s/32768.0}.pack("f"*(vorqueued.bytesize/2))
-$vorbisrecordproc.call(0, fr, fr.bytesize, @fullsave_myrec)
-vorqueued="".b
-end
-else
-vorqueued="".b
-end
+@fullsave_mutex.synchronize {
+  if @fullsave_myrec!=nil
+    if vorqueued.bytesize>=48000*2*2
+      fr = vorqueued.unpack("s"*(vorqueued.bytesize/2)).map{|s|s/32768.0}.pack("f"*(vorqueued.bytesize/2))
+      $vorbisrecordproc.call(0, fr, fr.bytesize, @fullsave_myrec)
+      vorqueued="".b
+    end
+  else
+    vorqueued="".b
+  end
+}
 reset if sz>96000
 end
 end
