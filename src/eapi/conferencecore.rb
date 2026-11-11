@@ -2792,15 +2792,19 @@ return if @closing
 @position.mutex.synchronize {
 @encoder_mutex.synchronize {
 if params['channel'].is_a?(Hash)
-if @chid!=params['channel']['id']
+channel_changed=@chid!=params['channel']['id']
+if channel_changed
 @chid=params['channel']['id']
 @position.x=0
 @position.y=0
 end
-@encoder.free if @encoder!=nil
 app=:voip
 app=:audio if params['channel']['codec_application']==1
+encoder_changed=channel_changed || @encoder==nil || @encoder.ch!=params['channel']['channels'] || @encoder.app!=app
+if encoder_changed
+@encoder.free if @encoder!=nil
 @encoder = Opus::Encoder.new(48000, params['channel']['channels'], app)
+end
 case params['channel']['vbr_type']
 when 0
 @encoder.vbr=0
@@ -2812,12 +2816,16 @@ else
 @encoder.vbr=1
 @encoder.cvbr=0
 end
-@fec_enabled=params['channel']['fec']==true
+fec_enabled=params['channel']['fec']==true
+fec_changed=@fec_enabled!=fec_enabled
+@fec_enabled=fec_enabled
+if encoder_changed || fec_changed
 @fec_loss=0.0
 @fec_last_update=Time.now.to_f
 @encoder.packetloss=0
-@encoder.prediction_disabled=true if params['channel']['prediction_disabled']==true
-@encoder.inband_fec=true if @fec_enabled
+end
+@encoder.prediction_disabled=params['channel']['prediction_disabled']==true
+@encoder.inband_fec=@fec_enabled
 @encoder.bitrate=params['channel']['bitrate']*1000
 @sltime=params['channel']['framesize']/1000.0
 @sltime=0.01 if @sltime<0.01
@@ -2890,7 +2898,7 @@ if @transmitters.include?(uid)
 if params['channel']['spatialization']==2
 @transmitters[uid].move_absolute(x,y)
 end
-@transmitters[uid].reset
+@transmitters[uid].reset if channel_changed
 if @transmitters[uid].speech_requested==false && u['speech_requested']==true
 @speaker_hooks.each{|h|h.call(2, u['name'], u['id'])} if params['channel']['administrators'].is_a?(Array) && params['channel']['administrators'].include?(@username)
 end
