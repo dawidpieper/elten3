@@ -5,18 +5,14 @@ module EltenLink
   AttachmentInfo = Struct.new(:id, :name, :size, :url, :uploadtime, :uploader, keyword_init: true)
 
   module Attachments
-    @name_cache = {}
+    CacheLimit = 1024
     @info_cache = {}
+    @cache_mutex = Mutex.new
 
     class << self
       def names(client, attachments, names: [])
         return names if names != nil && names.size > 0
         attachments.dup.each do |attachment|
-          key = attachment.to_s
-          if @name_cache[key] != nil
-            names.push(@name_cache[key])
-            next
-          end
           attachment_info = info(client, attachment)
           if attachment_info == nil
             attachments.delete(attachment)
@@ -33,15 +29,14 @@ module EltenLink
 
       def info(client, attachment)
         key = attachment.to_s
-        return @info_cache[key] if @info_cache.key?(key)
+        cached, attachment_info = cached_info(key)
+        return attachment_info if cached
 
         payload = client.api_payload("GET", "/api/v1/attachments/#{key.urlenc}")
         return nil unless payload.is_a?(Hash) && payload["success"]
 
         attachment_info = build_info(payload["data"], key)
-        @info_cache[key] = attachment_info
-        @name_cache[key] = attachment_info.name
-        attachment_info
+        store_info(key, attachment_info)
       end
 
       def cache_infos(rows, ids: [])
@@ -52,14 +47,8 @@ module EltenLink
 
           infos[key] = build_info(row, key)
         end
-        infos.each do |key, info|
-          @info_cache[key] = info
-          if info == nil
-            @name_cache.delete(key)
-          else
-            @name_cache[key] = info.name
-          end
-        end
+        store_infos(infos)
+        infos
       end
 
       def send_file(client, file)
@@ -78,6 +67,34 @@ module EltenLink
       end
 
       private
+
+      def cached_info(key)
+        @cache_mutex.synchronize do
+          return [false, nil] unless @info_cache.key?(key)
+          attachment_info = @info_cache.delete(key)
+          @info_cache[key] = attachment_info
+          [true, attachment_info]
+        end
+      end
+
+      def store_info(key, attachment_info)
+        @cache_mutex.synchronize do
+          @info_cache.delete(key)
+          @info_cache[key] = attachment_info
+          @info_cache.shift while @info_cache.size > CacheLimit
+        end
+        attachment_info
+      end
+
+      def store_infos(infos)
+        @cache_mutex.synchronize do
+          infos.each do |key, attachment_info|
+            @info_cache.delete(key)
+            @info_cache[key] = attachment_info
+          end
+          @info_cache.shift while @info_cache.size > CacheLimit
+        end
+      end
 
       def build_info(data, fallback_id)
         data = {} unless data.is_a?(Hash)
