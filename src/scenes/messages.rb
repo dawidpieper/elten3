@@ -1062,6 +1062,7 @@ def audiolimit
            @form.focus
 @attachments=[]
 @polls=[]
+                                 loop do
                                  loop do                     
              loop_update
              @form.fields[3].start_recording if main_shortcut_pressed?("r", shift: true)
@@ -1143,7 +1144,7 @@ def audiolimit
                   rescue EltenLink::Error => e
                     alert(message_send_error(e))
                   end
-f.delete_audio(true)
+f.delete_audio(true) if sent
 waiting_end
 end
          if sent
@@ -1159,7 +1160,9 @@ end
            return
            end
          else
-           @receiver, @subject, @text = receiver, subject, @fields[2]
+            @form.focus
+         end
+         break if sent
          end
        ensure
          @draft&.detach
