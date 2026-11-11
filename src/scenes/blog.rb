@@ -2315,15 +2315,11 @@ if suc
     begin
       audio=btn_audio.get_recording_file(true)
       raise IOError, "Audio encoder did not return a file" if audio==nil
-      alert(p_("Blog", "Please wait..."))
       invalid_audio=false
       File.open(audio, "rb") do |file|
         if file.read(4)!="OggS"
           invalid_audio=true
-          next
         end
-        file.rewind
-        audio_url = EltenLink::Blog.upload_audio(elten_link, blog: @owner, data: file)
       end
       if invalid_audio
         alert(p_("Blog", "The selected audio file is not a valid Ogg Opus file."))
@@ -2331,6 +2327,12 @@ if suc
         @form.index=btn_audio
         btn_audio.focus
         next
+      end
+      client = elten_link
+      audio_url = Tasks.run(title: p_("Blog", "Uploading audio. Press Escape to cancel."), show_after: 0, cancellable: true) do |_progress, cancellation_token|
+        File.open(audio, "rb") do |file|
+          EltenLink::Blog.upload_audio(client, blog: @owner, data: file, cancellation_token: cancellation_token)
+        end
       end
       if audio_url.to_s == ""
         alert(p_("Blog", "The server did not return an address for the uploaded audio."))
@@ -2340,6 +2342,12 @@ if suc
         next
       end
       btn_audio.mark_uploaded_source(audio_url)
+    rescue Tasks::Cancelled
+      alert(p_("Blog", "Audio upload cancelled. The recording is still available in the editor."))
+      @draft&.autosave
+      @form.index=btn_audio
+      btn_audio.focus
+      next
     rescue EltenLink::Error => error
       show_publish_error(p_("Blog", "The audio could not be uploaded. Details: %{error}"), error)
       @draft&.autosave
