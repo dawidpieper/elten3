@@ -47,6 +47,8 @@ module EltenAPI
     procinfo  = EltenWin32.process_information_buffer
     CREATE_PROCESS_W.call(0, unicode(file), 0, 0, 0, 0, 0, unicode(path), startinfo, procinfo)
     process_info = EltenWin32.process_information(procinfo)
+    thread_handle = process_info[:thread_handle]
+    CLOSE_HANDLE.call(thread_handle) if thread_handle != nil && thread_handle != 0 && thread_handle != -1
     if addToProcs
       $procs=[] if $procs==nil
       $procs.push(process_info[:process_handle])
@@ -63,6 +65,8 @@ module EltenAPI
   # @param path [String] working directory
   # @return [String, Numeric] process exit code as legacy binary string, or -1 on timeout
   def executeprocess(cmdline, hide=false, tmax=0, update=true, path=nil)
+    h=nil
+    completed=false
     h=run(cmdline, hide, path)
     started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC) rescue Time.now.to_f
     loop do
@@ -74,7 +78,10 @@ module EltenAPI
       x="\0"*1024
       GET_EXIT_CODE_PROCESS.call(h,x)
       x.delete!("\0")
-      break if x != "\003\001"
+      if x != "\003\001"
+        completed=true
+        break
+      end
       t = (Process.clock_gettime(Process::CLOCK_MONOTONIC) rescue Time.now.to_f) - started_at
       if t > tmax && tmax!=0
         return -1
@@ -84,6 +91,11 @@ module EltenAPI
     GET_EXIT_CODE_PROCESS.call(h,x)
     x.delete!("\0")
     x
+  ensure
+    if completed && h!=nil && h!=0 && h!=-1
+      $procs.delete(h) if $procs!=nil
+      CLOSE_HANDLE.call(h)
+    end
   end
 
   def terminate_process_handle(handle)
