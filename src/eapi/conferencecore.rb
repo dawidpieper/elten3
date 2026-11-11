@@ -1952,7 +1952,7 @@ return id
 end
 
 def setvolume(user, volume=100, muted=false, chat_muted=false, streams_muted=false)
-volume*=300 if volume>300
+volume=300 if volume>300
 volume=10 if volume<10
 v=[volume, muted, chat_muted, streams_muted]
 @volumes[user]=v
