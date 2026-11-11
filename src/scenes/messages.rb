@@ -44,24 +44,39 @@ else
    if @imported!=true
     if @wn!=true && !@wn.is_a?(String) && !@wn.is_a?(Hash)
     @cat=0
-    load_users
+    unless load_users
+      $scene=Scene_Main.new if $scene==self
+      return
+    end
   elsif @wn==true
     @cat=1
-    load_conversations("","new")
+    unless load_conversations("","new")
+      $scene=notifications_return_scene if $scene==self
+      return
+    end
   elsif @wn.is_a?(String)
     if !@wn.include?(":")
     @cat=1
-    load_conversations(@wn)
+    unless load_conversations(@wn)
+      $scene=notifications_return_scene if $scene==self
+      return
+    end
     else
     @cat=2
     a=@wn[0...@wn.index(":")]
 b=@wn[@wn.index(":")+1..-1]    
 b=nil if b==""
-    load_messages(a, b)
+    unless load_messages(a, b)
+      $scene=notifications_return_scene if $scene==self
+      return
+    end
     end
   elsif @wn.is_a?(Hash)
     @cat=2
-    load_messages(@wn[:user] || @wn["user"], @wn.key?(:subject) ? @wn[:subject] : @wn["subject"])
+    unless load_messages(@wn[:user] || @wn["user"], @wn.key?(:subject) ? @wn[:subject] : @wn["subject"])
+      $scene=notifications_return_scene if $scene==self
+      return
+    end
   end
 else
 case @cat
@@ -176,50 +191,57 @@ def import(arr)
     @form_messages.focus if @form_messages!=nil
   end
  def load_users(limit=@users_limit||20)
-   @lastuser=nil
-   @lastuser=@users[@sel_users.index] if @users.is_a?(Array) and @sel_users.is_a?(ListBox)
-   @users=[]
-   @users_limit=limit
+   lastuser=nil
+   lastuser=@users[@sel_users.index] if @users.is_a?(Array) and @sel_users.is_a?(ListBox)
     begin
-      result=EltenLink::Messages.users(elten_link, limit: @users_limit)
-    rescue EltenLink::Error
-      alert(_("Error"))
-      return $scene=Scene_Main.new
+      result=EltenLink::Messages.users(elten_link, limit: limit)
+    rescue EltenLink::Error => error
+      cancelled=error.code.to_s=="cancelled"
+      Log.warning("Message user list failed: #{error.message}") unless cancelled
+      alert(_("Error")) unless cancelled
+      return false
       end
-@users=result.users
-@users_more=result.more
+users=result.users
+users_more=result.more
     selt=[]
     states=[]
     ind=0
-    for u in @users
+    for u in users
       user=utf8(u.name)
       user=u.user if u.name=="" || u.name==nil
                   selt.push(user+":\r\n"+p_("Messages", "Last message")+": "+utf8(u.lastuser)+": "+utf8(u.lastsubject)+".\r\n"+format_date(u.lastdate)+"\r\n")
       states[selt.size-1]=[unread_message_status] if u.read==0 and u.lastuser!=Session.name
-      ind=selt.size-1 if u.user==@lastuser.user if @lastuser!=nil
+      ind=selt.size-1 if u.user==lastuser.user if lastuser!=nil
     end
-selt.push(p_("Messages", "Show older")) if @users_more
+selt.push(p_("Messages", "Show older")) if users_more
+    @users=users
+    @users_more=users_more
+    @users_limit=limit
     @sel_users=ListBox.new(selt,header: p_("Messages", "Messages"), index: ind, flags: 0, quiet: false)
     states.each_with_index{|st,i|@sel_users.set_item_states(i, st) if st!=nil}
     @sel_users.bind_context{|menu|context_users(menu)}
+    true
 end
 def update_users
     @sel_users.update
   if key_pressed?(:key_enter) or key_pressed?(:key_right)
     if @sel_users.index<@users.size
     if !LocalConfig['MessagesDefaultToAllMessages', type: :bool]
-      load_conversations(@users[@sel_users.index].user)
-    @cat=1
+      @cat=1 if load_conversations(@users[@sel_users.index].user)
   else
-    load_messages(@users[@sel_users.index].user, nil)
-    @cat=2
+    @cat=2 if load_messages(@users[@sel_users.index].user, nil)
     end
   else
+    previous_index=@sel_users.index
     @sel_users.index-=1
     ad=20
                         ad=100 if key_held?(0x10)
-    load_users(@users_limit+ad)
-    @sel_users.say_option
+    if load_users(@users_limit+ad)
+      @sel_users.say_option
+    else
+      @sel_users.index=previous_index
+      @sel_users.focus
+    end
     end
   end
   $scene=Scene_Main.new if key_pressed?(:key_escape)
@@ -232,13 +254,11 @@ menu.option(p_("Messages", "Reply"), nil, "o") {
 }
 if !LocalConfig['MessagesDefaultToAllMessages', type: :bool]
 menu.option(p_("Messages", "Show all messages"), nil, :shift_enter) {
-  load_messages(@users[@sel_users.index].user,nil)
-  @cat=2
+  @cat=2 if load_messages(@users[@sel_users.index].user,nil)
 }
 else
  menu.option(p_("Messages", "Show subjects"), nil, :shift_enter) {
-  load_conversations(@users[@sel_users.index].user)
-  @cat=1
+  @cat=1 if load_conversations(@users[@sel_users.index].user)
 } 
   end
   menu.option(p_("Messages", "Mark all messages in this conversation as read"), nil, "w") {
@@ -253,7 +273,8 @@ speech_wait
 if @wn == true
   $scene = notifications_return_scene
 else
-  main
+  @cat=0
+  @sel_users.focus unless load_users
 end
   end
 }
@@ -336,20 +357,19 @@ speech_wait
 if @wn == true
   $scene = notifications_return_scene
 else
-  main
+  @cat=0
+  @sel_users.focus unless load_users
 end
 }
 }
 menu.option(p_("Messages", "Search"), nil, "f") {
-    load_messages("","","search")
-@cat=2
+    @cat=2 if load_messages("","","search")
 }
 menu.option(p_("Messages", "Show flagged messages"), nil, "g") {
-load_messages("","","flagged")
-@cat=2
+@cat=2 if load_messages("","","flagged")
 }
 menu.option(_("Refresh"), nil, "r") {
-load_users
+@sel_users.focus unless load_users
 }
 end
 def edit_conversation(c=nil)
@@ -463,75 +483,89 @@ if form.fields[2]!=nil and form.fields[2].pressed?
       end
     end
   def load_conversations(user,sp=nil,limit=@conversations_limit||20)
+    same_scope=user==@conversations_user && sp==@conversations_sp
+    lastconversation=nil
+    lastconversation=@conversations[@sel_conversations.index] if same_scope && @conversations.is_a?(Array) && @sel_conversations.is_a?(ListBox)
     if sp==nil
-    @user=user
-   @lastconversation=nil
-   @lastconversation=@conversations[@sel_conversations.index] if @conversations.is_a?(Array) and @sel_conversations.is_a?(ListBox)
-   @lastconversation_user=user
-   @conversations=[]
-   @conversations_user=user
-   @conversations_limit=limit
    begin
-     result=EltenLink::Messages.conversations(elten_link, user: user, limit: @conversations_limit)
-   rescue EltenLink::Error
-     alert(_("Error"))
-     return $scene=notifications_return_scene
+     result=EltenLink::Messages.conversations(elten_link, user: user, limit: limit)
+   rescue EltenLink::Error => error
+     cancelled=error.code.to_s=="cancelled"
+     Log.warning("Message conversation list failed: #{error.message}") unless cancelled
+     alert(_("Error")) unless cancelled
+     return false
    end
    else
-   @conversations_sp=sp
-   @conversations=[]
    begin
      result=EltenLink::Messages.special_conversations(elten_link, sp)
-   rescue EltenLink::Error
-     alert(_("Error"))
-     return $scene=notifications_return_scene
+   rescue EltenLink::Error => error
+     cancelled=error.code.to_s=="cancelled"
+     Log.warning("Special conversation list failed: #{error.message}") unless cancelled
+     alert(_("Error")) unless cancelled
+     return false
    end
  end
 if result.conversations.empty? and sp=='new'
   alert(p_("Messages", "There are no new messages"))
-  return $scene=notifications_return_scene
+  $scene=notifications_return_scene
+  return false
   end
-      @conversations_more=result.more
-@conversation_name=utf8(result.name)
-@conversations=result.conversations
+conversations_more=result.more
+conversation_name=utf8(result.name)
+conversations=result.conversations
         selt=[]
         states=[]
         ind=0
-    for c in @conversations
+    for c in conversations
       lu=utf8(c.lastuser)
-      lu=@conversation_name if @conversation_name!="" && @conversation_name!=nil && lu[0..0]=="["
+      lu=conversation_name if conversation_name!="" && conversation_name!=nil && lu[0..0]=="["
       lu=name_conversation(lu) if lu[0..0]=="["
       subject=utf8(c.subject)
       selt.push(((subject!="")?(subject):p_("Messages", "No subject"))+":\r\n"+((sp==nil)?p_("Messages", "Last message"):p_("Messages", "From"))+": "+utf8(lu)+".\r\n"+format_date(c.lastdate)+"\r\n")
       states[selt.size-1]=[unread_message_status] if c.read==0 and c.lastuser!=Session.name
-      ind=selt.size-1 if c.subject==@lastconversation.subject and user==@lastconversation_user if @lastconversation!=nil and @lastconversation_user!=nil
+      ind=selt.size-1 if c.subject==lastconversation.subject if lastconversation!=nil
     end
-    selt.push(p_("Messages", "Show older")) if @conversations_more
+    selt.push(p_("Messages", "Show older")) if conversations_more
     u=user
-    u=@conversation_name if @conversation_name!="" && @conversation_name!=nil
+    u=conversation_name if conversation_name!="" && conversation_name!=nil
+    @user=user if sp==nil
+    @conversations_user=user if sp==nil
+    @conversations_sp=sp
+    @conversations_limit=limit if sp==nil
+    @conversations_more=conversations_more
+    @conversation_name=conversation_name
+    @conversations=conversations
     @sel_conversations=ListBox.new(selt,header: ((sp==nil)?(p_("Messages", "Conversations with %{user}")%{:user=>u}):""), index: ind, flags: 0, quiet: false)
     states.each_with_index{|st,i|@sel_conversations.set_item_states(i, st) if st!=nil}
     @sel_conversations.bind_context{|menu|context_conversations(menu)}
+    true
   end
   def update_conversations
     @sel_conversations.update
     if key_pressed?(:key_enter) or key_pressed?(:key_right)
       if @sel_conversations.index<@conversations.size
-        load_messages(@conversations_user||@conversations[@sel_conversations.index].lastuser,@conversations[@sel_conversations.index].subject,@conversations_sp)
-      @cat=2
+        @cat=2 if load_messages(@conversations_user||@conversations[@sel_conversations.index].lastuser,@conversations[@sel_conversations.index].subject,@conversations_sp)
     else
+      previous_index=@sel_conversations.index
       @sel_conversations.index-=1
-      load_conversations(@conversations_user,nil,@conversations_limit+20)
-@sel_conversations.say_option
+      if load_conversations(@conversations_user,nil,@conversations_limit+20)
+        @sel_conversations.say_option
+      else
+        @sel_conversations.index=previous_index
+        @sel_conversations.focus
+      end
       end
       end
     if key_pressed?(:key_escape) or key_pressed?(:key_left) or @sel_conversations.options.size==0
       return $scene=Scene_Main.new if @wn.is_a?(String) || @wn.is_a?(Hash) || @close_to_main
       if @conversations_sp!="new"
-      load_users
-      loop_update
-      @cat=0
-      @sel_conversations=nil
+      if load_users
+        loop_update
+        @cat=0
+        @sel_conversations=nil
+      else
+        @sel_conversations.focus
+      end
     else
       return $scene=notifications_return_scene
     end
@@ -552,7 +586,7 @@ $scene = Scene_Messages_New.new(@user,"","",export)
 }
 end
 menu.option(_("Refresh"), nil, "r") {
-load_conversations(@user)
+@sel_conversations.focus unless load_conversations(@user)
 }
 end
 def deleteconversation(c)
@@ -572,49 +606,30 @@ def deleteconversation(c)
     end
     def load_messages(user,subject,sp=nil,limit=@messages_limit||50,complete=false)
       previous_reply = @form_messages.fields[3] if @cat == 2 && @form_messages && user == @messages_user && subject == @messages_subject && sp == @messages_sp
-                     @messages=[] if !complete
-   @messages_user=user
-   @messages_subject=subject
-   @messages_sp=sp
-   @messages_limit=limit if !complete
-   result=nil
-   if sp=="flagged"
-     begin
+      begin
+        if sp=="flagged"
        result=EltenLink::Messages.flagged_messages(elten_link)
-     rescue EltenLink::Error
-       alert(_("Error"))
-      return $scene=Scene_Main.new
-     end
-   elsif sp=="search"
-     term=input_text(p_("Messages", "Enter a phrase to look for"),flags: 0,text: @lastsearch||"", escapable: true)
-     if term==nil
-       @cat=0
-       return
-       end
-                   @lastsearch=term
-     begin
-       result=EltenLink::Messages.search_messages(elten_link, term)
-     rescue EltenLink::Error
-       alert(_("Error"))
-      return $scene=Scene_Main.new
-     end
-     else
-   begin
-     result=EltenLink::Messages.messages(elten_link, user: user, subject: subject, limit: @messages_limit)
-   rescue EltenLink::Error
-     alert(_("Error"))
-      return $scene=Scene_Main.new
-   end
-   end
-@messages_wn=0
-   if $notification_msg_count!=nil
-     @messages_wn=$notification_msg_count
-       end
-@messages_more=result.more if !complete
-@messages_name=utf8(result.name)
-    known_ids = @messages.to_h { |message| [message.id, true] }
+        elsif sp=="search"
+          term=input_text(p_("Messages", "Enter a phrase to look for"),flags: 0,text: @lastsearch||"", escapable: true)
+          return false if term==nil
+          @lastsearch=term
+          result=EltenLink::Messages.search_messages(elten_link, term)
+        else
+          result=EltenLink::Messages.messages(elten_link, user: user, subject: subject, limit: limit)
+        end
+      rescue EltenLink::Error => error
+        cancelled=error.code.to_s=="cancelled"
+        Log.warning("Message list failed: #{error.message}") unless cancelled
+        alert(_("Error")) unless cancelled
+        return false
+      end
+
+    messages_wn=$notification_msg_count||0
+    existing_messages=complete ? (@messages||[]) : []
+    messages_name=utf8(result.name)
+    known_ids = existing_messages.to_h { |message| [message.id, true] }
     new_messages = result.messages.uniq(&:id).reject { |message| known_ids[message.id] }
-    @messages = new_messages + @messages
+    messages = new_messages + existing_messages
          selt=[]
          states=[]
          audio_urls=[]
@@ -637,14 +652,22 @@ def deleteconversation(c)
             else
               text=message_list_content(m)
               text=[forwarded, text].reject{|part|part.empty?}.join("\r\n")
-              subject=utf8(m.subject)
-              selt[-1]+=":\r\n"+((sp!=nil and sp!="new")?(subject+":\r\n"):"")+text.split("")[0...5000].join+((text.size>5000)?"... #{p_("Messages", "Open this message to read more")}":"")+"\r\n"+format_date(m.date)+"\r\n"
+              message_subject=utf8(m.subject)
+              selt[-1]+=":\r\n"+((sp!=nil and sp!="new")?(message_subject+":\r\n"):"")+text.split("")[0...5000].join+((text.size>5000)?"... #{p_("Messages", "Open this message to read more")}":"")+"\r\n"+format_date(m.date)+"\r\n"
             end
     end
-    selt.push(p_("Messages", "Show older")) if @messages_more and !complete
+    selt.push(p_("Messages", "Show older")) if result.more and !complete
+    @messages_wn=messages_wn
+    @messages_name=messages_name
+    @messages=messages
     if !complete
+      @messages_user=user
+      @messages_subject=subject
+      @messages_sp=sp
+      @messages_limit=limit
+      @messages_more=result.more
       u=user
-    u=@messages_name if @messages_name!="" && @messages_name!=nil
+    u=messages_name if messages_name!="" && messages_name!=nil
     head=p_("Messages", "Messages in conversation %{subject} with %{user}")%{:subject=>subject||"",:user=>u}
     head=p_("Messages", "Flagged messages") if sp=='flagged'
     head=p_("Messages", "Found items") if sp=='search'
@@ -661,6 +684,7 @@ def deleteconversation(c)
     @sel_messages.index = index
     play_sound("messages_update")
   end
+    true
       end
   def bind_message_draft
     field = @form_messages.fields[3]
@@ -680,8 +704,7 @@ def deleteconversation(c)
   def update_messages
    if $notification_msg_count != nil and @form_messages!=nil and @form_messages.index!=3 and @form_messages.index!=4
      mwn=$notification_msg_count
-          load_messages(@messages_user, @messages_subject, @messages_sp, @messages_limit, true) if mwn>@messages_wn
-     @messages_wn=mwn
+     load_messages(@messages_user, @messages_subject, @messages_sp, @messages_limit, true) if mwn>@messages_wn
    end
    @form_messages.update
        if key_pressed?(:key_escape) or ((key_pressed?(:key_left) and @form_messages.index==0) and @form_messages.fields[0]==@sel_messages) or (@sel_messages.options.size-@sel_messages.grayed.count(true))==0
@@ -728,9 +751,12 @@ def deleteconversation(c)
                         ind=@sel_messages.index
                         ad=50
                         ad=500 if key_held?(0x10)
-      load_messages(@messages_user,@messages_subject,@messages_sp,@messages_limit+ad)
-      @sel_messages.index=ind
-      @sel_messages.say_option
+      if load_messages(@messages_user,@messages_subject,@messages_sp,@messages_limit+ad)
+        @sel_messages.index=ind
+        @sel_messages.say_option
+      else
+        @form_messages.focus
+      end
       end
               return if @messages.size==0 or @sel_messages==nil or @messages[@sel_messages.index]==nil
      if @message_display==nil or @message_display[0]!=@messages[@sel_messages.index].id
@@ -888,7 +914,7 @@ menu.option(p_("Messages", "Forward"), nil, "d") {
 }
 end
 menu.option(_("Refresh"), nil, "r") {
-load_messages(@messages_user, @messages_subject)
+@form_messages.focus unless load_messages(@messages_user, @messages_subject, @messages_sp, @messages_limit)
 }
 end
   def show_message(message)
