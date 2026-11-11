@@ -1180,13 +1180,13 @@ def audiolimit
                   fl = File.binread(f.get_recording_file(true))
                                     if fl[0..3]!='OggS'
                     alert(_("Error"))
-                    return $scene=Scene_Main.new
-                  end
+                  else
                   begin
                     EltenLink::Messages.send_audio(elten_link, to: receiver, subject: subject, data: fl, attachments: @attachments, polls: @polls)
                     sent=true
                   rescue EltenLink::Error => e
                     alert(message_send_error(e))
+                  end
                   end
 f.delete_audio(true) if sent
 waiting_end
