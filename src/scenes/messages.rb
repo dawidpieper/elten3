@@ -319,10 +319,10 @@ menu.option(p_("Messages", "Leave")) {
       EltenLink::Messages.leave_group(elten_link, @users[@sel_users.index].user)
     rescue EltenLink::Error
       alert(_("Error"))
+    else
+      @sel_users.focus unless load_users
     end
     }
-    load_users
-        @sel_users.focus
 }
 else
   menu.option(p_("Messages", "Delete conversations"), nil, :del) {
