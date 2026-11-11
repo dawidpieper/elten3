@@ -124,12 +124,14 @@ module EltenLink
       end
 
       def upload_audio(client, blog:, data:)
+        body = data.respond_to?(:read) ? data : data.to_s.b
+        datasize = body.respond_to?(:size) ? body.size : body.bytesize
         payload = client.api_binary_data(
           "POST",
           "/api/v1/blogs/#{blog.to_s.urlenc}/posts/audio",
-          data.to_s.b,
+          body,
           { "Content-Type" => "application/octet-stream" },
-          { "datasize" => data.to_s.b.bytesize }
+          { "datasize" => datasize }
         )
         audio = payload["audio"]
         return "" unless audio.is_a?(Hash)

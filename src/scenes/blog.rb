@@ -2015,8 +2015,33 @@ class Scene_Blog_PostEditor
 @categoryselindex = categoryselindex
 @postselindex = postselindex
   end
+  def show_publish_error(message, error)
+    code = error.respond_to?(:code) ? error.code.to_s : ""
+    details = error.message.to_s.strip
+    details = error.class.to_s if details == ""
+    details += " (#{code})" if code != "" && !details.include?(code)
+    trace = Array(error.backtrace).first(8).join("\n")
+    Log.warning("Blog publishing failed: #{error.class}: #{error.message}#{code == "" ? "" : " (#{code})"}\n#{trace}")
+    alert(message % { error: details })
+  rescue StandardError => display_error
+    Log.warning("Blog publishing error reporting failed: #{display_error.class}: #{display_error.message}")
+    alert(_("Error"))
+  end
   def main
     resetdate=false
+    audio_draft_key=Digest::SHA256.hexdigest("#{@owner.to_s.downcase}:#{@post.to_i}")[0, 24]
+    audio_directory=Dirs.temp
+    if @post==0
+      begin
+        account_key=Digest::SHA256.hexdigest(Session.name.to_s.downcase)
+        audio_directory=EltenPath.join(Dirs.eltendata, "drafts", account_key, "blog_post_audio")
+        FileUtils.mkdir_p(audio_directory)
+      rescue StandardError => error
+        Log.warning("Cannot prepare persistent blog audio draft directory: #{error.class}: #{error.message}")
+        audio_directory=Dirs.temp
+      end
+    end
+    audio_draft_path=EltenPath.join(audio_directory, "audioblogpost-#{audio_draft_key}.opus")
     begin
     bt = EltenLink::Blog.categories(elten_link, blog: @owner)
     rescue EltenLink::Error
@@ -2049,7 +2074,7 @@ class Scene_Blog_PostEditor
 edt_title = EditBox.new(p_("Blog", "Post title"),text: "",quiet: true),
 lst_editor = ListBox.new([p_("Blog", "Rich-text editor"), p_("Blog", "Source editor (HTML and WordPress shortcodes)")], header: p_("Blog", "Editor")),
 edt_post = EditBox.new(p_("Blog", "Post"), type: EditBox::Flags::MultiLine|EditBox::Flags::HTML|EditBox::Flags::Formattable,text: "",quiet: true),
-btn_audio = OpusRecordButton.new(p_("Blog", "Audio content"), EltenPath.join(Dirs.temp, "audioblogpost.opus"), max_bitrate: 128),
+btn_audio = OpusRecordButton.new(p_("Blog", "Audio content"), audio_draft_path, max_bitrate: 128),
 lst_categories = ListBox.new(@categories.map{|c|c.name},header: p_("Blog", "Post categories"),index: 0,flags: ListBox::Flags::MultiSelection),
 lst_tags = ListBox.new(@tags.map{ |t| t.name}, header: p_("Blog", "Post tags"), index: 0, flags: ListBox::Flags::MultiSelection),
 lst_visibility = ListBox.new([p_("Blog", "Show to everyone"),p_("Blog", "Show to Elten users only")],header: p_("Blog", "Visibility")),
@@ -2130,7 +2155,7 @@ ph=$1
 ph[0..0]="" if ph[0..0]=="\""
 ph.chop! if ph[-1..-1]=="\""
 ph = EltenLink::Client.absolute_api_url(ph)
-    btn_audio.set_source(ph)
+    btn_audio.set_source(ph, changed: false, needs_upload: false)
     ""
     }
     edt_title.set_text(title)
@@ -2147,7 +2172,7 @@ ph = EltenLink::Client.absolute_api_url(ph)
     end
     if @post == 0
       @draft = Draft.new(@owner.to_s.downcase, config_key: "BlogPostsDrafts", collection: "blog_post_drafts",
-        empty: proc { |data| %w[text title excerpt].all? { |field| data[field].to_s == "" } })
+        empty: proc { |data| %w[text title excerpt].all? { |field| data[field].to_s == "" } && data["audio"] != true })
       data = @draft.restore({ "text" => "" }, editor: true)
       edt_title.set_text(data.fetch("title", ""))
       edt_excerpt.set_text(data.fetch("excerpt", ""))
@@ -2164,6 +2189,13 @@ ph = EltenLink::Client.absolute_api_url(ph)
       end
       if data["tags"].is_a?(Array)
         @tags.each_with_index { |tag, index| lst_tags.selected[index] = data["tags"].include?(tag.id) }
+      end
+      if data["audio"] == true
+        if File.file?(audio_draft_path)
+          btn_audio.set_source(audio_draft_path)
+        else
+          alert(p_("Blog", "The audio saved with this draft is no longer available on this device."))
+        end
       end
       changed = true if data["text"] != ""
     end
@@ -2190,6 +2222,7 @@ if @draft
       "categories" => @categories.each_with_index.select { |_, index| lst_categories.selected[index] }.map { |category, _| category.id },
       "tags" => @tags.each_with_index.select { |_, index| lst_tags.selected[index] }.map { |tag, _| tag.id },
       "private" => lst_visibility.index == 1, "comments" => chk_comments.checked, "schedule" => chk_schedule.checked,
+      "audio" => btn_audio.source == audio_draft_path && File.file?(audio_draft_path),
       "date" => [btn_scheduledate.year, btn_scheduledate.month, btn_scheduledate.day, btn_scheduledate.hour, btn_scheduledate.min, btn_scheduledate.sec] }
   }
   @form.focus
@@ -2214,7 +2247,8 @@ loop do
     #end
   @form.update
   if key_pressed?(:key_escape) or btn_cancel.pressed?
-    if @draft ? @draft.close(detach: false) : (!changed || confirm(p_("Blog", "Are you sure you want to cancel creating this post?")))
+    if @draft ? @draft.close(detach: false) : (!(changed || btn_audio.source_changed?) || confirm(p_("Blog", "Are you sure you want to cancel creating this post?")))
+      break if @draft && @draft.last_close_action == :saved
       break if btn_audio.delete_audio==true
   end
   end
@@ -2224,6 +2258,9 @@ loop do
     if chk_schedule.checked
       if btn_scheduledate.year==0
         alert(p_("Blog", "Publication date not set"))
+        suc=false
+        @form.index=btn_scheduledate
+        btn_scheduledate.focus
         else
             tim=Time.local(btn_scheduledate.year, btn_scheduledate.month, btn_scheduledate.day, btn_scheduledate.hour, btn_scheduledate.min, btn_scheduledate.sec)
             if tim.to_i<=Time.now.to_i
@@ -2254,46 +2291,74 @@ if suc
   date_value=Time.now.to_i if date_value==nil && resetdate
   excerpt = nil
   excerpt = edt_excerpt.text if edt_excerpt.text!="" || @post>0
-  audio=btn_audio.get_recording_file(true)
-  if audio==nil
-    content = changed ? text : nil
+  audio_url = nil
+  audio_source = btn_audio.source
+  if audio_source != nil && btn_audio.source_needs_upload?
     begin
-      if @post>0
-        EltenLink::Blog.update_post(elten_link, blog: @owner, post_id: @post, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
-      else
-        EltenLink::Blog.create_post(elten_link, blog: @owner, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
-      end
-    rescue EltenLink::Error
-      alert(_("Error"))
-      next
-    end
-  else
-   alert(p_("Blog", "Please wait..."))
-        fl=File.binread(audio).to_s.b
-        if fl.byteslice(0, 4)!='OggS'
-          alert(_("Error"))
-          return $scene=Scene_Main.new
+      audio=btn_audio.get_recording_file(true)
+      raise IOError, "Audio encoder did not return a file" if audio==nil
+      alert(p_("Blog", "Please wait..."))
+      invalid_audio=false
+      File.open(audio, "rb") do |file|
+        if file.read(4)!="OggS"
+          invalid_audio=true
+          next
         end
-    begin
-      audio_url = EltenLink::Blog.upload_audio(elten_link, blog: @owner, data: fl)
-      if audio_url.to_s == ""
-        alert(_("Error"))
+        file.rewind
+        audio_url = EltenLink::Blog.upload_audio(elten_link, blog: @owner, data: file)
+      end
+      if invalid_audio
+        alert(p_("Blog", "The selected audio file is not a valid Ogg Opus file."))
+        @draft&.autosave
+        @form.index=btn_audio
+        btn_audio.focus
         next
       end
-      audio_content = %Q([audio src="#{audio_url}"][/audio])
-      content = [text.to_s, audio_content].reject { |part| part.to_s.strip == "" }.join("\n\n")
-      if @post>0
-        EltenLink::Blog.update_post(elten_link, blog: @owner, post_id: @post, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
-      else
-        EltenLink::Blog.create_post(elten_link, blog: @owner, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
+      if audio_url.to_s == ""
+        alert(p_("Blog", "The server did not return an address for the uploaded audio."))
+        @draft&.autosave
+        @form.index=btn_audio
+        btn_audio.focus
+        next
       end
-    rescue EltenLink::Error
-      alert(_("Error"))
+    rescue EltenLink::Error => error
+      show_publish_error(p_("Blog", "The audio could not be uploaded. Details: %{error}"), error)
+      @draft&.autosave
+      @form.index=btn_audio
+      btn_audio.focus
+      next
+    rescue StandardError => error
+      show_publish_error(p_("Blog", "The audio could not be prepared. Details: %{error}"), error)
+      @draft&.autosave
+      @form.index=btn_audio
+      btn_audio.focus
       next
     end
-      end
+  elsif audio_source != nil
+    audio_url = audio_source
+  end
+  content = nil
+  if changed || btn_audio.source_changed?
+    audio_content = audio_url == nil ? nil : %Q([audio src="#{audio_url}"][/audio])
+    content = [text.to_s, audio_content].reject { |part| part.to_s.strip == "" }.join("\n\n")
+  end
+  begin
+    if @post>0
+      EltenLink::Blog.update_post(elten_link, blog: @owner, post_id: @post, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
+    else
+      EltenLink::Blog.create_post(elten_link, blog: @owner, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
+    end
+  rescue EltenLink::Error => error
+    show_publish_error(p_("Blog", "The post could not be published. Details: %{error}"), error)
+    @draft&.autosave
+    next
+  rescue StandardError => error
+    show_publish_error(p_("Blog", "The post could not be published. Details: %{error}"), error)
+    @draft&.autosave
+    next
+  end
         @draft.sent if @draft
-        alert(p_("Blog", "The post has been added."))
+        alert(p_("Blog", "The post has been published."))
         btn_audio.delete_audio(true)
         break
       end

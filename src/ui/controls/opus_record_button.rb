@@ -27,6 +27,8 @@ super(label)
     @usevbr = 1
     @recorder=nil
     @status = 0
+    @source_changed = false
+    @source_needs_upload = false
     @current_filename=@filename
     @form = Form.new([
     @btn_record = Button.new(p_("EAPI_Form", "record")),
@@ -49,6 +51,8 @@ super(label)
     @btn_record.on(:press) {
         if @status==0 or confirm(p_("EAPI_Form", "Are you sure you want to delete the previous recording and create a new one?"))
           @current_filename = @filename
+    @source_changed = true
+    @source_needs_upload = true
     play_sound("recording_start")
     @status = 1
     @recorder = Recorder.opus_recording(@filename, @bitrate, @framesize, @application, @usevbr, @timelimit)
@@ -155,6 +159,8 @@ delete_audio
         @form.hide(@btn_tags)
         @form.hide(@btn_play)
         @status=0
+        @source_changed = true
+        @source_needs_upload = false
                 return true
       else
         return false
@@ -397,6 +403,8 @@ lst_chapters.focus
 lst_tags.trigger(:move)
 btn_save.on(:press) {
 @tags = tgs
+@source_changed = true
+@source_needs_upload = true
 alert(_("Saved"))
 form.resume
 }
@@ -416,6 +424,15 @@ form.resume
       def empty?
         @status==0
       end
+      def source
+        @status==2 ? @current_filename : nil
+      end
+      def source_changed?
+        @source_changed == true
+      end
+      def source_needs_upload?
+        @status==2 && @source_needs_upload == true
+      end
       def source_duration
         return nil if @status!=2
         sound=nil
@@ -428,10 +445,12 @@ form.resume
           sound.close rescue nil if sound!=nil
         end
       end
-      def set_source(file)
+      def set_source(file, changed: true, needs_upload: changed)
         @btn_stop.press if @recorder!=nil
                 @status=2
         @current_filename = file
+        @source_changed = changed
+        @source_needs_upload = needs_upload
         @form.show(@btn_tags) if holds_premiumpackage("audiophile")
         @form.show(@btn_play)
         if file[0..4]=="http:" or file[0..5]=="https:"
