@@ -1143,7 +1143,7 @@ def audiolimit
                        receiver = @form.fields[0].text if @form.fields[0]!=nil
                        receiver=@receiver if @form.fields[0]==nil
                         if @form.fields[0]!=nil
-                       receiver.sub!("@elten.me","")
+                        receiver.sub!(/@elten\.me\z/i,"")
                         if receiver.include?("@")==false
                           found_receiver=finduser(receiver)
                           receiver=found_receiver if found_receiver.upcase==receiver.upcase
