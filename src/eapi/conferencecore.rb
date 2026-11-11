@@ -2236,7 +2236,9 @@ Bass::BASS_StreamFree.call(@myself_mixer)
 Bass::BASS_StreamFree.call(@listen_mixer)
 Bass::BASS_StreamFree.call(@processor_mixer)
 Bass::BASS_StreamFree.call(@output) if @output!=0
+Bass::BASS_StreamFree.call(@output_stream) if @output_stream!=0
 Bass::BASS_StreamFree.call(@output_mixer)
+Bass::BASS_StreamFree.call(@saver)
 rescue Exception
 log(2, "Conference: Free error: "+$!.to_s+" "+$@.to_s)
 end
