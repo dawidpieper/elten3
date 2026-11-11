@@ -781,7 +781,7 @@ elsif @sel_messages.index>=@messages.size or @messages[@sel_messages.index].poll
   @form_messages.index=0 if @form_messages.index==2
   end
 deletemessage if key_pressed?(0x2e) and @sel_messages.index<@messages.size and @form_messages.index==0
-      if key_pressed?(:key_enter) or key_pressed?(:key_right) and @form_messages.index==0 and @form_messages.fields[0]==@sel_messages
+      if (key_pressed?(:key_enter) or key_pressed?(:key_right)) and @form_messages.index==0 and @form_messages.fields[0]==@sel_messages
       if @sel_messages.index<@messages.size
       show_message(@messages[@sel_messages.index])
       loop_update
@@ -924,7 +924,7 @@ end
          @sel_messages.close_item_audio(@sel_messages.index) if @sel_messages.respond_to?(:close_item_audio)
          type=EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly
          type|=EditBox::Flags::Transcripted if message.transcription.to_s.strip!=""
-         if message.receiver!=Session.name
+         if message.receiver==Session.name
                                         message_field=EditBox.new(message.subject + " #{p_("Messages", "From")}: " + message.sender,type: type,text: message_display_text(message, date))
                                       else
                                         message_field=EditBox.new(message.subject + " #{p_("Messages", "To")}: " + message.receiver,type: type,text: message_display_text(message, date))
