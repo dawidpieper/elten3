@@ -709,17 +709,35 @@ def deleteconversation(c)
    @form_messages.update
        if key_pressed?(:key_escape) or ((key_pressed?(:key_left) and @form_messages.index==0) and @form_messages.fields[0]==@sel_messages) or (@sel_messages.options.size-@sel_messages.grayed.count(true))==0
       if @form_messages.fields[0]==@sel_messages
-        if @form_messages.fields[3] == nil || message_draft.close
-      return $scene=Scene_Main.new if @wn.is_a?(String) || @wn.is_a?(Hash) || @close_to_main
+        draft=message_draft
+        if @form_messages.fields[3] == nil || draft == nil || draft.close(detach: false)
+      if @wn.is_a?(String) || @wn.is_a?(Hash) || @close_to_main
+        draft&.detach
+        return $scene=Scene_Main.new
+      end
+      loaded=false
           if @messages_sp!="flagged" and @messages_sp!="search" and @messages_subject!=nil
-      load_conversations(@messages_user,@messages_sp)
+      if load_conversations(@messages_user,@messages_sp)
       @cat=1
       @sel_messages=nil
+      loaded=true
+      end
     else
-      load_users
+      if load_users
       @cat=0
+      loaded=true
+      end
     end
-    loop_update
+    if loaded
+      draft&.detach
+      loop_update
+      return
+    elsif $scene!=self
+      draft&.detach
+      return
+    end
+    @form_messages.focus
+    return
     end
   else
     hide_message
