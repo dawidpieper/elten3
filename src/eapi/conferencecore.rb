@@ -1587,7 +1587,7 @@ v=[] if !v.is_a?(Array)
 @pushtotalk_keys=v
 end
 def saving?
-return @saver_file!=nil
+return @saver_file!=nil || @fullsave_chat!=nil || @fullsave_myrec!=nil || @fullsave_dir!=nil
 end
 def begin_fullsave(dir)
 Dir.mkdir(dir) if !FileTest.exist?(dir)
@@ -1632,7 +1632,7 @@ rescue Exception
 end
 def end_save
 log(-1, "Conference: ending save")
-return if @saver_file==nil
+return if !saving?
 if @fullsave_chat!=nil
 @fullsave_chat.close
 @fullsave_chat=nil
@@ -1647,6 +1647,7 @@ for s in @streams.values
 s.end_save
 end
 end
+if @saver_file!=nil
 case File.extname(@saver_filename).downcase
 when ".w64"
 guids={
@@ -1684,9 +1685,12 @@ fp.close
 @saver_filename=nil
 }
 when ".ogg"
+@saver_mutex.synchronize {
 $vorbisrecorderclose.call(@saver_file)
 @saver_file=nil
 @saver_filename=nil
+}
+end
 end
 $vorbisrecorderclose.call(@fullsave_myrec) if @fullsave_myrec!=nil
 @fullsave_myrec=nil
@@ -2188,7 +2192,7 @@ end
 @output_thread=@recorder_thread=@saver_thread=@processor_thread=nil
 if subs
 begin
-end_save if @saver_file!=nil
+end_save if saving?
 rescue Exception
 log(2, "Conference: save close error: "+$!.to_s+" "+$@.to_s)
 end
@@ -2845,7 +2849,7 @@ if params['channel']['spatialization']==2
 @transmitters[uid].move_absolute(x,y)
 end
 if @fullsave_dir!=nil
-@transmitters[uid].begin_save(dir, uid, @fullsave_time)
+@transmitters[uid].begin_save(@fullsave_dir, uid, @fullsave_time)
 end
 end
 @transmitters[uid].move(@position.x, @position.y) if uid==@voip.uid
@@ -2901,6 +2905,7 @@ username=@transmitters[s['user']].username if @transmitters[s['user']]!=nil
 @streams[sid].set_hrtf(@hrtf) if params['channel']['spatialization']==1 || params['channel']['spatialization']==2
 @streams[sid].set_mixer(@channel_mixer)
 @streams[sid].set_user_position(@transmitters[s['user']].transmitter_x, @transmitters[s['user']].transmitter_y) if @transmitters[s['user']]!=nil and @transmitters[s['user']].transmitter_x>0
+@streams[sid].begin_save(@fullsave_dir, sid, @fullsave_time) if @fullsave_dir!=nil
 end
 end
 for s in @streams.keys
