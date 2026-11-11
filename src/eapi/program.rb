@@ -1788,6 +1788,7 @@ module Programs
       end
       runtime.close_managed_resources if runtime.respond_to?(:close_managed_resources)
       runtime.close_sound_pool if runtime.respond_to?(:close_sound_pool)
+      MediaFinders.unregister_owner(runtime) if defined?(MediaFinders) && MediaFinders.respond_to?(:unregister_owner)
       MediaEncoders.unregister_owner(runtime) if defined?(MediaEncoders) && MediaEncoders.respond_to?(:unregister_owner)
       Extensions.unregister_runtime(runtime, reason) if defined?(Extensions)
       remove_program_locale(runtime) if respond_to?(:remove_program_locale, true)
