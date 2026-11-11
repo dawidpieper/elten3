@@ -1804,6 +1804,10 @@ module Programs
       MediaFinders.unregister_owner(runtime) if defined?(MediaFinders) && MediaFinders.respond_to?(:unregister_owner)
       MediaEncoders.unregister_owner(runtime) if defined?(MediaEncoders) && MediaEncoders.respond_to?(:unregister_owner)
       Extensions.unregister_runtime(runtime, reason) if defined?(Extensions)
+      classes = @@bypaths[runtime.entry_id] || []
+      classes.each do |program|
+        program.close_app_cache if program.respond_to?(:close_app_cache)
+      end
       remove_program_locale(runtime) if respond_to?(:remove_program_locale, true)
       @@runtimes.delete(runtime.entry_id) if @@runtimes[runtime.entry_id].equal?(runtime)
       @@runtime_by_prefix.delete(runtime.virtual_prefix)
@@ -2252,6 +2256,7 @@ module Programs
     end
 
     def unregister(program)
+      program.close_app_cache if program.is_a?(Class) && program.respond_to?(:close_app_cache)
       i = 0
       while i < @@listeners.size
         if @@listeners[i].cls == program
@@ -4038,6 +4043,14 @@ class Program
   def self.app_cache
     @appcache = FileCache.new(cache_path("cache.dat")) if @appcache == nil
     @appcache
+  end
+
+  def self.close_app_cache
+    return false if @appcache == nil
+    cache = @appcache
+    cache.close
+    @appcache = nil
+    true
   end
 
   def signaled(_user, _packet)
