@@ -156,7 +156,17 @@ delete_audio
         return true if @status==0
             if @filename!=@current_filename or force or confirm(p_("EAPI_Form", "Are you sure you want to delete recorded audio?"))
               @btn_stop.press if @recorder!=nil
-        File.delete(@filename) if FileTest.exists?(@filename)
+        if FileTest.exists?(@filename)
+          begin
+            File.delete(@filename)
+          rescue StandardError => error
+            Log.warning("Cannot delete recorded audio #{File.basename(@filename.to_s.tr("\\", "/")).inspect}: #{error.class}: #{error.message}")
+            unless force
+              alert(p_("EAPI_Form", "The recording file could not be deleted. Details: %{error}") % { error: error.message.to_s })
+              return false
+            end
+          end
+        end
         @form.hide(@btn_delete)
         @form.hide(@btn_tags)
         @form.hide(@btn_play)
