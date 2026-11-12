@@ -31,13 +31,13 @@ module EltenLink
         end
       end
 
-      def shares(client, note)
-        data = client.api_data("GET", "/api/v1/notes/#{note_id(note)}/shares")
+      def shares(client, note, cancellation_token: nil)
+        data = client.api_data("GET", "/api/v1/notes/#{note_id(note)}/shares", cancellation_token: cancellation_token)
         data["users"].to_a.map(&:to_s)
       end
 
-      def add_share(client, note, user)
-        client.api_data("POST", "/api/v1/notes/#{note_id(note)}/shares", { "user" => user })
+      def add_share(client, note, user, cancellation_token: nil)
+        client.api_data("POST", "/api/v1/notes/#{note_id(note)}/shares", { "user" => user }, cancellation_token: cancellation_token)
         true
       end
 
