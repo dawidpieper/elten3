@@ -254,15 +254,17 @@ break
             FileUtils.rm_f(temporary)
             return false unless download_file(EltenLink::SoundThemes.download_url(st), temporary, use_waiting: true, can_cancel: true, override: true)
             expected_size = st.size.to_i
-            if (expected_size > 0 && File.size(temporary) != expected_size) || load_soundtheme(temporary, false) == nil
+            local_theme = load_soundtheme(temporary, false)
+            if (expected_size > 0 && File.size(temporary) != expected_size) || local_theme == nil
               Log.warning("Downloaded sound theme #{filename} is invalid")
               alert(_("Error"))
               return false
             end
             FileUtils.mv(temporary, destination, force: true)
+            local_theme.file = destination
             oldst = @soundthemes.find{|s|s.file!=nil && File.basename(s.file)==File.basename(st.file)}
             @soundthemes.delete(oldst) if oldst!=nil
-            @soundthemes.push(st)
+            @soundthemes.push(local_theme)
             alert(_("Saved"))
             true
           rescue Exception => e
