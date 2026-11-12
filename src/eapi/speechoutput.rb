@@ -200,6 +200,10 @@ class SpeechOutput
       false
     end
 
+    def speaking_supported?
+      false
+    end
+
     def stop
       1
     end
