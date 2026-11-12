@@ -325,7 +325,9 @@ module EltenWindow
   GET_MESSAGE = Fiddle::Function.new(USER32["GetMessageW"], [PTR, HANDLE, INT, INT], INT, ABI)
   TRANSLATE_MESSAGE = Fiddle::Function.new(USER32["TranslateMessage"], [PTR], INT, ABI)
   DISPATCH_MESSAGE = Fiddle::Function.new(USER32["DispatchMessageW"], [PTR], HANDLE, ABI)
-  POST_MESSAGE = Fiddle::Function.new(USER32["PostMessageW"], [HANDLE, INT, HANDLE, HANDLE], INT, ABI)
+  # This non-blocking wake-up runs for every UI update. Releasing the GVL for
+  # such a short call can delay the UI thread behind a CPU-bound Ruby worker.
+  POST_MESSAGE = Fiddle::Function.new(USER32["PostMessageW"], [HANDLE, INT, HANDLE, HANDLE], INT, ABI, need_gvl: true)
   POST_THREAD_MESSAGE = Fiddle::Function.new(USER32["PostThreadMessageW"], [INT, INT, HANDLE, HANDLE], INT, ABI)
   DESTROY_WINDOW = Fiddle::Function.new(USER32["DestroyWindow"], [HANDLE], INT, ABI)
   DEF_WINDOW_PROC = Fiddle::Function.new(USER32["DefWindowProcW"], [HANDLE, INT, HANDLE, HANDLE], HANDLE, ABI)
@@ -336,14 +338,15 @@ module EltenWindow
   # release/reacquire stalls when a Ruby worker is CPU-bound.
   GET_FOREGROUND_WINDOW = Fiddle::Function.new(USER32["GetForegroundWindow"], [], HANDLE, ABI, need_gvl: true)
   GET_PARENT = Fiddle::Function.new(USER32["GetParent"], [HANDLE], HANDLE, ABI, need_gvl: true)
-  IS_ICONIC = Fiddle::Function.new(USER32["IsIconic"], [HANDLE], INT, ABI)
+  IS_ICONIC = Fiddle::Function.new(USER32["IsIconic"], [HANDLE], INT, ABI, need_gvl: true)
   GET_WINDOW_LONG = Fiddle::Function.new(USER32["GetWindowLongW"], [HANDLE, INT], INT, ABI)
   SET_WINDOW_LONG = Fiddle::Function.new(USER32["SetWindowLongW"], [HANDLE, INT, INT], INT, ABI)
   SET_FOREGROUND_WINDOW = Fiddle::Function.new(USER32["SetForegroundWindow"], [HANDLE], INT, ABI)
   SET_ACTIVE_WINDOW = Fiddle::Function.new(USER32["SetActiveWindow"], [HANDLE], HANDLE, ABI)
   SET_FOCUS = Fiddle::Function.new(USER32["SetFocus"], [HANDLE], HANDLE, ABI)
   MESSAGE_BOX = Fiddle::Function.new(USER32["MessageBoxW"], [HANDLE, PTR, PTR, INT], INT, ABI)
-  GET_KEYBOARD_STATE = Fiddle::Function.new(USER32["GetKeyboardState"], [PTR], INT, ABI)
+  # The window thread captures this snapshot for every input frame.
+  GET_KEYBOARD_STATE = Fiddle::Function.new(USER32["GetKeyboardState"], [PTR], INT, ABI, need_gvl: true)
   SET_KEYBOARD_STATE = Fiddle::Function.new(USER32["SetKeyboardState"], [PTR], INT, ABI)
   WINDOW_TITLE = "Elten"
   WS_CAPTION = 0x00C00000
@@ -708,7 +711,8 @@ module EltenWindow
     def keyboard_state
       window_state_monitor.synchronize do
         @keyboard_state ||= ("\0" * 256)
-        normalize_altgr_keyboard_state(@keyboard_state.dup)
+        state = normalize_activation_suppressed_keyboard_state(@keyboard_state.dup)
+        normalize_altgr_keyboard_state(state)
       end
     end
 
@@ -721,6 +725,7 @@ module EltenWindow
       clear_native_keyboard_state
       window_state_monitor.synchronize do
         @keyboard_state = "\0" * 256
+        @activation_suppressed_keys = Array.new(256, false)
         clear_character_queue
         clear_key_events
       end
@@ -828,7 +833,8 @@ module EltenWindow
       window_state_monitor.synchronize do
         @keyboard_state ||= ("\0" * 256)
         @key_event_queue ||= []
-        state = normalize_altgr_keyboard_state(@keyboard_state.dup)
+        state = normalize_activation_suppressed_keyboard_state(@keyboard_state.dup)
+        state = normalize_altgr_keyboard_state(state)
         events = normalize_altgr_key_events(@key_event_queue)
         @key_event_queue = []
         clear_finished_altgr_character_input
@@ -984,6 +990,7 @@ module EltenWindow
         @activation_input_started_at = now
         @activation_ignore_min_until = nil
         @activation_ignore_max_until = nil
+        @activation_suppressed_keys = Array.new(256, false)
         clear_character_queue
         clear_key_events
         EltenKeyboard.clear_state
@@ -1003,18 +1010,23 @@ module EltenWindow
     end
 
     def acknowledge_activation_input
+      acknowledged_now = false
       delay = window_state_monitor.synchronize do
         return false if @activation_input_guard_active != true
         return true if @activation_input_acknowledged == true
         now = monotonic_time
+        started_at = @activation_input_started_at || now
         @activation_input_acknowledged = true
-        @activation_ignore_min_until = now + KEYBOARD_ACTIVATION_MIN_DELAY
-        @activation_ignore_max_until = now + KEYBOARD_ACTIVATION_MAX_DELAY
-        now - @activation_input_started_at.to_f
+        acknowledged_now = true
+        # A delayed UI acknowledgement must not start a fresh ignore window.
+        @activation_ignore_min_until = started_at + KEYBOARD_ACTIVATION_MIN_DELAY
+        @activation_ignore_max_until = started_at + KEYBOARD_ACTIVATION_MAX_DELAY
+        now - started_at
       end
       if delay >= ACTIVATION_ACK_WARNING_SECONDS && defined?(Log)
         Log.warning("Windows input activation waited %.3f seconds for UI acknowledgement" % delay)
       end
+      activation_input_blocked? if acknowledged_now
       true
     rescue Exception
       clear_activation_guard
@@ -1024,6 +1036,9 @@ module EltenWindow
     def finish_activation_ignore(state = nil)
       window_state_monitor.synchronize do
         state ||= capture_keyboard_state_raw
+        # A key pressed before activation must stay hidden through key-up;
+        # otherwise its autorepeat can surface as a fresh press afterwards.
+        suppress_activation_keys_held_in(state)
         @keyboard_state = state
         EltenKeyboard.sync_physical_state
         clear_activation_guard
@@ -1273,8 +1288,15 @@ module EltenWindow
       press_state = capture_key_event_state if down
       window_state_monitor.synchronize do
         @key_message_down ||= Array.new(256, false)
+        @activation_suppressed_keys ||= Array.new(256, false)
+        if @activation_suppressed_keys[key] == true
+          @activation_suppressed_keys[key] = false if !down
+          @key_message_down[key] = false
+          next
+        end
         next if event == :repeat && @key_message_down[key] != true
         @key_message_down[key] = down
+        press_state = normalize_activation_suppressed_keyboard_state(press_state) if press_state != nil
         @right_alt_down = down if key == VK_MENU && extended_key_message?(lparam)
         if @altgr_character_input == true && altgr_modifier_key?(key)
           if down == false
@@ -1346,6 +1368,29 @@ module EltenWindow
       return state if @altgr_character_input != true
       [VK_CONTROL, VK_LCONTROL, VK_MENU].each do |key|
         state.setbyte(key, state.getbyte(key).to_i & 0x7f)
+      end
+      state
+    end
+
+    def suppress_activation_keys_held_in(state)
+      state = state.to_s.byteslice(0, 256).to_s.ljust(256, "\0")
+      @activation_suppressed_keys = Array.new(256, false)
+      for key in 0...256
+        @activation_suppressed_keys[key] = (state.getbyte(key).to_i & 0x80) != 0
+      end
+      true
+    end
+
+    def normalize_activation_suppressed_keyboard_state(state)
+      state = state.to_s.byteslice(0, 256).to_s.ljust(256, "\0")
+      return state if @activation_suppressed_keys == nil
+      for key in 0...256
+        next if @activation_suppressed_keys[key] != true
+        if (state.getbyte(key).to_i & 0x80) != 0
+          state.setbyte(key, state.getbyte(key).to_i & 0x7f)
+        else
+          @activation_suppressed_keys[key] = false
+        end
       end
       state
     end
@@ -1470,7 +1515,7 @@ module EltenTray
       user32 = Fiddle.dlopen("user32")
       @shell_notify_icon = Fiddle::Function.new(shell32["Shell_NotifyIconW"], [Fiddle::TYPE_INT, Fiddle::TYPE_VOIDP], Fiddle::TYPE_INT)
       @load_icon = Fiddle::Function.new(user32["LoadIconW"], [INTPTR, INTPTR], INTPTR)
-      @get_async_key_state = Fiddle::Function.new(user32["GetAsyncKeyState"], [Fiddle::TYPE_INT], Fiddle::TYPE_SHORT)
+      @get_async_key_state = Fiddle::Function.new(user32["GetAsyncKeyState"], [Fiddle::TYPE_INT], Fiddle::TYPE_SHORT, Fiddle::Function::DEFAULT, need_gvl: true)
     end
 
     def key_down?(key)
