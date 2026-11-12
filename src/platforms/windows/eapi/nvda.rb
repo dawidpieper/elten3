@@ -21,7 +21,9 @@ class NVDA < SpeechOutput
   LookupAccountNameW = Fiddle::Function.new(ADVAPI32["LookupAccountNameW"], [F_PTR, F_PTR, F_PTR, F_PTR, F_PTR, F_PTR, F_PTR], F_INT, FIDDLE_ABI)
   CloseHandle = Fiddle::Function.new(KERNEL32["CloseHandle"], [F_HANDLE], F_INT, FIDDLE_ABI)
   WriteFile = Fiddle::Function.new(KERNEL32["WriteFile"], [F_HANDLE, F_PTR, F_INT, F_PTR, F_PTR], F_INT, FIDDLE_ABI)
-  PeekNamedPipe=Fiddle::Function.new(KERNEL32["PeekNamedPipe"], [F_HANDLE, F_PTR, F_INT, F_PTR, F_PTR, F_PTR], F_INT, FIDDLE_ABI)
+  # The NVDA bridge polls both input pipes every 25 ms. PeekNamedPipe returns
+  # immediately, so releasing the GVL here only adds Ruby thread contention.
+  PeekNamedPipe=Fiddle::Function.new(KERNEL32["PeekNamedPipe"], [F_HANDLE, F_PTR, F_INT, F_PTR, F_PTR, F_PTR], F_INT, FIDDLE_ABI, need_gvl: true)
   ReadFile = Fiddle::Function.new(KERNEL32["ReadFile"], [F_HANDLE, F_PTR, F_INT, F_PTR, F_PTR], F_INT, FIDDLE_ABI)
   GetCurrentProcessId = Fiddle::Function.new(KERNEL32["GetCurrentProcessId"], [], F_INT, FIDDLE_ABI)
   class <<self
@@ -92,7 +94,7 @@ SetSecurityDescriptorDacl.call(sd, 1, acl, 0)
         Thread.new {init}
         break
         end
-      if Time.now.to_f-@starttime>1 && @iswaiting
+      if @iswaiting && Time.now.to_f-@starttime>1
 @iswaiting=false
           end
             while @writes.size>0 and @pipeout!=nil and @waiting<10
@@ -349,12 +351,9 @@ end
                                                             write({'ac'=>'stop'},nil,true)!=nil
                                     end
         def avail
-              dread=[0].pack("I")
-      dleft=[0].pack("I")
-      dtotal=[0].pack("I")
-      buf=""
-      PeekNamedPipe.call(@pipein,buf,0,dread,dtotal,dleft)
-          return dtotal.unpack("I").first
+          dtotal = [0].pack("I")
+          PeekNamedPipe.call(@pipein, nil, 0, nil, dtotal, nil)
+          dtotal.unpack1("I")
         end
         def read(size=nil)
             size=avail if size==nil
@@ -399,12 +398,9 @@ end
               return st
             end
             def availst
-              dread=[0].pack("I")
-      dleft=[0].pack("I")
-      dtotal=[0].pack("I")
-      buf=""
-      PeekNamedPipe.call(@pipest,buf,0,dread,dtotal,dleft)
-          return dtotal.unpack("I").first
+              dtotal = [0].pack("I")
+              PeekNamedPipe.call(@pipest, nil, 0, nil, dtotal, nil)
+              dtotal.unpack1("I")
         end
         def readst(size=nil)
             size=avail_st if size==nil
