@@ -71,15 +71,15 @@ module EltenAPI
     end
 
     def download_attachment(info, destination)
-      if FileTest.exists?(destination) && !confirm(p_("EAPI_Network", "The file already exists. Do you want to overwrite it?"))
-        return false
-      end
       temporary="#{destination}.download-#{$$}-#{Thread.current.object_id}"
       FileUtils.rm_f(temporary)
       return false unless download_file(info.url, temporary, use_waiting: true, can_cancel: true, override: true)
       if info.size!=nil && File.size(temporary)!=info.size.to_i
         Log.warning("Downloaded attachment size does not match server metadata")
         alert(_("Error"))
+        return false
+      end
+      if FileTest.exists?(destination) && !confirm(p_("EAPI_Network", "The file already exists. Do you want to overwrite it?"))
         return false
       end
       FileUtils.mv(temporary, destination, force: true)

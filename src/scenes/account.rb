@@ -1074,12 +1074,12 @@ form.wait
           dialog_close
 end
 def download_export(url, destination)
-  if FileTest.exists?(destination) && !confirm(p_("EAPI_Network", "The file already exists. Do you want to overwrite it?"))
-    return false
-  end
   temporary = "#{destination}.download-#{$$}-#{Thread.current.object_id}"
   FileUtils.rm_f(temporary)
   return false unless download_file(url, temporary, use_waiting: true, can_cancel: true, override: true)
+  if FileTest.exists?(destination) && !confirm(p_("EAPI_Network", "The file already exists. Do you want to overwrite it?"))
+    return false
+  end
   FileUtils.mv(temporary, destination, force: true)
   true
 rescue Exception => e
