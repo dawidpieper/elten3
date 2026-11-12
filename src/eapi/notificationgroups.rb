@@ -13,6 +13,7 @@ module NotificationGroups
     friend
     birthday
     calendar
+    tasks
     followedblog
     blogcomment
     followedblogpost
@@ -495,6 +496,8 @@ module NotificationGroups
       ["forum", payload["threadid"].to_i].join(":")
     when "calendar"
       ["calendar", payload["event"].to_i, payload["starttime"].to_i].join(":")
+    when "tasks"
+      ["tasks", payload["task"].to_i, payload["plantime"].to_i].join(":")
     when "forumthreadoffer"
       thread_id = payload["threadid"].to_i
       thread_id > 0 ? [cat, thread_id].join(":") : [cat, notification.id.to_i].join(":")
@@ -555,6 +558,8 @@ module NotificationGroups
       p_("Notifications", "Birthdays")
     when "calendar"
       p_("Notifications", "Calendar reminders")
+    when "tasks"
+      p_("Notifications", "Task reminders")
     when "followedblog"
       p_("Notifications", "Followed blogs")
     when "blogcomment"
@@ -619,6 +624,10 @@ module NotificationGroups
       time = EltenLink::TimeZones.local(payload["timezone"], time) if payload["all_day"]
       p_("Notifications", "Calendar reminder: %{event}, %{time}") % {
         event: payload["name"].to_s, time: format_date(time, payload["all_day"] == true, false)
+      }
+    when "tasks"
+      p_("Notifications", "Task reminder: %{task}, %{date}") % {
+        task: payload["name"].to_s, date: payload["date"].to_s
       }
     when "groupinvitation"
       group_invitation_title(payload, payloads: payloads)
@@ -983,6 +992,11 @@ module NotificationGroups
         time = EltenLink::TimeZones.local(payload["timezone"], time) if payload["all_day"]
         insert_scene(Scene_Calendar.new(payload["calendar"].to_i, time.to_date,
           event_id: payload["event"].to_i, occurrence_start: payload["starttime"].to_i), true, return_to_main: true)
+      end
+    when "tasks"
+      Proc.new do
+        insert_scene(Scene_Tasks.new(payload["project"].to_i, :all,
+          task_id: payload["task"].to_i), true, return_to_main: true)
       end
     when "groupinvitation"
       Proc.new { insert_scene(Scene_Forum.new(nil, nil, 4), true) }

@@ -101,6 +101,16 @@ module EltenLink
 
   module Tasks
     class << self
+      def reminder_settings(client, project=nil)
+        path = project == nil ? "/api/v1/tasks/reminders" : "/api/v1/tasks/projects/#{project_id(project)}/reminders"
+        client.api_data("GET", path)
+      end
+
+      def update_reminder_settings(client, values, project=nil)
+        path = project == nil ? "/api/v1/tasks/reminders" : "/api/v1/tasks/projects/#{project_id(project)}/reminders"
+        client.api_data("PATCH", path, values)
+      end
+
       def projects(client)
         data = client.api_data("GET", "/api/v1/tasks/projects")
         data["projects"].to_a.map { |row| project_from(row) }

@@ -5,6 +5,233 @@
 require "date"
 
 module TasksSceneHelpers
+  def task_reminders(project=nil)
+    data = EltenLink::Tasks.reminder_settings(elten_link, project)
+    profile = data["preferences"]
+    profile["timezone"] ||= EltenLink::TimeZones.system
+    saved_profile = JSON.generate(profile)
+    projects = project ? [project] : [nil] + EltenLink::Tasks.projects(elten_link)
+    overrides, saved_overrides, pages = {}, {}, {}
+    if project
+      overrides[project.id] = data["override"]
+      saved_overrides[project.id] = JSON.generate(data["override"])
+    else
+      saved_delivery = EltenLink::Accounts.config(elten_link)["wn_tasks"].to_i
+      delivery = ListBox.new([p_("Account", "Show in what's new"), p_("Account", "Alert on PC"), p_("Account", "Notify on mobile devices")],
+        header: p_("Tasks", "Delivery channels"), flags: ListBox::Flags::MultiSelection)
+      3.times { |index| delivery.selected[index] = (saved_delivery & (1 << index)) == 0 }
+      category = ListBox.new([p_("Tasks", "Global")] + projects.drop(1).map { |item| task_project_label(item) },
+        header: p_("Tasks", "Notification settings"))
+    end
+    page = proc do |item|
+      key = item && item.id
+      unless pages.key?(key)
+        if item && !overrides.key?(key)
+          override = EltenLink::Tasks.reminder_settings(elten_link, item)["override"]
+          overrides[key] = override
+          saved_overrides[key] = JSON.generate(override)
+        end
+        fields = task_reminder_fields(profile, item, overrides[key])
+        fields.unshift(delivery) unless item
+        fields << task_reminder_timezone(profile) if !item || project && !data["configured"]
+        pages[key] = fields
+      end
+      pages[key]
+    end
+    save = Button.new(_("Save"))
+    cancel = Button.new(_("Cancel"))
+    form = Form.new([category].compact + page.call(projects.first) + [save, cancel])
+    form.cancel_button = cancel
+    if category
+      current = 0
+      category.on(:move) do
+        begin
+          fields = page.call(projects[category.index])
+          form.replace_fields([category] + fields + [save, cancel])
+          current = category.index
+        rescue EltenLink::Error => error
+          category.index = current
+          Log.warning("Task reminder settings failed: #{error.message}")
+          alert(_("Error"))
+          category.focus
+        end
+      end
+    end
+    cancel.on(:press) { form.resume }
+    save.on(:press) do
+      if profile["timezone"] == nil
+        alert(p_("Tasks", "Select a time zone for reminders"))
+        next
+      end
+      begin
+        if delivery
+          flags = (0...3).sum { |index| delivery.selected[index] ? 0 : 1 << index }
+          if flags != saved_delivery
+            EltenLink::Accounts.update_config(elten_link, { "wn_tasks" => flags })
+            saved_delivery = flags
+          end
+        end
+        if !project && (!data["configured"] || JSON.generate(profile) != saved_profile)
+          EltenLink::Tasks.update_reminder_settings(elten_link, profile)
+          saved_profile = JSON.generate(profile)
+          data["configured"] = true
+        end
+        overrides.each do |id, override|
+          next if !project && JSON.generate(override) == saved_overrides[id]
+          EltenLink::Tasks.update_reminder_settings(elten_link, override.merge("timezone" => profile["timezone"]), id)
+          saved_overrides[id] = JSON.generate(override)
+        end
+        form.resume
+      rescue EltenLink::Error => error
+        Log.warning("Task reminder settings failed: #{error.message}")
+        alert(_("Error"))
+      end
+    end
+    form.wait
+  rescue EltenLink::Error => error
+    Log.warning("Task reminder settings failed: #{error.message}")
+    alert(_("Error"))
+  end
+
+  def task_reminder_fields(profile, project, override)
+    if project
+      modes = %w[inherit custom off]
+      mode = ListBox.new([p_("Tasks", "Use default reminders"), p_("Tasks", "Custom reminders"), p_("Tasks", "Reminders disabled")],
+        header: p_("Tasks", "Reminders"), index: modes.index(override["mode"]) || 0)
+      kind = project.personal? ? "personal" : project.owned_by?(Session.name) ? "owned" : "shared"
+      mode.on(:move) do
+        if modes[mode.index] == "custom" && override["mode"] == "inherit"
+          override.merge!(JSON.parse(JSON.generate(profile["defaults"][kind])))
+        end
+        override["mode"] = modes[mode.index]
+      end
+      edit = Button.new(p_("Tasks", "Edit reminders"))
+      edit.on(:press) do
+        value = override["mode"] == "inherit" ? profile["defaults"][kind] : override
+        updated = task_reminder_profile(value, personal: project.personal?)
+        if updated
+          override.merge!(updated)
+          override["mode"] = "custom"
+          mode.index = 1
+        end
+      end
+      [mode, edit]
+    else
+      labels = [p_("Tasks", "Personal tasks"), p_("Tasks", "Owned projects"), p_("Tasks", "Shared projects")]
+      %w[personal owned shared].each_with_index.map do |kind, index|
+        button = Button.new(labels[index])
+        button.on(:press) do
+          updated = task_reminder_profile(profile["defaults"][kind], personal: kind == "personal")
+          profile["defaults"][kind] = updated if updated
+        end
+        button
+      end
+    end
+  end
+
+  def task_reminder_profile(value, personal: false)
+    scopes = %w[mine mine_or_unassigned all]
+    scope = ListBox.new([p_("Tasks", "Assigned to me"), p_("Tasks", "Assigned to me or unassigned"), p_("Tasks", "All tasks")],
+      header: p_("Tasks", "Notify about"), index: scopes.index(value["scope"]) || 0)
+    rules = JSON.parse(JSON.generate(value["rules"]))
+    target_labels = [p_("Account", "Notifications list"), p_("Account", "Computer"), p_("Account", "Mobile devices")]
+    rows = proc do
+      rules.map do |rule|
+        time = format("%02d:%02d", rule["minute_of_day"] / 60, rule["minute_of_day"] % 60)
+        label = p_("Tasks", "%{count} days before the due date at %{time}") % { count: rule["days"], time: time }
+        [label, rule["targets"].map { |target| target_labels[%w[list pc mobile].index(target)] }.join(", ")]
+      end
+    end
+    table = TableBox.new([p_("Tasks", "Reminder"), p_("Tasks", "Deliver to")], rows.call, header: p_("Tasks", "Reminders"))
+    add = Button.new(p_("Tasks", "Add reminder"))
+    edit = Button.new(_("Edit"))
+    remove = Button.new(_("Delete"))
+    done = Button.new(_("Done"))
+    cancel = Button.new(_("Cancel"))
+    form = Form.new((personal ? [] : [scope]) + [table, add, edit, remove, done, cancel])
+    accepted = false
+    refresh = proc do
+      index = table.index
+      table.rows = rows.call
+      table.reload
+      table.index = [[index, rules.size - 1].min, 0].max
+    end
+    add.on(:press) do
+      rule = task_reminder_rule
+      rules << rule if rule
+      refresh.call
+    end
+    edit.on(:press) do
+      next if rules.empty?
+      rule = task_reminder_rule(rules[table.index])
+      rules[table.index] = rule if rule
+      refresh.call
+    end
+    remove.on(:press) do
+      next if rules.empty?
+      rules.delete_at(table.index)
+      refresh.call
+    end
+    table.bind_context do |menu|
+      menu.option(p_("Tasks", "Add reminder"), nil, "n") { add.press }
+      unless rules.empty?
+        menu.option(_("Edit")) { edit.press }
+        menu.option(_("Delete"), nil, :del) { remove.press }
+      end
+    end
+    table.sel.on(:select) { edit.press }
+    done.on(:press) { accepted = true; form.resume }
+    cancel.on(:press) { form.resume }
+    form.cancel_button = cancel
+    form.wait
+    accepted ? { "scope" => personal ? "all" : scopes[scope.index], "rules" => rules.uniq } : nil
+  end
+
+  def task_reminder_rule(rule=nil)
+    rule ||= { "days" => 0, "minute_of_day" => 540, "targets" => %w[list pc mobile] }
+    days = EditBox.new(p_("Tasks", "Days before the due date"), type: EditBox::Flags::Numbers, text: rule["days"].to_s)
+    hour = ListBox.new((0..23).map { |value| format("%02d", value) }, header: p_("Tasks", "Hour"), index: rule["minute_of_day"] / 60)
+    minute = ListBox.new((0..59).map { |value| format("%02d", value) }, header: p_("Tasks", "Minute"), index: rule["minute_of_day"] % 60)
+    targets = ListBox.new([p_("Account", "Notifications list"), p_("Account", "Computer"), p_("Account", "Mobile devices")],
+      header: p_("Tasks", "Deliver to"), flags: ListBox::Flags::MultiSelection)
+    %w[list pc mobile].each_with_index { |target, index| targets.selected[index] = rule["targets"].include?(target) }
+    save = Button.new(_("Save"))
+    cancel = Button.new(_("Cancel"))
+    form = Form.new([days, hour, minute, targets, save, cancel])
+    result = nil
+    save.on(:press) do
+      if !days.text.match?(/\A\d+\z/) || days.text.to_i > 365 || targets.multiselections.empty?
+        alert(p_("Tasks", "Enter a valid advance time and select at least one delivery target"))
+        next
+      end
+      result = { "days" => days.text.to_i, "minute_of_day" => hour.index * 60 + minute.index,
+        "targets" => targets.multiselections.map { |index| %w[list pc mobile][index] } }
+      form.resume
+    end
+    cancel.on(:press) { form.resume }
+    form.cancel_button = cancel
+    form.wait
+    result
+  end
+
+  def task_reminder_timezone(profile)
+    button = Button.new("")
+    update = proc { button.label = "#{p_("Tasks", "Reminder time zone")}: #{profile["timezone"] || p_("Tasks", "Not specified")}" }
+    update.call
+    button.on(:press) do
+      zones = EltenLink::TimeZones.identifiers.dup
+      timezone = profile["timezone"]
+      zones << timezone if timezone && !zones.include?(timezone)
+      choices = zones.map { |zone| [zone, EltenLink::TimeZones.label(zone, Date.today)] }.sort_by { |_, label| label.downcase }
+      zones, labels = choices.transpose
+      selected = selector(labels, header: p_("Tasks", "Reminder time zone"), start_index: zones.index(timezone) || 0, cancel_index: -1)
+      profile["timezone"] = zones[selected] if selected >= 0
+      update.call
+      button.focus
+    end
+    button
+  end
+
   def task_project_label(project)
     return p_("Tasks", "Personal tasks") if project.personal?
 
@@ -274,6 +501,7 @@ class Scene_Tasks_Projects
       menu.option(p_("Tasks", "Reject invitation")) { manage_invitation(invitation, 1) }
     elsif project != nil
       menu.option(p_("Tasks", "Show tasks")) { $scene = Scene_Tasks.new(project.id, @status) }
+      menu.option(p_("Tasks", "Notification settings")) { task_reminders(project) }
       if project.owned_by?(Session.name)
         menu.option(_("Edit"), nil, "e") { create_or_edit_project(project) }
         menu.option(p_("Tasks", "Share project"), nil, "s") { share_project(project) }
@@ -445,9 +673,10 @@ end
 class Scene_Tasks
   include TasksSceneHelpers
 
-  def initialize(project_id=nil, status=:pending)
+  def initialize(project_id=nil, status=:pending, task_id: nil)
     @filter_project_id = project_id == nil ? nil : project_id.to_i
     @status = status.to_sym
+    @opening_task_id = task_id
   end
 
   def main(index=0)
@@ -456,11 +685,26 @@ class Scene_Tasks
       $scene = Scene_Main.new
       return
     end
+    if @opening_task_id
+      begin
+        target = EltenLink::Tasks.details(elten_link, @opening_task_id)
+        @filter_project_id = target.project_id
+      rescue EltenLink::Error => error
+        Log.warning("Task notification could not be opened: #{error.message}")
+        alert(_("Error"))
+      end
+      @opening_task_id = nil
+    end
     unless load_tasks
       $scene = Scene_Main.new
       return
     end
+    if target
+      parent_id = target.parent.positive? ? target.parent : target.id
+      index = @tasks.index { |task| task.id == parent_id } || index
+    end
     build_list(index)
+    manage_goals(current_task, target.id) if target && target.parent.positive? && current_task && current_task.id == target.parent
     loop do
       loop_update
       @sel.update
@@ -540,6 +784,7 @@ class Scene_Tasks
     menu.option(p_("Tasks", "Projects management"), nil, "m") do
       $scene = Scene_Tasks_Projects.new(@filter_project_id, @status)
     end
+    menu.option(p_("Tasks", "Notification settings")) { task_reminders }
     menu.option(_("Refresh"), nil, "r") { request_reload }
   end
 
@@ -677,8 +922,7 @@ class Scene_Tasks
     @reload = true
   end
 
-  def manage_goals(task)
-    selected_id = nil
+  def manage_goals(task, selected_id=nil)
     loop do
       full_task = EltenLink::Tasks.details(elten_link, task)
       goals = full_task.children
