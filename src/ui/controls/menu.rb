@@ -230,7 +230,7 @@ self.class.menubg_close
     @closed=true
   end
   def opened?
-    close if @lasttime-Time.now.to_f>5
+    close if Time.now.to_f-@lasttime>5
           !@closed
   end
   def scenes
