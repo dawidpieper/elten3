@@ -4,6 +4,8 @@
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>.
 
+require "fileutils"
+
 module EltenAPI
   module EltenSRV
     AUDIO_ATTACHMENT_EXTENSIONS = %w[.mp3 .wav .ogg .mid .mod .m4a .flac .wma .opus .aac .aiff].freeze
@@ -60,12 +62,34 @@ module EltenAPI
       loc=get_file(p_("EAPI_Common", "Where do you want to save this file?"), path: EltenPath.join(Dirs.user, "Documents"), save: true)
       if loc!=nil
         waiting {
-          downloaded=download_file(info.url, EltenPath.join(loc, info.name))
+          downloaded=download_attachment(info, EltenPath.join(loc, info.name))
           speak(p_("EAPI_Common", "The attachment has been downloaded.")) if downloaded
         }
       else
         loop_update
       end
+    end
+
+    def download_attachment(info, destination)
+      if FileTest.exists?(destination) && !confirm(p_("EAPI_Network", "The file already exists. Do you want to overwrite it?"))
+        return false
+      end
+      temporary="#{destination}.download-#{$$}-#{Thread.current.object_id}"
+      FileUtils.rm_f(temporary)
+      return false unless download_file(info.url, temporary, use_waiting: true, can_cancel: true, override: true)
+      if info.size!=nil && File.size(temporary)!=info.size.to_i
+        Log.warning("Downloaded attachment size does not match server metadata")
+        alert(_("Error"))
+        return false
+      end
+      FileUtils.mv(temporary, destination, force: true)
+      true
+    rescue Exception => e
+      Log.warning("Attachment download failed: #{e.class}: #{e.message}")
+      alert(_("Error"))
+      false
+    ensure
+      FileUtils.rm_f(temporary) if temporary!=nil
     end
 
     def view_text_attachment(info)
