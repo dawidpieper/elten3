@@ -29,27 +29,33 @@ class Scene_SpeedTest
                 end
                 speak(p_("SpeedTest", "Test in progress. Please wait."))
                 times=[]
+                measurements=[]
                 errors=0
                 waiting {
                   n.times {
             t=measure.call
      if t>0
             times.push(t)
+            measurements.push(t)
           else
             errors+=1
+            measurements.push(nil)
             end
      loop_update
            }
            }
-result = "#{p_("SpeedTest", "Average time")}: #{((times.sum).to_f / (n-errors.to_f) * 1000).round}ms           
-#{p_("SpeedTest", "Minimum time")}: #{((times.min)*1000).round}ms
-#{p_("SpeedTest", "Maximum time")}: #{((times.max)*1000).round}ms
-#{p_("SpeedTest", "Number of errors")}: #{errors}
-
+result = ""
+unless times.empty?
+  result = "#{p_("SpeedTest", "Average time")}: #{(times.sum.to_f / times.size * 1000).round}ms
+#{p_("SpeedTest", "Minimum time")}: #{(times.min * 1000).round}ms
+#{p_("SpeedTest", "Maximum time")}: #{(times.max * 1000).round}ms
 "
-      for i in 0...n
-        result+=(i+1).to_s+". "+(times[i]*1000).round.to_s+"ms\r\n"
-        end
+end
+result += "#{p_("SpeedTest", "Number of errors")}: #{errors}\n\n"
+      measurements.each_with_index do |time, i|
+        value = time == nil ? _("Error") : "#{(time * 1000).round}ms"
+        result += "#{i+1}. #{value}\r\n"
+      end
       input_text(p_("SpeedTest", "Test results"),flags: EditBox::Flags::ReadOnly,text: result)
       @form.focus
       end
