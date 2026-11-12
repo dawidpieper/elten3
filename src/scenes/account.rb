@@ -450,6 +450,8 @@ end
       
       class Scene_Account_AutoLogins
   def main
+    loop do
+      @refresh=false
         al=[]
     loop do
       password=input_text(p_("Account", "Enter your password."),flags: EditBox::Flags::Password,text: "",escapable: true)
@@ -478,16 +480,19 @@ end
           globallogout
     }
     menu.option(_("Refresh"), nil, "r") {
-    main
+    @refresh=true
     }
         }
 loop do
   loop_update
   @sel.update
   break if key_pressed?(:key_escape)
+  break if @refresh
   break if $scene!=self
   end
-$scene=Scene_Main.new
+break if !@refresh || $scene!=self
+end
+$scene=Scene_Main.new if $scene==self
   end
 def globallogout
   confirm(p_("Account", "Are you sure you want to remove all auto-login tokens and log out of all sessions? You will be logged out immediately.")) do
