@@ -491,6 +491,16 @@ module EltenLink
         true
       end
 
+      def reminder_settings(client, calendar=nil)
+        path = calendar == nil ? "/api/v1/calendars/reminders" : "/api/v1/calendars/#{calendar_id(calendar)}/reminders"
+        client.api_data("GET", path)
+      end
+
+      def update_reminder_settings(client, values, calendar=nil)
+        path = calendar == nil ? "/api/v1/calendars/reminders" : "/api/v1/calendars/#{calendar_id(calendar)}/reminders"
+        client.api_data("PATCH", path, values)
+      end
+
       def shares(client, calendar)
         data = client.api_data("GET", "/api/v1/calendars/#{calendar_id(calendar)}/shares")
         data["shares"].to_a.map do |row|

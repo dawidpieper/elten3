@@ -297,8 +297,8 @@ def load_signs
 end
 def load_notifications_settings
   setting_category(p_("Account", "Notifications"))
-  cats=[p_("Account", "Messages"),p_("Account", "Posts in followed threads"),p_("Account", "Posts on the followed blogs"),p_("Account", "Comments on your blog"),p_("Account", "Threads on followed forums"),p_("Account", "Posts on followed forums"),p_("Account", "New friends"),p_("Account", "Friends' birthdays"),p_("Account", "Mentions"),p_("Account", "Followed blog posts"), p_("Account", "Blog followers"), p_("Account", "Blog mentions"), p_("Account", "Awaiting group invitations")]
-  sets = ["wn_messages", "wn_followedthreads", "wn_followedblogs", "wn_blogcomments", "wn_followedforums", "wn_followedforumsthreads", "wn_friends", "wn_birthday", "wn_mentions", "wn_followedblogposts", "wn_blogfollowers","wn_blogmentions", "wn_groupinvitations"]
+  cats=[p_("Account", "Messages"),p_("Account", "Posts in followed threads"),p_("Account", "Posts on the followed blogs"),p_("Account", "Comments on your blog"),p_("Account", "Threads on followed forums"),p_("Account", "Posts on followed forums"),p_("Account", "New friends"),p_("Account", "Friends' birthdays"),p_("Account", "Mentions"),p_("Account", "Followed blog posts"), p_("Account", "Blog followers"), p_("Account", "Blog mentions"), p_("Account", "Awaiting group invitations"), p_("Account", "Calendar reminders")]
+  sets = ["wn_messages", "wn_followedthreads", "wn_followedblogs", "wn_blogcomments", "wn_followedforums", "wn_followedforumsthreads", "wn_friends", "wn_birthday", "wn_mentions", "wn_followedblogposts", "wn_blogfollowers","wn_blogmentions", "wn_groupinvitations", "wn_calendar"]
   for i in 0...sets.size
     make_setting(cats[i], :whatsnew_delivery, sets[i])
     end
