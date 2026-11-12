@@ -6,6 +6,45 @@ require "cgi"
 
 module EltenAPI
   module InvisibleInterface
+    # Keep repeated global shortcuts from building an unbounded backlog while
+    # the Invisible Interface worker is busy. Non-hotkey jobs retain ordinary
+    # Queue ordering and are never coalesced.
+    class HotkeyJobQueue
+      def initialize
+        @queue = Queue.new
+        @pending_hotkeys = {}
+        @mutex = Mutex.new
+      end
+
+      def <<(job)
+        if hotkey_job?(job)
+          key = job[1].to_i
+          @mutex.synchronize do
+            return self if @pending_hotkeys.key?(key)
+            @pending_hotkeys[key] = true
+            @queue << job
+          end
+        else
+          @queue << job
+        end
+        self
+      end
+
+      def pop(non_block=false)
+        job = @queue.pop(non_block)
+        if hotkey_job?(job)
+          @mutex.synchronize { @pending_hotkeys.delete(job[1].to_i) }
+        end
+        job
+      end
+
+      private
+
+      def hotkey_job?(job)
+        job.is_a?(Array) && job[0] == :hotkey
+      end
+    end
+
     class CustomCategory
       attr_accessor :name, :available_proc, :onetimer
 
@@ -155,7 +194,7 @@ module EltenAPI
       def ensure_state
         return if @state_ready == true
         @state_ready = true
-        @jobs = Queue.new
+        @jobs = HotkeyJobQueue.new
         @ui_events = Queue.new
         @categories = default_categories
         @category = nil
