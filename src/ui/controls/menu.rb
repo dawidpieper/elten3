@@ -222,6 +222,7 @@ class Menu
   end
   private :restore_action_focus
   def close
+    return if @closed
     if @type==:menubar || @type==:menu
     play_sound("menu_close")
 self.class.menubg_close
@@ -230,6 +231,7 @@ self.class.menubg_close
     @closed=true
   end
   def opened?
+    return false if @closed
     close if Time.now.to_f-@lasttime>5
           !@closed
   end
