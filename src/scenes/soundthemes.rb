@@ -8,7 +8,6 @@ require "fileutils"
 
 class Scene_SoundThemes
   def main
-    @return = false
 st=Dir.entries(Dirs.soundthemes)
 st.delete("..")
 st.delete(".")
@@ -32,7 +31,7 @@ for s in st
 loop_update
     @sel.update
     update
-    break if $scene != self or @return == true
+    break if $scene != self
           end
           end
   def soundtheme_selected?(theme)
@@ -67,7 +66,6 @@ loop_update
           }
 menu.option(p_("SoundThemes", "Download sound themes"), nil, "d") {
 stdownload
-            @return = true
 }
           menu.option(p_("SoundThemes", "New"), nil, "n") {
                         $scene=Scene_Sounds.new("")
@@ -85,8 +83,9 @@ stdownload
                   use_soundtheme("")
                   writeconfig("Interface", "SoundTheme", Configuration.soundtheme)
                 end
-                @return=true
-                main
+                @soundthemes.delete(theme)
+                refresh_soundthemes
+                @sel.focus
                 }
           }
           end
@@ -131,8 +130,8 @@ loop_update
 sel.focus
 end
 end
-main
-return
+refresh_soundthemes
+@sel.focus
     end
     def stdownload_category(category)
       std = []
