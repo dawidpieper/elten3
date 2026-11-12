@@ -31,11 +31,14 @@ password=""
 suc=true
 phone=""
   password=input_text(p_("Authentication", "Type your password"),flags: EditBox::Flags::Password,text: "",escapable: true) while password==""
-  return main if password==nil
-phone=input_text(p_("Authentication", "Type your phone number that will be used during verification. Remember to enter  the country code, for example, +48 for Poland"),flags: 0,text: "",escapable: true) while (phone=="" or (phone[0..0]!="+" and phone[0..1]!="00") or phone.size<11 or (/[a-zA-Z,.\/;'\"\[\]!@\#\$%\^\&\*\(\)\_]/=~phone)!=nil) and phone!=nil
-return main if phone==nil
-return main if !confirm(p_("Authentication", "Two-factor authentication was introduced in Elten 2.28. After activating it, you will not be able to log in using older versions of the program. Do you wish to continue anyway?"))
-return main if input_text(p_("Authentication", "Is this phone number correct? Press enter to continue or escape to cancel."),flags: EditBox::Flags::ReadOnly,text: phone, escapable: true)==nil
+  return if password==nil
+  loop do
+    phone=input_text(p_("Authentication", "Type your phone number that will be used during verification. Remember to enter  the country code, for example, +48 for Poland"),flags: 0,text: "",escapable: true)
+    return if phone==nil
+    break if valid_phone_number?(phone)
+  end
+return if !confirm(p_("Authentication", "Two-factor authentication was introduced in Elten 2.28. After activating it, you will not be able to log in using older versions of the program. Do you wish to continue anyway?"))
+return if input_text(p_("Authentication", "Is this phone number correct? Press enter to continue or escape to cancel."),flags: EditBox::Flags::ReadOnly,text: phone, escapable: true)==nil
 if suc==true
 alert(p_("Authentication", "Please wait, connecting to the server ..."))
 enable_error=nil
@@ -60,11 +63,13 @@ if !enable_ok
     alert(_("Error"))
   end
 else
-  code=""
   tries=0
   label=p_("Authentication", "A text message containing the code to activate two-factor authentication will be sent to the phone number you provided. Enter the code.")
   while tries<3
-  code=input_text(label,flags: EditBox::Flags::Numbers).delete("\r\n") while code==""
+  code=input_text(label,flags: EditBox::Flags::Numbers,escapable: true)
+  return if code==nil
+  code=code.delete("\r\n")
+  next if code==""
   begin
     EltenLink::Authentication.verify(elten_link, code: code, appid: $appid)
     verify_ok=true
@@ -73,7 +78,6 @@ else
   end
   if !verify_ok
         tries+=1
-        code=""
         if tries<3
           label=p_("Authentication", "The entered code is not correct. Try again.")
         else
@@ -94,14 +98,14 @@ elsif state==1
   if password!=nil and confirm(p_("Authentication", "Are you sure you want to disable two-factor authentication?"))
     begin
       EltenLink::Authentication.disable(elten_link, password: password)
-      dsb_code=0
+      disable_error=nil
     rescue EltenLink::Error => e
       Log.warning("Authentication disable failed: #{e.message}")
-      dsb_code=e.code.to_i
+      disable_error=e.code.to_s
     end
-    if dsb_code==0
+    if disable_error==nil
       alert(p_("Authentication", "Two-factor authentication has been disabled."))
-    elsif dsb_code==-2
+    elsif disable_error=="-2" || disable_error=="auth.invalid_password"
       alert(p_("Authentication", "Invalid password"))
       else
       alert(_("Error"))
@@ -114,7 +118,7 @@ elsif state==1
 if confirm(p_("Authentication", "Do you want to generate backup codes? These can be used to sign in when you have no access to your phone. All previously generated codes will be deleted."))
   password=""
   password=input_text(p_("Authentication", "Type your password"),flags: EditBox::Flags::Password,text: "",escapable: true) while password==""
-  return main if password==nil  
+  return if password==nil
   begin
     codes=EltenLink::Authentication.backup_codes(elten_link, password: password)
   rescue EltenLink::Error => e
@@ -126,5 +130,15 @@ if confirm(p_("Authentication", "Do you want to generate backup codes? These can
     end
         end
     $scene=Scene_Main.new if action==2
+  end
+
+  private
+
+  def valid_phone_number?(phone)
+    return false if phone==nil || phone==""
+    return false if phone.size<11
+    return false if phone[0..0]!="+" && phone[0..1]!="00"
+
+    (/[a-zA-Z,.\/;'\"\[\]!@\#\$%\^\&\*\(\)\_]/=~phone)==nil
   end
   end
