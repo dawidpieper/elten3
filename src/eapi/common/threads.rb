@@ -74,19 +74,11 @@ end
       $subthreads.delete(cr)
 $currentthread=cr
       end
-    if $currentthread != $mainthread
-      if $currentthread.status==false or $currentthread.status==nil
-        if $subthreads.size > 0
-    $currentthread=$subthreads.last
-    while $subthreads.last.status==false or $subthreads.last.status==nil
-      $subthreads.delete_at($subthreads.size-1)
+    if $currentthread != $mainthread && !$currentthread.alive?
+      $currentthread=$subthreads.pop
+      $currentthread=$subthreads.pop while $currentthread!=nil && !$currentthread.alive?
+      $currentthread=$mainthread if $currentthread==nil
     end
-      $subthreads.delete_at($subthreads.size-1)
-    else
-      $currentthread=$mainthread
-      end
-        end
-                                                                                                                                                              end
          sleep(0.1)
        end
      rescue Exception

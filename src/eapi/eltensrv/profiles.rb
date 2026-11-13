@@ -11,6 +11,10 @@ module EltenAPI
       begin
         card = EltenLink::Profiles.card(elten_link, user)
       rescue EltenLink::Error => e
+        if e.code.to_s == "cancelled"
+          Log.debug("Visiting card request cancelled")
+          return 0
+        end
         Log.warning("Visiting card failed: #{e.message}")
         alert(_("Database Error"))
         return -1
@@ -21,6 +25,7 @@ module EltenAPI
       dialog_open
       text = ""
       honor = card.main_honor&.name_for(Configuration.language)
+      honor = nil if honor.to_s.empty?
       text += "#{if honor==nil;p_("EAPI_Common", "User");else;honor;end}: #{user} \r\n"
       if card.ban&.active?
         text += p_("EAPI_Common", "Banned until %{date}") % { date: format_date(Time.at(card.ban.totime)) }
@@ -35,58 +40,35 @@ module EltenAPI
       end
       fullname = ""
       gender = -1
-      birthdateyear = 0
-      birthdatemonth = 0
-      birthdateday = 0
-      location = ""
       if pr != nil
         fullname = pr.fullname
         gender = pr.gender
-        if pr.birthdate.complete?
-          birthdateyear = pr.birthdate.year
-          birthdatemonth = pr.birthdate.month
-          birthdateday = pr.birthdate.day
-        end
-        location = pr.location
         text += fullname+"\r\n"
         if gender == 0
           text += "#{p_("EAPI_Common", "Gender")}: #{_("Female")}\r\n"
         elsif gender == 1
           text += "#{p_("EAPI_Common", "Gender")}: #{_("male")}\r\n"
         end
-        if birthdateyear.to_i>0
-          age = Time.now.year-birthdateyear.to_i
-          if Time.now.month < birthdatemonth.to_i
-            age -= 1
-          elsif Time.now.month == birthdatemonth.to_i
-            if Time.now.day < birthdateday.to_i
-              age -= 1
-            end
-          end
-          age -= 2000 if age > 2000
+        age = visitingcard_age(pr.birthdate)
+        if age != nil
           text += "#{p_("EAPI_Common", "Age")}: #{age.to_s}\r\n"
         end
-        if location!="" and (location.to_i>0 or Lists.locations.map{|l| l['country']}.uniq.include?(location))
-          text+=p_("EAPI_Common", "Location")+": "
-          if location.to_i>0
-            loc={}
-            Lists.locations.each {|l| loc=l if l['geonameid']==location.to_i}
-            text+=(loc['name']||"")+", "+(loc['country']||"") if loc!=nil
-          else
-            text+=location
-          end
-          text+="\r\n"
+        location = visitingcard_location(pr.location)
+        if location != nil
+          text += "#{p_("EAPI_Common", "Location")}: #{location}\r\n"
         end
       end
-      if ui != -1
-        if gender == 0
-          text += p_("EAPI_Common_female", "Last seen")
-        elsif gender == 1
-          text += p_("EAPI_Common_male", "Last seen")
-        else
-          text += p_("EAPI_Common", "Last seen")
+      if ui != nil
+        if ui.last_seen != nil
+          if gender == 0
+            text += p_("EAPI_Common_female", "Last seen")
+          elsif gender == 1
+            text += p_("EAPI_Common_male", "Last seen")
+          else
+            text += p_("EAPI_Common", "Last seen")
+          end
+          text+= ": " + format_date(ui.last_seen, false, false) + "\r\n"
         end
-        text+= ": " + format_date(ui.last_seen, false, false) + "\r\n"
         text += p_("EAPI_Common", "User has a blog")+"\r\n" if ui.has_blog
         text += "#{np_("EAPI_Common", "Knows %{count} user", "Knows %{count} users", ui.knows)%{:count=>ui.knows.to_s}}\r\n"
         if gender == -1
@@ -109,6 +91,39 @@ module EltenAPI
       $focus = true if $scene.is_a?(Scene_Main) == false
       dialog_close
       return 0
+    end
+
+    def visitingcard_age(birthdate, now = Time.now)
+      return nil unless birthdate&.complete?
+
+      year = birthdate.year.to_i
+      month = birthdate.month.to_i
+      day = birthdate.day.to_i
+      future = year > now.year ||
+        (year == now.year && month > now.month) ||
+        (year == now.year && month == now.month && day > now.day)
+      return nil if future
+
+      age = now.year - year
+      age -= 1 if month > now.month || (month == now.month && day > now.day)
+      age
+    end
+
+    def visitingcard_location(value)
+      location = value.to_s
+      return nil if location.empty?
+
+      locations = Lists.locations.to_a
+      location_id = Integer(location, exception: false)
+      if location_id != nil && location_id > 0
+        row = locations.find { |entry| entry.is_a?(Hash) && entry["geonameid"].to_i == location_id }
+        return nil if row == nil
+
+        label = [row["name"], row["country"]].map(&:to_s).reject(&:empty?).join(", ")
+        return label.empty? ? nil : label
+      end
+
+      locations.any? { |entry| entry.is_a?(Hash) && entry["country"].to_s == location } ? location : nil
     end
 
     # Gets the main honor of specified user.
