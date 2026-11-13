@@ -227,6 +227,7 @@ src/ui/controls/tree.rb
 src/ui/controls/table_box.rb
 src/ui/controls/grid_box.rb
 src/ui/controls/calendar_grid.rb
+src/ui/controls/date_field.rb
 src/ui/controls/player.rb
 src/ui/controls/menu.rb
 src/ui/controls/map.rb
