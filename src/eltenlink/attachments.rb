@@ -63,14 +63,15 @@ module EltenLink
       end
 
       def send_file(client, file)
-        data = File.binread(file)
-        result = client.api_binary_data(
-          "POST",
-          "/api/v1/attachments",
-          data,
-          { "Content-Type" => "application/octet-stream", "X-Elten-Filename" => File.basename(file) }
-        )
-        result["id"].to_s
+        File.open(file, "rb") do |input|
+          result = client.api_binary_data(
+            "POST",
+            "/api/v1/attachments",
+            input,
+            { "Content-Type" => "application/octet-stream", "X-Elten-Filename" => File.basename(file) }
+          )
+          result["id"].to_s
+        end
       end
 
       def download_url(attachment)
