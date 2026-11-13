@@ -876,6 +876,7 @@ class Scene_Tasks
       return false unless completion_assignment_confirmed?(task)
 
       EltenLink::Tasks.complete(elten_link, task)
+      EltenAPI::TaskTimer.stop if EltenAPI::TaskTimer.running_for?(task)
       alert(p_("Tasks", "The task has been completed"))
     else
       EltenLink::Tasks.reopen(elten_link, task)
@@ -923,7 +924,9 @@ class Scene_Tasks
     if timer.running_for?(task)
       menu.submenu(p_("Tasks", "Focus timer")) do |submenu|
         submenu.option(p_("Tasks", "Time left"), nil, "l") { alert(timer.status_text, false) }
-        if !timer.finished?
+        if timer.finished?
+          submenu.option(p_("Tasks", "Time is up: choose what to do next"), nil, "n") { timer.show_prompt }
+        else
           label = timer.paused? ? p_("Tasks", "Resume focus timer") : p_("Tasks", "Pause focus timer")
           submenu.option(label, nil, "p") do
             timer.toggle_pause
