@@ -256,6 +256,7 @@ module TasksSceneHelpers
       due_label += " (#{p_("Tasks", "task due date")})" if !task.due? && parent != nil
       parts << due_label
     end
+    parts << task_repeat_label(task) if task.recurring?
     if task.performer != nil
       performer_label = task.completed? ? p_("Tasks", "completed by %{user}") : p_("Tasks", "assigned to %{user}")
       parts << (performer_label % { user: task.performer })
@@ -326,6 +327,17 @@ module TasksSceneHelpers
       current_date = task_date(task.plantime)
       due_index = due_entries.index { |_, value| value == current_date } || due_entries.size - 1
     end
+    repeat_values = [0, 1, 7, -1, :custom]
+    repeat_labels = [
+      p_("Tasks", "Does not repeat"),
+      p_("Tasks", "Daily"),
+      p_("Tasks", "Weekly"),
+      p_("Tasks", "Monthly on the due day"),
+      p_("Tasks", "Every N days")
+    ]
+    current_frequency = task == nil || goal ? 0 : task.frequency
+    repeat_index = repeat_values.index(current_frequency) || repeat_values.index(:custom)
+    custom_repeat = repeat_values[repeat_index] == :custom ? current_frequency.to_s : "2"
     fields = [
       edt_name = EditBox.new(p_("Tasks", "Task name"), text: task == nil ? "" : task.name, quiet: true),
       edt_description = EditBox.new(
@@ -350,11 +362,19 @@ module TasksSceneHelpers
         index: due_index
       ),
       btn_due = DateField.new(p_("Tasks", "Custom due date"), date: due_time, years: (min_year..max_year)),
-      Button.new(task == nil ? p_("Tasks", "Add task") : _("Save")),
-      Button.new(_("Cancel"))
+      lst_repeat = ListBox.new(repeat_labels, header: p_("Tasks", "Repeat"), index: repeat_index),
+      edt_repeat_days = EditBox.new(p_("Tasks", "Number of days"), type: EditBox::Flags::Numbers, text: custom_repeat, quiet: true),
+      btn_save = Button.new(task == nil ? p_("Tasks", "Add task") : _("Save")),
+      btn_cancel = Button.new(_("Cancel"))
     ]
     form = Form.new(fields)
     form.hide(lst_project) if goal
+    custom_repeat_selected = proc { !goal && repeat_values[lst_repeat.index.to_i] == :custom }
+    lst_repeat.on(:move) do
+      custom_repeat_selected.call ? form.show(edt_repeat_days) : form.hide(edt_repeat_days)
+    end
+    lst_repeat.trigger(:move)
+    form.hide(lst_repeat) if goal
     selected_due = proc { due_entries[due_control.index.to_i][1] }
     manual_due_selected = proc { selected_due.call == :custom }
     due_control.on(:move) do
@@ -371,6 +391,7 @@ module TasksSceneHelpers
     end
     accepted = false
     plantime = nil
+    frequency = 0
     init_name = edt_name.text.to_s
     init_desc = edt_description.text.to_s
     dialog_open
@@ -378,10 +399,10 @@ module TasksSceneHelpers
       loop_update
       form.update
       if key_pressed?(:key_escape) ||
-          ((key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 7)
+          ((key_pressed?(:key_enter) || key_pressed?(:key_space)) && fields[form.index] == btn_cancel)
         break if (edt_name.text.to_s == init_name && edt_description.text.to_s == init_desc) || confirm(p_("Tasks", "Are you sure you want to close without saving?"))
       end
-      if (key_pressed?(:key_enter) || key_pressed?(:key_space)) && form.index == 6
+      if (key_pressed?(:key_enter) || key_pressed?(:key_space)) && fields[form.index] == btn_save
         if edt_name.text.to_s.strip.empty?
           alert(p_("Tasks", "Enter a task name"))
           edt_name.focus
@@ -394,6 +415,20 @@ module TasksSceneHelpers
                      end
           if plantime != nil && goal && parent.due? && plantime.to_i > parent.plantime.to_i
             alert(p_("Tasks", "The goal due date cannot be after the task due date"))
+            next
+          end
+          frequency = goal ? 0 : repeat_values[lst_repeat.index.to_i]
+          if frequency == :custom
+            frequency = edt_repeat_days.text.to_i
+            if frequency <= 0 || frequency > 2_147_483_647
+              alert(p_("Tasks", "Enter a valid number of days"))
+              edt_repeat_days.focus
+              next
+            end
+          end
+          if frequency != 0 && plantime == nil
+            alert(p_("Tasks", "A repeating task needs a due date"))
+            due_control.focus
             next
           end
           accepted = true
@@ -410,7 +445,8 @@ module TasksSceneHelpers
       description: edt_description.text.to_s,
       plantime: plantime,
       performer: lst_performer.index.to_i.zero? ? nil : performer_users[lst_performer.index - 1],
-      parent: parent_id.to_i
+      parent: parent_id.to_i,
+      frequency: frequency
     }
   rescue ArgumentError
     alert(p_("Tasks", "Select a valid due date"))
@@ -419,6 +455,23 @@ module TasksSceneHelpers
 
   def task_date_label(time)
     format_localized_date(task_date(time))
+  end
+
+  def task_repeat_label(task)
+    case task.frequency
+    when 1
+      p_("Tasks", "repeats daily")
+    when 7
+      p_("Tasks", "repeats weekly")
+    when -1
+      if task.due?
+        p_("Tasks", "repeats monthly on day %{day}") % { day: task.plantime.day }
+      else
+        p_("Tasks", "repeats monthly")
+      end
+    else
+      np_("Tasks", "repeats every %{count} day", "repeats every %{count} days", task.frequency) % { count: task.frequency }
+    end
   end
 
   def task_date(time)
@@ -873,7 +926,8 @@ class Scene_Tasks
         description: values[:description],
         plantime: values[:plantime],
         performer: values[:performer],
-        parent: values[:parent]
+        parent: values[:parent],
+        frequency: values[:frequency]
       )
       alert(parent == nil ? p_("Tasks", "The task has been added") : p_("Tasks", "The goal has been added"))
       @selected_task_id = parent == nil ? id : parent.id
@@ -886,7 +940,8 @@ class Scene_Tasks
         description: values[:description],
         plantime: values[:plantime],
         performer: values[:performer],
-        parent: values[:parent]
+        parent: values[:parent],
+        frequency: values[:frequency]
       )
       alert(p_("Tasks", "The task has been updated"))
       @selected_task_id = task.parent.positive? ? task.parent : task.id
