@@ -4,6 +4,8 @@
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>.
 
+require "fileutils"
+
 module EltenAPI
   module Controls
     private
@@ -251,16 +253,35 @@ def savefile
                 r=true
         waiting {
         if encoder::Extension.downcase==".opus" && is_opus?
-          r=download_file(@file, pth)
+          r=download_original_stream(pth)
           else
         encoder.encode_file(@file, pth)
         end
         }
-        alert(_("Saved")) if r
-        form.resume
+        if r
+          alert(_("Saved"))
+          form.resume
+        end
         }
 form.wait
           dialog_close
+        end
+
+        def download_original_stream(destination)
+          temporary="#{destination}.download-#{$$}-#{Thread.current.object_id}"
+          FileUtils.rm_f(temporary)
+          return false unless download_file(@file, temporary, use_waiting: true, can_cancel: true, override: true)
+          if FileTest.exists?(destination) && !confirm(p_("EAPI_Network", "The file already exists. Do you want to overwrite it?"))
+            return false
+          end
+          FileUtils.mv(temporary, destination, force: true)
+          true
+        rescue Exception => e
+          Log.warning("Original audio stream download failed: #{e.class}: #{e.message}")
+          alert(_("Error"))
+          false
+        ensure
+          FileUtils.rm_f(temporary) if temporary!=nil
         end
 
         def is_opus?
