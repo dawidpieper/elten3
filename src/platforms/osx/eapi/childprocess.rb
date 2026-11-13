@@ -30,11 +30,16 @@ module EltenAPI
   end
 
   def executeprocess(cmdline, _hide = false, tmax = 0, update = true, path = nil)
+    pid = nil
+    completed = false
     pid = run(cmdline, false, path)
     started = Time.now.to_f
     loop do
       done = Process.waitpid(pid, Process::WNOHANG)
-      break if done != nil
+      if done != nil
+        completed = true
+        break
+      end
       if tmax.to_f > 0 && Time.now.to_f - started > tmax.to_f
         Process.kill("TERM", pid) rescue nil
         return -1
@@ -45,6 +50,8 @@ module EltenAPI
     [status ? status.exitstatus.to_i : 0].pack("I")
   rescue Exception
     -1
+  ensure
+    $procs.delete(pid) if completed && pid != nil && $procs != nil
   end
 
   def terminate_process_handle(handle)
