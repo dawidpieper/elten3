@@ -1291,20 +1291,20 @@ module Programs
 
     def read_json(path, default: nil)
       file = data_path(path)
-      json_file_monitor(file).synchronize { read_json_file(file) { default } }
+      with_json_file_monitor(file) { read_json_file(file) { default } }
     rescue Exception
       default
     end
 
     def write_json(path, data)
       file = data_path(path)
-      json_file_monitor(file).synchronize { write_json_file(file, data) }
+      with_json_file_monitor(file) { write_json_file(file, data) }
     end
 
     def update_json(path, default: nil)
       raise ArgumentError, "update_json requires a block" if !block_given?
       file = data_path(path)
-      json_file_monitor(file).synchronize do
+      with_json_file_monitor(file) do
         value = read_json_file(file) { duplicate_json_value(default) }
         yield value
         write_json_file(file, value)
@@ -1523,9 +1523,22 @@ module Programs
 
     private
 
-    def json_file_monitor(file)
-      @json_file_monitors_guard.synchronize do
-        @json_file_monitors[file] ||= Monitor.new
+    def with_json_file_monitor(file)
+      monitor = @json_file_monitors_guard.synchronize do
+        entry = (@json_file_monitors[file] ||= [Monitor.new, 0])
+        entry[1] += 1
+        entry[0]
+      end
+      monitor.synchronize { yield }
+    ensure
+      if monitor != nil
+        @json_file_monitors_guard.synchronize do
+          entry = @json_file_monitors[file]
+          if entry != nil && entry[0].equal?(monitor)
+            entry[1] -= 1
+            @json_file_monitors.delete(file) if entry[1] == 0
+          end
+        end
       end
     end
 
