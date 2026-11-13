@@ -1788,6 +1788,7 @@ module Programs
       end
       runtime.close_managed_resources if runtime.respond_to?(:close_managed_resources)
       runtime.close_sound_pool if runtime.respond_to?(:close_sound_pool)
+      MediaFinders.unregister_owner(runtime) if defined?(MediaFinders) && MediaFinders.respond_to?(:unregister_owner)
       MediaEncoders.unregister_owner(runtime) if defined?(MediaEncoders) && MediaEncoders.respond_to?(:unregister_owner)
       Extensions.unregister_runtime(runtime, reason) if defined?(Extensions)
       remove_program_locale(runtime) if respond_to?(:remove_program_locale, true)
@@ -2218,14 +2219,17 @@ module Programs
 
     def initialize_program_class(cls)
       return if !cls.is_a?(Class)
+      runtime = runtime_for(cls)
       Thread.new do
         begin
-          cls.init
-          user_menu = cls.respond_to?(:user_menu_options) ? cls.user_menu_options : {}
-          if user_menu.is_a?(Hash) && !user_menu.empty?
-            $usermenuextra = {} if $usermenuextra == nil
-            user_menu.each do |key, value|
-              $usermenuextra[key] = [cls] + Array(value)
+          with_runtime(runtime) do
+            cls.init
+            user_menu = cls.respond_to?(:user_menu_options) ? cls.user_menu_options : {}
+            if user_menu.is_a?(Hash) && !user_menu.empty?
+              $usermenuextra = {} if $usermenuextra == nil
+              user_menu.each do |key, value|
+                $usermenuextra[key] = [cls] + Array(value)
+              end
             end
           end
         rescue Exception => e
