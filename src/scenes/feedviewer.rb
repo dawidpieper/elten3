@@ -144,11 +144,17 @@ dialog_close
     }
   if feed.user==Session.name
     menu.option(_("Delete"), nil, :del) {
-    confirm(p_("FeedViewer", "Are you sure you want to delete this post?")) {
-    delete_feed(feed.id)
-    }
-    play_sound("editbox_delete")
-    @sel.disable_item(@sel.index)
+    if confirm(p_("FeedViewer", "Are you sure you want to delete this post?"))
+      begin
+        delete_feed(feed.id)
+      rescue EltenLink::Error => e
+        Log.warning("Feed deletion failed: #{e.message}")
+        alert(_("Error"))
+      else
+        play_sound("editbox_delete")
+        @sel.disable_item(@sel.index)
+      end
+    end
     }
   end
   end

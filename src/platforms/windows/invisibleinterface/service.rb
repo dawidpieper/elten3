@@ -485,13 +485,13 @@ module EltenAPI
         @feed_id = feeds.last.id if @feed_id == nil || @feed_id.to_i == 0
         feed = case action
         when :prev
-          feeds.select { |f| f.id < @feed_id.to_i && f.message.to_s != "" }.max_by { |f| f.id }
+          feeds.select { |f| f.id.to_i < @feed_id.to_i }.max_by { |f| f.id.to_i }
         when :next
-          feeds.select { |f| f.id > @feed_id.to_i && f.message.to_s != "" }.min_by { |f| f.id }
+          feeds.select { |f| f.id.to_i > @feed_id.to_i }.min_by { |f| f.id.to_i }
         when :first
-          feeds.select { |f| f.message.to_s != "" }.min_by { |f| f.id }
+          feeds.min_by { |f| f.id.to_i }
         when :last
-          feeds.select { |f| f.message.to_s != "" }.max_by { |f| f.id }
+          feeds.max_by { |f| f.id.to_i }
         end
         if feed != nil
           quick_audio_stop
@@ -533,14 +533,27 @@ module EltenAPI
       end
 
       def feed_values
-        Session.feeds.values.compact.select { |feed| feed.respond_to?(:id) }.sort_by { |feed| feed.id.to_i }
+        Session.feeds.values.compact.select { |feed| navigable_feed?(feed) }.sort_by { |feed| feed.id.to_i }
       rescue Exception
         []
       end
 
       def current_feed
-        return nil if @feed_id == nil
-        feed_values.find { |feed| feed.id.to_i == @feed_id.to_i }
+        return nil if @feed_id == nil || @feed_id.to_i == 0
+        feeds = feed_values
+        feed = feeds.find { |current| current.id.to_i == @feed_id.to_i }
+        feed ||= feeds.select { |current| current.id.to_i < @feed_id.to_i }.max_by { |current| current.id.to_i }
+        feed ||= feeds.first
+        if feed != nil && feed.id.to_i != @feed_id.to_i
+          @feed_id = feed.id
+          Scene_Main.feed_id = feed.id if defined?(Scene_Main)
+        end
+        feed
+      end
+
+      def navigable_feed?(feed)
+        return false if !feed.respond_to?(:id) || feed.id.to_i <= 0
+        feed.message.to_s != "" || feed_audio_url(feed) != ""
       end
 
       def feed_lasttext

@@ -99,6 +99,7 @@ module EltenAPI
       def reset_feeds
         ensure_state
         @feed_request_pending = false
+        @feed_request_id = nil
         @ag_feed = 0
         @ag_feedtime = 0
         @feedstime = 0
@@ -256,6 +257,8 @@ module EltenAPI
         @realtime_cursor_request_id = 0
         @inflight_requests = {}
         @feed_request_pending = false
+        @feed_request_serial = 0
+        @feed_request_id = nil
         @virtual_update_request_pending = false
         @next_virtual_update_check_at = 0.0
         @feedstime = 0
@@ -310,7 +313,10 @@ module EltenAPI
               drain_background_responses
               refresh_server_data(key, now)
               clear_stale_requests(now)
-              @feed_request_pending = false if @feed_request_pending == true && now - (@feed_request_started_at || 0) > 30
+              if @feed_request_pending == true && now - (@feed_request_started_at || 0) > 30
+                @feed_request_pending = false
+                @feed_request_id = nil
+              end
               @virtual_update_request_pending = false if @virtual_update_request_pending == true && now - (@virtual_update_request_started_at || 0) > REQUEST_STALE_AFTER
               refresh_ticket = pending_runtime_state_refresh(key)
               if refresh_ticket != nil && @inflight_requests.size < MAX_INFLIGHT_REQUESTS
@@ -396,6 +402,7 @@ module EltenAPI
         cancel_status_requests
         @inflight_requests.clear
         @feed_request_pending = false
+        @feed_request_id = nil
         @virtual_update_request_pending = false
         @next_virtual_update_check_at = 0.0
         @notification_ids.clear
@@ -1103,6 +1110,8 @@ module EltenAPI
       def fetch_feeds(key, feed: nil, feedtime: nil)
         return if @feed_request_pending == true
         name, token = key
+        @feed_request_serial = @feed_request_serial.to_i + 1
+        @feed_request_id = @feed_request_serial
         @feed_request_pending = true
         @feed_request_started_at = monotonic_time
         params = {
@@ -1112,7 +1121,7 @@ module EltenAPI
           "limit" => 1500
         }
         path = EltenLink::Client.append_query("/api/v1/feeds/followed", params)
-        request_data = { "session_key" => key, "feed" => feed.to_i, "feedtime" => feedtime.to_i }
+        request_data = { "session_key" => key, "feed" => feed.to_i, "feedtime" => feedtime.to_i, "feed_request_id" => @feed_request_id }
         elten_link.e_json_request("GET", path, {}, request_data) do |answer, data|
           @background_responses << ["feeds", answer, data]
         rescue Exception
@@ -1188,6 +1197,7 @@ module EltenAPI
         )
       end
       def handle_feeds_response(answer, request_data)
+        return if !current_feed_request?(request_data)
         key = request_data.is_a?(Hash) ? request_data["session_key"] : request_data
         return if key != @session_key || !answer.is_a?(String)
         body = answer.dup.force_encoding("UTF-8").encode("UTF-8", invalid: :replace, undef: :replace)
@@ -1226,6 +1236,19 @@ module EltenAPI
         Log.error("Notification feed error: #{$!.class}: #{$!.message}")
       end
 
+      def current_feed_request?(request_data)
+        request_id = request_data.is_a?(Hash) ? request_data["feed_request_id"] : nil
+        return true if request_id == nil
+        @feed_request_id != nil && request_id.to_i == @feed_request_id.to_i
+      end
+
+      def finish_feed_request(request_data)
+        return false if !current_feed_request?(request_data)
+        @feed_request_pending = false
+        @feed_request_id = nil
+        true
+      end
+
       def request_missed_call_status(key, call_id, caller)
         return if call_id == nil
         Thread.new do
@@ -1252,7 +1275,7 @@ module EltenAPI
             begin
               handle_feeds_response(answer, data)
             ensure
-              @feed_request_pending = false
+              finish_feed_request(data)
             end
           when "missed_call"
             handle_missed_call_response(answer, data)
