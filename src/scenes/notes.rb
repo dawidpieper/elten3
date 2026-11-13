@@ -11,19 +11,12 @@ class Scene_Notes
       $scene=Scene_Main.new
       return
       end
-  begin
-    @notes = EltenLink::Notes.list(elten_link)
-  rescue EltenLink::Error => e
-    Log.warning("Notes list failed: #{e.message}")
-    alert(_("Error"))
+  @notes = fetch_notes
+  if @notes == nil
     $scene=Scene_Main.new
     return
-    end
-  selt=[]
-  for n in @notes
-    selt.push(n.name+"\r\n#{p_("Notes", "Author")}: "+n.author+"\r\n#{p_("Notes", "Modified")}: "+format_date(n.modified, false, false))
   end
-  @sel=ListBox.new(selt,header: p_("Notes", "Notes"), index: index, flags: 0, quiet: false)
+  @sel=ListBox.new(note_options(@notes),header: p_("Notes", "Notes"), index: index, flags: 0, quiet: false)
   @sel.bind_context{|menu|context(menu)}
   loop do
     loop_update
@@ -35,8 +28,7 @@ class Scene_Notes
               end
               if @refresh == true
                     @refresh = false
-                    main(@sel.index)
-                    return
+                    refresh_notes(@sel.index)
           end
       break if $scene!=self
     end
@@ -68,9 +60,33 @@ class Scene_Notes
           $scene=Scene_Notes_New.new
   }
   menu.option(_("Refresh"), nil, "r") {
-  main
+  @refresh=true
   }
             end
+  def fetch_notes
+    EltenLink::Notes.list(elten_link)
+  rescue EltenLink::Error => e
+    Log.warning("Notes list failed: #{e.message}")
+    alert(_("Error"))
+    nil
+  end
+  def note_options(notes)
+    notes.map { |note|
+      note.name+"\r\n#{p_("Notes", "Author")}: "+note.author+"\r\n#{p_("Notes", "Modified")}: "+format_date(note.modified, false, false)
+    }
+  end
+  def refresh_notes(index)
+    notes=fetch_notes
+    if notes==nil
+      @sel.focus
+      return false
+    end
+    @notes=notes
+    @sel.options=note_options(@notes)
+    @sel.index=[[index.to_i, 0].max, [@notes.size-1, 0].max].min
+    @notes.empty? ? @sel.focus : @sel.sayoption
+    true
+  end
   def show(note,edit=false)
     id=note.id
     changed=false
