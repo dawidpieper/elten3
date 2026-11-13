@@ -770,6 +770,7 @@ class Scene_Tasks
       project = project_for(task)
       menu.option(p_("Tasks", "Show details"), nil, "d") { show_task_details(task, project) }
       menu.option(p_("Tasks", "Goals"), nil, "g") { manage_goals(task) }
+      task_timer_context(menu, task)
       unless task.composite?
         if task.completed?
           menu.option(p_("Tasks", "Reopen"), nil, "o") { change_completion(task, false) }
@@ -875,6 +876,7 @@ class Scene_Tasks
       return false unless completion_assignment_confirmed?(task)
 
       EltenLink::Tasks.complete(elten_link, task)
+      EltenAPI::TaskTimer.stop if EltenAPI::TaskTimer.running_for?(task)
       alert(p_("Tasks", "The task has been completed"))
     else
       EltenLink::Tasks.reopen(elten_link, task)
@@ -917,6 +919,73 @@ class Scene_Tasks
     false
   end
 
+  def task_timer_context(menu, task)
+    timer = EltenAPI::TaskTimer
+    if timer.running_for?(task)
+      menu.submenu(p_("Tasks", "Focus timer")) do |submenu|
+        submenu.option(p_("Tasks", "Time left"), nil, "l") { alert(timer.status_text, false) }
+        if timer.finished?
+          submenu.option(p_("Tasks", "Time is up: choose what to do next"), nil, "n") { timer.show_prompt }
+        else
+          label = timer.paused? ? p_("Tasks", "Resume focus timer") : p_("Tasks", "Pause focus timer")
+          submenu.option(label, nil, "p") do
+            timer.toggle_pause
+            alert(timer.status_text, false)
+          end
+        end
+        submenu.option(p_("Tasks", "Stop focus timer"), nil, "s") do
+          timer.stop
+          alert(p_("Tasks", "The focus timer has been stopped"))
+        end
+      end
+    elsif !task.completed?
+      menu.option(p_("Tasks", "Start focus timer"), nil, "f") { start_task_timer(task) }
+    end
+  end
+
+  def start_task_timer(task)
+    timer = EltenAPI::TaskTimer
+    if timer.active? && !timer.running_for?(task)
+      question = p_("Tasks", "A focus timer for %{task} is already running. Do you want to replace it?") %
+                 { task: timer.task_name }
+      return false unless confirm(question)
+    end
+    minutes = choose_task_timer_minutes
+    return false if minutes == nil
+
+    timer.start(task, minutes)
+    alert(p_("Tasks", "Focus timer started: %{task}, %{time}") %
+          { task: task.name, time: timer.duration_text(minutes * 60) })
+    true
+  end
+
+  def choose_task_timer_minutes
+    timer = EltenAPI::TaskTimer
+    last = timer.last_minutes
+    presets = (timer::PRESETS + [last]).uniq.sort
+    labels = presets.map { |minutes| timer.duration_text(minutes * 60) } + [p_("Tasks", "Custom time")]
+    index = selector(labels, header: p_("Tasks", "Focus time"), start_index: presets.index(last) || 0, cancel_index: -1)
+    return nil if index == nil || index < 0
+    return presets[index] if index < presets.size
+
+    text = input_text(
+      p_("Tasks", "Focus time in minutes"),
+      text: last.to_s,
+      escapable: true,
+      permitted_characters: ("0".."9").to_a,
+      max_length: 3,
+      select_all: true
+    )
+    return nil if text == nil
+
+    minutes = text.to_i
+    if minutes < 1 || minutes > timer::MAX_MINUTES
+      alert(p_("Tasks", "Enter a number of minutes from 1 to %{max}") % { max: timer::MAX_MINUTES })
+      return nil
+    end
+    minutes
+  end
+
   def request_reload(task_id=nil)
     @selected_task_id = task_id unless task_id.nil?
     @reload = true
@@ -939,6 +1008,7 @@ class Scene_Tasks
           menu.option(p_("Tasks", "Show details"), nil, "d") do
             show_task_details(goal, project_for(task), full_task)
           end
+          task_timer_context(menu, goal)
           if goal.completed?
             menu.option(p_("Tasks", "Reopen"), nil, "o") do
               selected_id = goal.id

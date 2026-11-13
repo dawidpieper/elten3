@@ -548,14 +548,14 @@ if $setkeys.is_a?(Array)
                       EltenWindow.post_window_action(wait, &block)
                     end
 
-                    def alarm_sound_start
+                    def alarm_sound_start(volume: 100)
                       alarm_sound_stop
                       sound = getsound("alarm")
                       file = sound == nil ? "alarm" : nil
                       return if sound == nil && !FileTest.exists?(file)
                       $alarmplayer = Sound.new(file, loop: true, stream: sound)
                       if $alarmplayer != nil
-                        $alarmplayer.volume = Configuration.volume.to_f / 100.0
+                        $alarmplayer.volume = Configuration.volume.to_f / 100.0 * volume.to_f / 100.0
                         $alarmplayer.play
                       end
                     rescue Exception => e
