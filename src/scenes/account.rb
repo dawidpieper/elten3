@@ -4,6 +4,8 @@
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
 
+require "fileutils"
+
 class Scene_Account
   WHATSNEW_DISABLE_LIST = 1
   WHATSNEW_DISABLE_PC = 2
@@ -1063,11 +1065,28 @@ nm=sprintf(Session.name+"_%04d%02d%02d%02d%02d.zip", tm.year, tm.month, tm.day, 
 fl=EltenPath.join(tr_path.selected, edt_filename.text)
 fl+=".zip" if File.extname(fl).downcase!=".zip"
 url = EltenLink::Accounts.export_download_url(export_file)
-download_file(url, fl, use_waiting: true, can_cancel: true, override: false) 
-alert(p_("Account", "Data export saved"))
+if download_export(url, fl)
+  alert(p_("Account", "Data export saved"))
         form.resume
+end
         }
 form.wait
           dialog_close
+end
+def download_export(url, destination)
+  temporary = "#{destination}.download-#{$$}-#{Thread.current.object_id}"
+  FileUtils.rm_f(temporary)
+  return false unless download_file(url, temporary, use_waiting: true, can_cancel: true, override: true)
+  if FileTest.exists?(destination) && !confirm(p_("EAPI_Network", "The file already exists. Do you want to overwrite it?"))
+    return false
+  end
+  FileUtils.mv(temporary, destination, force: true)
+  true
+rescue Exception => e
+  Log.warning("Account export download failed: #{e.class}: #{e.message}")
+  alert(_("Error"))
+  false
+ensure
+  FileUtils.rm_f(temporary) if temporary != nil
 end
     end
