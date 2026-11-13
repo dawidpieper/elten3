@@ -19,7 +19,8 @@ class Scene_Notifications
   end
 
   def prepare
-    load_groups
+    return nil if !load_groups
+
     @groups.empty? ? nil : self
   end
 
@@ -30,7 +31,10 @@ class Scene_Notifications
       return
     end
 
-    load_groups if @groups == nil
+    if @groups == nil && !load_groups
+      $scene = Scene_Main.new
+      return
+    end
     if @groups.empty?
       alert(empty_message) if @quiet != true
       $scene = Scene_Main.new
@@ -44,8 +48,7 @@ class Scene_Notifications
       if whatsnew? && ($main_notifications_changed == true || notifications_changed)
         $main_notifications_changed = false
         @index = @list.index
-        load_groups(@index)
-        finish_reload
+        reload_groups(@index)
         break if $scene != self
       end
       @list.update
@@ -74,6 +77,8 @@ class Scene_Notifications
 
   def load_groups(index=@index)
     notifications = fetch_notifications
+    return false if notifications == nil
+
     if whatsnew?
       @groups = build_active_main_notification_groups(notifications)
     else
@@ -85,6 +90,7 @@ class Scene_Notifications
     @list = TableBox.new(notification_columns, notification_rows(@groups), index: @index, header: notification_list_header, quiet: whatsnew?)
     apply_notification_group_states(@list, @groups) if !whatsnew?
     @list.bind_context { |menu| context(menu) }
+    true
   end
 
   def fetch_notifications
@@ -96,7 +102,7 @@ class Scene_Notifications
   rescue EltenLink::Error => e
     Log.warning("Notifications list failed: #{e.message}")
     alert(_("Error")) if @quiet != true
-    []
+    nil
   end
 
   def context(menu)
@@ -112,8 +118,15 @@ class Scene_Notifications
     menu.option(_("Refresh"), nil, "r") do
       @index = @list.index
       EltenAPI::NotificationService.refresh_active_notifications if whatsnew?
-      load_groups(@index)
+      reload_groups(@index)
+    end
+  end
+
+  def reload_groups(index=@index)
+    if load_groups(index)
       finish_reload
+    else
+      @list.focus if @list != nil
     end
   end
 
@@ -133,8 +146,7 @@ class Scene_Notifications
     old_index = @list.index
     opened = open_notification_group(group)
     if opened && $scene == self
-      load_groups(old_index)
-      finish_reload
+      reload_groups(old_index)
     end
   end
 
@@ -144,16 +156,14 @@ class Scene_Notifications
 
     old_index = @list.index
     if revoke_notification_group(group)
-      load_groups(old_index)
-      finish_reload
+      reload_groups(old_index)
     end
   end
 
   def revoke_all
     old_index = @list.index
     if revoke_all_notification_groups(@groups)
-      load_groups(old_index)
-      finish_reload
+      reload_groups(old_index)
     end
   end
 
