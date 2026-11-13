@@ -8,7 +8,6 @@ require "fileutils"
 
 class Scene_SoundThemes
   def main
-    @return = false
 st=Dir.entries(Dirs.soundthemes)
 st.delete("..")
 st.delete(".")
@@ -32,7 +31,7 @@ for s in st
 loop_update
     @sel.update
     update
-    break if $scene != self or @return == true
+    break if $scene != self
           end
           end
   def soundtheme_selected?(theme)
@@ -67,7 +66,6 @@ loop_update
           }
 menu.option(p_("SoundThemes", "Download sound themes"), nil, "d") {
 stdownload
-            @return = true
 }
           menu.option(p_("SoundThemes", "New"), nil, "n") {
                         $scene=Scene_Sounds.new("")
@@ -85,8 +83,9 @@ stdownload
                   use_soundtheme("")
                   writeconfig("Interface", "SoundTheme", Configuration.soundtheme)
                 end
-                @return=true
-                main
+                @soundthemes.delete(theme)
+                refresh_soundthemes
+                @sel.focus
                 }
           }
           end
@@ -131,8 +130,8 @@ loop_update
 sel.focus
 end
 end
-main
-return
+refresh_soundthemes
+@sel.focus
     end
     def stdownload_category(category)
       std = []
@@ -177,10 +176,11 @@ menu.option(p_("SoundThemes", "Download")) {
        size=(((st.size/1048576.0)*10.0).round/10.0).to_s+"MB"
        end
      confirm(p_("SoundThemes", "Do you want to download the theme %{name}? You will need to download %{size} of data.")%{:name=>st.name, :size=>size}) {
-          downloadtheme(st)
-          rfr.call
-          sel.rows=sts
-          sel.reload
+          if downloadtheme(st)
+            rfr.call
+            sel.rows=sts
+            sel.reload
+          end
           }
 }
 menu.option(p_("SoundThemes", "Review sound theme"), nil, "p") {
@@ -238,20 +238,41 @@ break
        size=(((st.size/1048576.0)*10.0).round/10.0).to_s+"MB"
        end
      confirm(p_("SoundThemes", "Do you want to download the theme %{name}? You will need to download %{size} of data.")%{:name=>st.name, :size=>size}) {
-          downloadtheme(st)
-          rfr.call
-          sel.rows=sts
-          sel.reload
+          if downloadtheme(st)
+            rfr.call
+            sel.rows=sts
+            sel.reload
+          end
           }
      end
    end
  end
  def downloadtheme(st)
-            download_file(EltenLink::SoundThemes.download_url(st), EltenPath.join(Dirs.soundthemes, st.file.delete("/\\")), use_waiting: true, can_cancel: true, override: true)
+            filename = st.file.delete("/\\")
+            destination = EltenPath.join(Dirs.soundthemes, filename)
+            temporary = destination + ".download"
+            FileUtils.rm_f(temporary)
+            return false unless download_file(EltenLink::SoundThemes.download_url(st), temporary, use_waiting: true, can_cancel: true, override: true)
+            expected_size = st.size.to_i
+            local_theme = load_soundtheme(temporary, false)
+            if (expected_size > 0 && File.size(temporary) != expected_size) || local_theme == nil
+              Log.warning("Downloaded sound theme #{filename} is invalid")
+              alert(_("Error"))
+              return false
+            end
+            FileUtils.mv(temporary, destination, force: true)
+            local_theme.file = destination
             oldst = @soundthemes.find{|s|s.file!=nil && File.basename(s.file)==File.basename(st.file)}
             @soundthemes.delete(oldst) if oldst!=nil
-            @soundthemes.push(st)
-  alert(_("Saved"))
+            @soundthemes.push(local_theme)
+            alert(_("Saved"))
+            true
+          rescue Exception => e
+            Log.warning("Sound theme download failed: #{e.class}: #{e.message}")
+            alert(_("Error"))
+            false
+          ensure
+            FileUtils.rm_f(temporary) if temporary != nil
    end
  end
  
