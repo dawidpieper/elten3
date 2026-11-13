@@ -62,12 +62,19 @@ module EltenAPI
       loc=get_file(p_("EAPI_Common", "Where do you want to save this file?"), path: EltenPath.join(Dirs.user, "Documents"), save: true)
       if loc!=nil
         waiting {
-          downloaded=download_attachment(info, EltenPath.join(loc, info.name))
+          downloaded=download_attachment(info, EltenPath.join(loc, attachment_filename(info.name)))
           speak(p_("EAPI_Common", "The attachment has been downloaded.")) if downloaded
         }
       else
         loop_update
       end
+    end
+
+    def attachment_filename(name)
+      filename=EltenPath.basename(name.to_s)
+      ["", ".", ".."].include?(filename) ? "attachment" : filename
+    rescue Exception
+      "attachment"
     end
 
     def download_attachment(info, destination)
