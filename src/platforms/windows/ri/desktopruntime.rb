@@ -395,6 +395,9 @@ module EltenWindow
   ACTIVATION_ACK_WARNING_SECONDS = 1.0
   WINDOW_UPDATE_WARNING_SECONDS = 1.0
   MINIMIZE_RESTORE_SUPPRESS_TIME = 1.0
+  # Keep a stalled window pump from retaining an unbounded input backlog.
+  MAX_KEY_EVENT_QUEUE = 256
+  MAX_CHARACTER_QUEUE = 256
   MSG_SIZE = Fiddle::SIZEOF_VOIDP == 8 ? 48 : 28
 
   class << self
@@ -1309,7 +1312,7 @@ module EltenWindow
         end
         @key_event_queue ||= []
         @key_event_queue << [key, event, press_state]
-        @key_event_queue.shift while @key_event_queue.size > 256
+        @key_event_queue.shift(@key_event_queue.size - MAX_KEY_EVENT_QUEUE) if @key_event_queue.size > MAX_KEY_EVENT_QUEUE
       end
       false
     rescue Exception
@@ -1352,6 +1355,11 @@ module EltenWindow
         else
           @high_surrogate = nil
           @character_queue << [code].pack("U")
+        end
+        overflow = @character_queue.size - MAX_CHARACTER_QUEUE
+        if overflow > 0
+          @character_queue.shift(overflow)
+          @character_frame_prefix_size = [@character_frame_prefix_size.to_i - overflow, 0].max
         end
       end
     rescue Exception
