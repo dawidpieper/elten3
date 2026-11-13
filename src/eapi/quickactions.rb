@@ -98,6 +98,15 @@ module EltenAPI
   when :alarm
     Scene_Clock.editalarm
     loop_update
+  when :tasktimer_status
+    alert(TaskTimer.status_text, false)
+  when :tasktimer_pause
+    if !TaskTimer.active? || TaskTimer.finished?
+      alert(TaskTimer.status_text, false)
+    else
+      TaskTimer.toggle_pause
+      alert(TaskTimer.status_text, false)
+    end
   when :tray
             $totray=true if tray_supported?
             when :srsapi
@@ -343,6 +352,8 @@ end
 [:conference_diceroll, p_("EAPI_QuickActions", "Conferences: roll a 6-sided die"), [], 0, false],
 [:conference_dicerollcustom, p_("EAPI_QuickActions", "Conferences: roll a custom die"), [], 0, false],
 [:alarm, p_("EAPI_QuickActions", "Add alarm"), [], 0, false],
+[:tasktimer_status, p_("EAPI_QuickActions", "Tasks: say focus timer status"), [], 0, false],
+[:tasktimer_pause, p_("EAPI_QuickActions", "Tasks: pause or resume focus timer"), [], 0, false],
         ]
         for ac in @@addprocs
           a.push([ac[1], ac[2]])

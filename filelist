@@ -259,5 +259,6 @@ src/eapi/program_installer.rb
 src/eapi/scheduler.rb
 src/eapi/extensions.rb
 src/eapi/program_settings.rb
+src/eapi/task_timer.rb
 src/eapi/quickactions.rb
 src/main.rb
