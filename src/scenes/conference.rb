@@ -946,7 +946,9 @@ sel.focus
           alert(p_("Conference", "This file is too large"))
           else
         begin
-          EltenLink::ConferenceResources.add(elten_link, File.basename(file, File.extname(file)), File.binread(file))
+          File.open(file, "rb") do |input|
+            EltenLink::ConferenceResources.add(elten_link, File.basename(file, File.extname(file)), input)
+          end
         rescue EltenLink::Error => e
           Log.warning("Conference resource upload failed: #{e.message}")
           alert(_("Error"))
