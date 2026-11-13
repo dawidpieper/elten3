@@ -683,8 +683,8 @@ class Scene_Programs
          tempdir=Dir.mktmpdir(["elten-program-", ""], Dirs.temp)
          tempfile=EltenPath.join(tempdir, Programs.remote_package_filename(program))
          package_url=EltenLink::Apps.package_url(program)
-         download_file(package_url, tempfile, use_waiting: false, can_cancel: true, override: true)
-         if !FileTest.exists?(tempfile)
+         downloaded=download_file(package_url, tempfile, use_waiting: false, can_cancel: true, override: true)
+         if !downloaded || !FileTest.exists?(tempfile)
            cancelled=true
          else
            waiting_end
