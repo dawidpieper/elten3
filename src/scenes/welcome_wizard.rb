@@ -167,7 +167,7 @@ class Scene_WelcomeWizard
     add_page(:controls_presentation, p_("WelcomeWizard", "Announcing controls")) do
       info = information_field(
         p_("WelcomeWizard", "Announcing controls"),
-        p_("WelcomeWizard", "As you move around Elten, every control introduces itself: a button, a list, a text field. How it does so is up to you. Elten can name the type in speech, mark it with its sound alone, or do both at once. Voice and sound is the friendlier choice while you are still learning; sound only makes navigation quicker once the sounds feel familiar. The list below shows the current behaviour, and you can change it at any time under Tools, Program settings.")
+        p_("WelcomeWizard", "As you move around Elten, every control introduces itself: a button, a list, a text field. How it does so is up to you. Elten can name the type in speech, mark it with its sound alone, or do both at once. Voice and sound is the friendlier choice while you are still learning; sound only makes navigation quicker once the sounds feel familiar. Press Tab to reach the list and choose how controls introduce themselves. You can change this at any time under Tools, Program settings.")
       )
       values = ["voice_and_sound", "sound_only", "voice_only"]
       current = configuration_choice(:controlspresentation, values)
@@ -188,7 +188,7 @@ class Scene_WelcomeWizard
       current = Configuration.hidewindow == true rescue false
       info = information_field(
         p_("WelcomeWizard", "Minimising to the system tray"),
-        p_("WelcomeWizard", "Elten does not have to occupy your taskbar all day. With the option below enabled, minimising the Elten window sends it to the system tray instead, where the program keeps running quietly and continues to receive notifications; the Elten icon in the tray brings the window back. Leave the option unticked if you prefer Elten to behave like an ordinary window.")
+        p_("WelcomeWizard", "Elten does not have to occupy your taskbar all day. Press Tab to reach the checkbox. When it is ticked, minimising the Elten window sends it to the system tray instead, where the program keeps running quietly and continues to receive notifications; the Elten icon in the tray brings the window back. Leave the option unticked if you prefer Elten to behave like an ordinary window.")
       )
       check = CheckBox.new(
         p_("WelcomeWizard", "Automatically minimise the Elten window to the system tray"),
@@ -259,7 +259,7 @@ class Scene_WelcomeWizard
       current = Configuration.disablefeednotifications == true rescue false
       info = information_field(
         p_("WelcomeWizard", "Feed notifications"),
-        p_("WelcomeWizard", "The Feed tab will not be shown in your main window, so you may also prefer not to be notified about new feed entries. Ticking the option below keeps the feed quiet: you can still open it and follow people whenever you wish, but new entries will no longer announce themselves. Leave it unticked to keep receiving feed notifications as usual.")
+        p_("WelcomeWizard", "The Feed tab will not be shown in your main window, so you may also prefer not to be notified about new feed entries. Press Tab to reach the checkbox. Tick it to keep the feed quiet: you can still open it and follow people whenever you wish, but new entries will no longer announce themselves. Leave it unticked to keep receiving feed notifications as usual.")
       )
       check = CheckBox.new(
         p_("WelcomeWizard", "Disable feed notifications"),
@@ -283,7 +283,7 @@ class Scene_WelcomeWizard
     add_page(:autoplay, p_("WelcomeWizard", "Automatic audio playback")) do
       info = information_field(
         p_("WelcomeWizard", "Automatic audio playback"),
-        p_("WelcomeWizard", "When you reach audio content, such as a voice message or an audio post, Elten can start playing it by itself. Some people find that natural, others prefer to press play themselves, and readers of transcriptions may want audio only when there is no text to fall back on. The list below shows the current behaviour; choose the one that suits you. Like everything in this wizard, the change is applied when you choose Finish, and it can be adjusted at any time under Tools, Program settings.")
+        p_("WelcomeWizard", "When you reach audio content, such as a voice message or an audio post, Elten can start playing it by itself. Some people find that natural, others prefer to press play themselves, and readers of transcriptions may want audio only when there is no text to fall back on. Press Tab to reach the list and choose the playback behaviour that suits you. Like everything in this wizard, the change is applied when you choose Finish, and it can be adjusted at any time under Tools, Program settings.")
       )
       values = ["always", "without_transcription", "never"]
       current = configuration_choice(:autoplay, values)
@@ -336,7 +336,7 @@ class Scene_WelcomeWizard
       p_("WelcomeWizard", "Open it with %{hotkey}, the shortcut of the Open context menu quick action.") % { hotkey: hotkey }
     end
     text += " " + opening if opening != nil
-    text += " " + p_("WelcomeWizard", "The context menu can also be placed as the first item of the main menu, so both menus are available after pressing Alt. Use the checkbox below to choose whether it should appear there; you can change this later in the program settings. Whenever an option seems to be missing, check the context menu first; that is usually where it lives.")
+    text += " " + p_("WelcomeWizard", "The context menu can also be placed as the first item of the main menu, so both menus are available after pressing Alt. Press Tab to reach the checkbox and choose whether it should appear there; you can change this later in the program settings. Whenever an option seems to be missing, check the context menu first; that is usually where it lives.")
     tips_hotkey = quick_action_hotkey_label(:tips)
     if tips_hotkey != nil
       text += " " + p_("WelcomeWizard", "One more shortcut worth remembering is %{hotkey}: wherever you are, it reads the additional keyboard shortcuts and hints available for the control that currently has focus.") % { hotkey: tips_hotkey }
@@ -356,7 +356,7 @@ class Scene_WelcomeWizard
   end
 
   def add_quick_actions_page
-    text = p_("WelcomeWizard", "The main window greets you with a list of Quick Actions: shortcuts that take you straight to the places and commands you use most, such as opening Messages, publishing to the feed or entering a conference channel. The default set covers the essentials, but all of it is yours to change: choose below which actions should be visible in your Quick Actions list; shortcuts assigned to hidden actions remain active. You can also use a Quick Action's context menu at any time to move, rename, hide or delete it, assign a hotkey to it, add further actions or restore the defaults.")
+    text = p_("WelcomeWizard", "The main window greets you with a list of Quick Actions: shortcuts that take you straight to the places and commands you use most, such as opening Messages, publishing to the feed or entering a conference channel. The default set covers the essentials, but all of it is yours to change: press Tab to choose which actions should be visible in your Quick Actions list; shortcuts assigned to hidden actions remain active. You can also use a Quick Action's context menu at any time to move, rename, hide or delete it, assign a hotkey to it, add further actions or restore the defaults.")
     if available_quick_actions.empty?
       add_info_page(:quick_actions, p_("WelcomeWizard", "Quick Actions"), text)
       return
@@ -434,9 +434,9 @@ class Scene_WelcomeWizard
       text = p_("WelcomeWizard", "Elten does not stop being useful when you switch to another program. The Invisible Interface is a set of global hotkeys that work across the whole system while Elten is running, so you can check new messages, browse the feed or control a conference without leaving the application you are in. Its content is arranged into cards, such as Messages, Feed and Conference options: hold the Elten modifier keys and use the arrow keys to move between cards and their items, press Enter to activate one, or add a command key, for example M to write a message or F to publish to the feed. The complete list is available under Help, List of Invisible Interface hotkeys.")
       current_modifiers = invisible_interface_current_modifiers
       if current_modifiers != ""
-        text += "\n\n" + p_("WelcomeWizard", "The currently selected modifier combination is %{keys}. If you would rather use a different one, choose it below.") % { keys: current_modifiers }
+        text += "\n\n" + p_("WelcomeWizard", "The currently selected modifier combination is %{keys}. If you would rather use a different one, press Tab to choose it from the list.") % { keys: current_modifiers }
       else
-        text += "\n\n" + p_("WelcomeWizard", "If you would rather use one particular modifier combination, choose it below.")
+        text += "\n\n" + p_("WelcomeWizard", "If you would rather use one particular modifier combination, press Tab to choose it from the list.")
       end
       info = information_field(p_("WelcomeWizard", "The Invisible Interface"), text)
       modifier_values = ["alt_ctrl_windows", "alt_shift_windows", "alt_ctrl_shift", "alt_ctrl", "alt_shift"]
@@ -486,7 +486,7 @@ class Scene_WelcomeWizard
     add_page(:sounds, p_("WelcomeWizard", "Sounds and sound themes")) do
       info = information_field(
         p_("WelcomeWizard", "Sounds and sound themes"),
-        p_("WelcomeWizard", "Elten deliberately speaks less than it could: much of what happens is signalled by short sounds instead, such as reaching the edge of a list, a new message arriving or someone joining a conference. You will pick most of them up naturally as you go. The Sounds guide lets you listen to each one together with its description and remains available from the Help menu.\n\nIf you would prefer Elten to sound different altogether, the community shares sound themes that replace the whole set. The sound themes manager lets you browse, download and select them and remains available under Sound themes in the Tools menu. Both screens can be opened directly with the buttons below.")
+        p_("WelcomeWizard", "Elten deliberately speaks less than it could: much of what happens is signalled by short sounds instead, such as reaching the edge of a list, a new message arriving or someone joining a conference. You will pick most of them up naturally as you go. The Sounds guide lets you listen to each one together with its description and remains available from the Help menu.\n\nIf you would prefer Elten to sound different altogether, the community shares sound themes that replace the whole set. The sound themes manager lets you browse, download and select them and remains available under Sound themes in the Tools menu. Press Tab to reach the Sounds guide button, then Tab again for Sound themes.")
       )
       guide_button = Button.new(p_("WelcomeWizard", "Open the Sounds guide"))
       guide_button.on(:press) { insert_scene(Scene_Sounds.new) }
@@ -558,7 +558,7 @@ class Scene_WelcomeWizard
     add_page(:macos_keyboard, p_("WelcomeWizard", "Keyboard behaviour on macOS")) do
       info = information_field(
         p_("WelcomeWizard", "Keyboard behaviour on macOS"),
-        p_("WelcomeWizard", "Elten on macOS can follow either the native macOS conventions or the Ctrl-based Windows layout that older Elten versions used. The keyboard style decides which modifier keys Elten shortcuts expect: Command and Option, or Ctrl. Character navigation separately decides whether the Left and Right Arrow keys review text the macOS way or the Windows way. The lists below show the current settings; both can also be adjusted at any time under Tools, Program settings.")
+        p_("WelcomeWizard", "Elten on macOS can follow either the native macOS conventions or the Ctrl-based Windows layout that older Elten versions used. The keyboard style decides which modifier keys Elten shortcuts expect: Command and Option, or Ctrl. Character navigation separately decides whether the Left and Right Arrow keys review text the macOS way or the Windows way. Press Tab to reach the keyboard style list, then Tab again for character navigation; both can also be adjusted at any time under Tools, Program settings.")
       )
       scheme_values = ["default", "windows", "macos"]
       current_scheme = configuration_choice(:keyboardscheme, scheme_values)
@@ -605,6 +605,7 @@ class Scene_WelcomeWizard
         else
           p_("WelcomeWizard", "The Elten interface is currently set to %{language}. Using different languages for the two is perfectly fine; this page simply asks you to confirm that the difference is intentional.") % { language: language_label(interface) }
         end
+        reason += " " + p_("WelcomeWizard", "Press Tab to reach the language list.")
         info = information_field(p_("WelcomeWizard", "Your main language"), "#{current_text}\n\n#{reason}")
         ordered = [interface] + (language_codes - [interface])
         no_change_option = !configuration_known || current == ""
@@ -635,7 +636,7 @@ class Scene_WelcomeWizard
         elsif languages.empty?
           p_("WelcomeWizard", "If you are comfortable in languages besides your main one, you can list them here, and Elten will include community content in those languages as well. This is entirely optional; leave every item unticked to make no change.")
         else
-          p_("WelcomeWizard", "The other languages currently stored on your account are selected below. Elten uses this list when including language-specific community content. Leave the selection as it is to make no change.")
+          p_("WelcomeWizard", "Press Tab to reach the list. The other languages stored on your account are already selected. Elten uses this list when including language-specific community content. Leave the selection as it is to make no change.")
         end
         info = information_field(
           p_("WelcomeWizard", "Other languages"),
@@ -666,7 +667,7 @@ class Scene_WelcomeWizard
         elsif initial == ""
           p_("WelcomeWizard", "Alongside your username, your profile can display a public name. Many people use their real name, but any name the community knows you by will do. It is optional and does not change the name you sign in with. Leave the field empty if you would rather not display one.")
         else
-          p_("WelcomeWizard", "The name below is displayed publicly on your profile alongside your username. Edit it if it is out of date, clear it to remove it, or leave it as it is.")
+          p_("WelcomeWizard", "Press Tab to reach the name field. This name appears on your public profile alongside your username. Edit it if it is out of date, clear it to remove it, or leave it as it is.")
         end
         info = information_field(p_("WelcomeWizard", "Public name"), info_text)
         edit = EditBox.new(p_("WelcomeWizard", "Full name or preferred public name"), text: @state.key?(:full_name) ? @state[:full_name] : initial)
@@ -758,7 +759,7 @@ class Scene_WelcomeWizard
       elsif initial == ""
         p_("WelcomeWizard", "Your visiting card is a short introduction shown to anyone who opens your profile. A few sentences about your interests, the languages you speak or the conversations you enjoy will help others decide to get in touch. Write only what you are happy for every user to read; the field is optional and you can change it at any time.")
       else
-        p_("WelcomeWizard", "The text below is your current visiting card, shown publicly on your profile. Read it again with fresh eyes: if it no longer describes you, this is a good moment to bring it up to date. You can also clear it to remove it, or leave it as it is.")
+        p_("WelcomeWizard", "Press Tab to review your visiting card. It appears on your public profile. If it no longer describes you, you can update it here. You can also clear it to remove it, or leave it as it is.")
       end
       info = information_field(p_("WelcomeWizard", "Your visiting card"), info_text)
       edit = EditBox.new(p_("WelcomeWizard", "Visiting card"), type: EditBox::Flags::MultiLine, text: @state.key?(:visiting_card) ? @state[:visiting_card] : initial)
@@ -772,7 +773,7 @@ class Scene_WelcomeWizard
         info_text = if !data_available?(:account_configuration)
           p_("WelcomeWizard", "Elten could not load your current status and signature. Enter text only if you want to replace them. Leave both fields empty to make no change and review them later in your account settings.")
         else
-          p_("WelcomeWizard", "Two more short lines can accompany you around Elten, and both are optional. Your status is displayed after your name on user lists, such as the contact list; a favourite quote or a word about your mood are common choices. Your signature is placed below every post you write on the forum. Any text already stored on your account is shown below; leave a field as it is to make no change.")
+          p_("WelcomeWizard", "Two more short lines can accompany you around Elten, and both are optional. Your status is displayed after your name on user lists, such as the contact list; a favourite quote or a word about your mood are common choices. Your signature is placed below every post you write on the forum. Press Tab to review your status, then Tab again for your signature. Leave either field as it is to keep its current text.")
         end
         info = information_field(p_("WelcomeWizard", "Status and signature"), info_text)
         status_edit = EditBox.new(p_("WelcomeWizard", "Status"), text: @state.key?(:status) ? @state[:status] : initial_status)
@@ -803,7 +804,7 @@ class Scene_WelcomeWizard
       elsif enabled
         p_("WelcomeWizard", "Two-factor authentication is already enabled on this account. There is nothing to change on this page.")
       else
-        p_("WelcomeWizard", "A strong password is a good start, but two-factor authentication protects your account even if that password ever leaks. When it is enabled and a sign-in needs confirming, Elten sends a code to your telephone by text message. The button below opens the setup screen, where Elten will ask for your password and telephone number; changes made there take effect immediately and are independent of this wizard.")
+        p_("WelcomeWizard", "A strong password is a good start, but two-factor authentication protects your account even if that password ever leaks. When it is enabled and a sign-in needs confirming, Elten sends a code to your telephone by text message. Press Tab to reach the setup button. It opens a screen where Elten will ask for your password and telephone number; changes made there take effect immediately and are independent of this wizard.")
       end
       info = information_field(p_("WelcomeWizard", "Two-factor authentication"), text)
       if enabled || @authentication_state == nil
@@ -868,7 +869,7 @@ class Scene_WelcomeWizard
         info_text = if @forum_structure == nil
           p_("WelcomeWizard", "Elten could not load the forum groups available to your account. Nothing can be selected on this page; open the Forum later to review groups.")
         elsif already_joined
-          p_("WelcomeWizard", "You already belong to at least one recommended group. Listed below are other recommended groups matching your languages that you have not joined. Joining a group does not automatically follow its forums or threads. Leave every item unticked to make no change.")
+          p_("WelcomeWizard", "You already belong to at least one recommended group. Press Tab to check whether other recommended groups match your languages. Joining a group does not automatically follow its forums or threads. Leave every item unticked to make no change.")
         else
           p_("WelcomeWizard", "These recommended groups match your languages, and you are not yet a member of any of them. Tick the communities you would like to join; Elten will join them when you finish the wizard. Joining a group does not automatically follow its forums or threads, so you remain in charge of what you hear about. Nothing is ticked by default.")
         end
@@ -915,7 +916,7 @@ class Scene_WelcomeWizard
             view([information_field(p_("WelcomeWizard", "Post an introduction"), text)])
           else
             introduction_text = if @first_run
-              p_("WelcomeWizard", "New members often say hello in %{thread}, the introductions thread of %{group}. If you would like to introduce yourself, write a few words below: where you are from, what brought you here, whatever you would tell a new acquaintance. The post will be published when you finish the wizard; leave the field empty to skip it.") % { thread: thread_name, group: group.name }
+              p_("WelcomeWizard", "New members often say hello in %{thread}, the introductions thread of %{group}. If you would like to introduce yourself, press Tab to reach the text field and write a few words: where you are from, what brought you here, whatever you would tell a new acquaintance. The post will be published when you finish the wizard; leave the field empty to skip it.") % { thread: thread_name, group: group.name }
             else
               p_("WelcomeWizard", "%{thread} is the introductions thread of %{group}. If you have been away for a while, or suspect that newer members do not know you, this is a good place for a fresh hello. The text will be published when you finish the wizard; leave the field empty to make no post.") % { thread: thread_name, group: group.name }
             end
@@ -939,7 +940,7 @@ class Scene_WelcomeWizard
         suggestions = @blog_suggestions
         info = information_field(
           p_("WelcomeWizard", "Blogs from your contacts"),
-          p_("WelcomeWizard", "Some of your contacts write blogs that you are not following yet. Following a blog simply means being notified whenever it publishes something new. The list below contains your contacts' blogs that have been active within the past year; tick the ones you would like to follow. Nothing is ticked by default.")
+          p_("WelcomeWizard", "Some of your contacts write blogs that you are not following yet. Following a blog simply means being notified whenever it publishes something new. When blogs are available, press Tab to reach the list of your contacts' blogs active within the past year; tick the ones you would like to follow. Nothing is ticked by default.")
         )
         if suggestions.empty?
           availability = if @preload_errors.key?(:contacts)
@@ -972,7 +973,7 @@ class Scene_WelcomeWizard
         users = @feed_suggestions
         info = information_field(
           p_("WelcomeWizard", "People to follow on the feed"),
-          p_("WelcomeWizard", "The feed is where people post short status updates, separate from their blogs. Listed below are contacts whose feeds you do not follow yet; tick anyone whose updates you would like to see on your Feed tab. Following someone's feed does not add or remove a contact. Leave every item unticked to make no change.")
+          p_("WelcomeWizard", "The feed is where people post short status updates, separate from their blogs. When contacts are available, press Tab to reach the list of people whose feeds you do not follow yet; tick anyone whose updates you would like to see on your Feed tab. Following someone's feed does not add or remove a contact. Leave every item unticked to make no change.")
         )
         if users.empty?
           availability = if @preload_errors.key?(:contacts)
@@ -1003,9 +1004,9 @@ class Scene_WelcomeWizard
         prompt = if @preload_errors.key?(:own_feed)
           p_("WelcomeWizard", "Elten could not load your feed history, so it cannot determine whether a new entry would be useful. Posting is disabled on this page; open the Feed later if you want to write an update.")
         elsif @own_feed.empty?
-          p_("WelcomeWizard", "You have not posted anything to the feed yet. If you would like to let others know you have arrived, write a short first entry below; a sentence or two is plenty.")
+          p_("WelcomeWizard", "You have not posted anything to the feed yet. If you would like to let others know you have arrived, press Tab to write a short first entry; a sentence or two is plenty.")
         elsif feed_page_needed
-          p_("WelcomeWizard", "Your most recent feed entry is more than a year old. If you would like your followers to know you are back, write a short update below.")
+          p_("WelcomeWizard", "Your most recent feed entry is more than a year old. If you would like your followers to know you are back, press Tab to write a short update.")
         else
           p_("WelcomeWizard", "You have posted on the feed within the past year. No new introduction is needed, but you may still write an update if you want to.")
         end
@@ -1136,7 +1137,7 @@ class Scene_WelcomeWizard
     add_action_page(
       :github_star,
       p_("WelcomeWizard", "A star on GitHub"),
-      p_("WelcomeWizard", "If you have a GitHub account and want to show that this project matters to you, we would be grateful for a star on the Elten repository. It costs nothing and takes a moment, yet it makes the project more visible. The button below opens the repository; the Star button is near the top of the page."),
+      p_("WelcomeWizard", "If you have a GitHub account and want to show that this project matters to you, we would be grateful for a star on the Elten repository. It costs nothing and takes a moment, yet it makes the project more visible. Press Tab to reach the button that opens the repository; the Star button is near the top of the page."),
       p_("WelcomeWizard", "Open the Elten repository on GitHub")
     ) do
       platform_open_url(SOURCE_URL)
