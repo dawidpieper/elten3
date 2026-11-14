@@ -41,6 +41,7 @@ def setsound(file)
 @sound = Sound.new(file)
 @basefrequency=@sound.frequency
 @file=file
+@volume_before_mute=nil
 @sound.volume=0.8
 rescue Exception
   @sound=nil
@@ -51,6 +52,7 @@ def setstream(stream)
 @sound = Sound.new(stream: stream)
 @basefrequency=@sound.frequency
 @file=nil
+@volume_before_mute=nil
 @sound.volume=0.8
 rescue Exception
   @sound=nil
@@ -101,13 +103,22 @@ if ch!=nil
       if key_pressed?(:key_left)
                 get_sound.position-=5
                       end
-            if key_pressed?(:key_up, repeat: true)
+      if get_sound && key_pressed?("M".ord) && !key_held?(:key_alt)
+        if @volume_before_mute
+          get_sound.volume = @volume_before_mute
+          @volume_before_mute = nil
+        else
+          @volume_before_mute = get_sound.volume
+          get_sound.volume = 0
+        end
+      end
+            if !@volume_before_mute && key_pressed?(:key_up, repeat: true)
               pl=0.01
               pl=0.1 if get_sound.volume>=1
               get_sound.volume += pl
 get_sound.volume = 10 if get_sound.volume > 10
       end
-      if key_pressed?(:key_down, repeat: true)
+      if !@volume_before_mute && key_pressed?(:key_down, repeat: true)
         pl=0.01
               pl=0.1 if get_sound.volume>=1.1
         get_sound.volume -= pl
@@ -148,6 +159,7 @@ end
 end
 if key_pressed?(0x08) == true
   reset=10
+  @volume_before_mute=nil
   get_sound.volume=0.8
   get_sound.pan=0
   get_sound.tempo=0
@@ -477,6 +489,7 @@ h=d/3600
     tips.push(p_("EAPI_Form", "Press the Space bar to play or pause"))
     tips.push(p_("EAPI_Form", "Use the Left/Right Arrow keys to seek"))
     tips.push(p_("EAPI_Form", "Use up/down arrows to change playback volume"))
+    tips.push(p_("EAPI_Form", "Press M to mute or restore the playback volume"))
     tips.push(p_("EAPI_Form", "Use Shift+Left/Right Arrow to change panning"))
     tips.push(p_("EAPI_Form", "Use Shift+Up/Down Arrow to change pitch"))
     tips.push(p_("EAPI_Form", "Use Ctrl+Up/Down Arrow to change tempo").sub(/CTRL/i, main_modifier_name))
