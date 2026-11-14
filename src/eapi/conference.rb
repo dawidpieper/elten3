@@ -157,8 +157,6 @@ end
 
 def self.shutdown
   close
-  @@keyboard_thread.kill if @@keyboard_thread!=nil && @@keyboard_thread.alive?
-  @@keyboard_thread=nil
   SteamAudio.free if defined?(::SteamAudio)
 rescue Exception
   Log.error("Conference shutdown: #{$!.class}: #{$!.message}")end
@@ -189,7 +187,6 @@ def self.setup_core_runtime(load_core=true)
   require_relative "audio/steamaudio" unless defined?(::SteamAudio)
   require_relative "../eltenlink/voip" unless defined?(::EltenLink::VoIP)
   require_relative "conferencecore" if load_core && !const_defined?(:Core, false)
-  start_keyboard_state
   @@core_loaded=true
 end
 
@@ -244,6 +241,16 @@ def self.start_keyboard_state
   }
 rescue Exception
   Log.error("Conference keyboard state: #{$!.class}: #{$!.message}")end
+
+def self.stop_keyboard_state
+  thread=@@keyboard_thread
+  @@keyboard_thread=nil
+  $conference_pushtotalk_held=false
+  return if thread==nil || thread==Thread.current
+  thread.kill if thread.alive?
+  thread.join
+rescue Exception
+  Log.error("Conference keyboard state stop: #{$!.class}: #{$!.message}")end
 
 def self.sync_core_settings
   $name=Session.name
@@ -492,6 +499,7 @@ def self.open(ignorePTT=false, nick=nil)
     @@core.pushtotalk=pushtotalk if ignorePTT!=true && pushtotalk!=nil
     @@core.pushtotalk_keys=pushtotalk_keys.map{|k|k.to_i} if ignorePTT!=true && pushtotalk_keys!=[]
     refresh_open_state
+    start_keyboard_state
   }
   t=Time.now.to_f
   while Time.now.to_f-t<3
@@ -502,6 +510,8 @@ def self.open(ignorePTT=false, nick=nil)
 end
 def self.close
   close_core
+ensure
+  stop_keyboard_state
   end
 def self.join(id, password=nil)
   if @@opened==false
