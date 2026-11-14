@@ -1067,7 +1067,9 @@ until @closing
 if (sz=Bass::BASS_ChannelGetData.call(@source_mixer, buf, fsize))>0
 queue += buf.byteslice(0...sz)
 end
+processed=false
 while queue.size>fsize
+processed=true
 frame=queue.byteslice(0...fsize)
 queue=queue.byteslice(fsize..-1)
 update_position if @listener_x!=@position.x || @listener_y!=@position.y || @listener_dir != @position.dir
@@ -1099,6 +1101,7 @@ sleep(0.02)
 end
 }
 end
+sleep(0.01) if !processed
 end
 rescue Exception
 log(2, "Conference: ChannelObject error: "+$!.to_s+" "+$@.to_s) if !@closing
