@@ -473,6 +473,8 @@ def make_window
     make_setting(p_("Settings", "Mute the microphone in conferences while recording other content"), :bool, "Advanced", "DisableConferenceMicOnRecord")
     make_setting(p_("Settings", "Use noise reduction"), [p_("Settings", "Never"), p_("Settings", "In audio conferences only"), p_("Settings", "In audio conferences and when recording")], "Advanced", "UseDenoising", ["never", "conferences", "conferences_and_recording"])
     make_setting(p_("Settings", "Enable echo cancellation"), :bool, "Advanced", "UseEchoCancellation")
+    levels = 100.step(0, -5).to_a
+    make_setting(p_("Settings", "Incoming call ringtone volume"), levels.map{|level| "#{level}%"}, "SoundCard", "RingtoneVolume", levels)
       end
   def load_ii
     return if !defined?(EltenAPI::InvisibleInterface) || (EltenAPI::InvisibleInterface.respond_to?(:available?) && !EltenAPI::InvisibleInterface.available?)
