@@ -149,6 +149,7 @@ show(package)
     return if c < 0 || c >= CURRENCIES.size
     @currency = CURRENCIES[c]
     LocalConfig['PremiumPackagesCurrency'] = @currency
+    true
 end
   def show(package)
     sbuy=p_("PremiumPackages", "Buy")
@@ -191,65 +192,72 @@ sactivate=p_("PremiumPackages", "Activate package using code")
     }
     form.wait
     end
-  def refresh
-        @packages=[
-    get_courier,
-    get_audiophile,
-    get_scribe,
-    get_director,
-    get_orchestra,
-    get_sponsor
-    ]
-    begin
-      active_until=EltenLink::PremiumPackages.active_until(elten_link)
-      active_until.each do |package, totime|
-        for c in @packages
-          c.totime=totime if c.package==package
-          end
-        end
-    rescue EltenLink::Error
+  def buy_sponsorship
+    unless Session.logged?
+      alert(_("This section is unavailable for guests"))
+      return
     end
-      begin
-        j=EltenLink::Payments.prices(elten_link)
-        sponsor_only=sponsor_only_offer?(j)
-        for k in j.keys
-          for c in @packages
-            if c.package==k
-              c.activable=true  
-              c.price=j[k]["price$#{@currency}"]
-              c.monthlyprice=j[k]["monthlyprice$#{@currency}"]
-              c.available=j[k]['available']==true
-              c.allowed=c.available && (c.totime==0 || j[k]['yearlimit']>=Time.at(c.totime).year)
-              c.special=j[k]['special']
-            end
-          end
-        end
-        end
-        apply_sponsor_only_offer if sponsor_only
-        apply_offer_availability
-        @sel.rows=@packages.map{|c|
-        st=p_("PremiumPackages", "Inactive")
-        st=p_("PremiumPackages", "Active until %{time}")%{:time=>format_date(Time.at(c.totime))} if c.totime>0
-        monthlyprice=nil
-        price=nil
-        conversionprice=nil
-        if c.available && c.package=="sponsor"
-          z=conversion_credit("sponsor")
-          conversionprice=(c.price-z).ceil if z>0
-        end
-        if c.available && c.package=="orchestra" && c.price.is_a?(Numeric)
-          z=conversion_credit("orchestra")
-          conversionprice=(c.price-z).ceil if z>0
-        end
-        monthlyprice=c.monthlyprice.to_s+" "+@currency if c.available && c.monthlyprice!=nil
-        price=c.price.to_s+" "+@currency if c.available && c.price!=nil
-        conversionprice=nil if conversionprice!=nil && conversionprice<=0
-        conversionprice=conversionprice.to_s+" "+@currency if conversionprice!=nil
-          [c.name, st, price, monthlyprice, conversionprice]
-        }
-        @sel.reload
-      rescue EltenLink::Error, JSON::ParserError
+    @currency = LocalConfig['PremiumPackagesCurrency', "unset", type: :string]
+    return if !CURRENCIES.include?(@currency) && !select_currency
+    unless load_offers(require_active: true)
+      alert(_("Error"))
+      return
+    end
+    sponsor = @packages.find{|package| package.package == "sponsor" && package.allowed}
+    if sponsor
+      buy(sponsor)
+    else
+      alert(p_("PremiumPackages", "The Sponsorship package is unavailable for purchase."))
+    end
+  end
+
+  def load_offers(require_active: false)
+    @packages = [get_courier, get_audiophile, get_scribe, get_director, get_orchestra, get_sponsor]
+    begin
+      active_until = EltenLink::PremiumPackages.active_until(elten_link)
+      @packages.each do |package|
+        expires = active_until[package.package]
+        package.totime = expires if expires
       end
+    rescue EltenLink::Error
+      return false if require_active
+    end
+    prices = EltenLink::Payments.prices(elten_link)
+    @packages.each do |package|
+      offer = prices[package.package]
+      next unless offer
+      package.activable = true
+      package.price = offer["price$#{@currency}"]
+      package.monthlyprice = offer["monthlyprice$#{@currency}"]
+      package.available = offer['available'] == true
+      package.allowed = package.available && (package.totime == 0 || offer['yearlimit'] >= Time.at(package.totime).year)
+      package.special = offer['special']
+    end
+    apply_sponsor_only_offer if sponsor_only_offer?(prices)
+    apply_offer_availability
+    true
+  rescue EltenLink::Error, JSON::ParserError
+    false
+  end
+
+  def refresh
+    return unless load_offers
+    @sel.rows = @packages.map do |package|
+      status = p_("PremiumPackages", "Inactive")
+      if package.totime > 0
+        status = p_("PremiumPackages", "Active until %{time}") % {time: format_date(Time.at(package.totime))}
+      end
+      monthlyprice = "#{package.monthlyprice} #{@currency}" if package.available && package.monthlyprice
+      price = "#{package.price} #{@currency}" if package.available && package.price
+      if package.available && ["sponsor", "orchestra"].include?(package.package) && package.price.is_a?(Numeric)
+        credit = conversion_credit(package.package)
+        reduced_price = (package.price - credit).ceil if credit > 0
+        conversionprice = "#{reduced_price} #{@currency}" if reduced_price && reduced_price > 0
+      end
+      [package.name, status, price, monthlyprice, conversionprice]
+    end
+    @sel.reload
+  end
       def sponsor_only_offer?(prices)
         return false if !prices.is_a?(Hash)
         prices.select{|_package, offer|offer.is_a?(Hash) && offer['available']==true}.keys.map(&:to_s).uniq==["sponsor"]
