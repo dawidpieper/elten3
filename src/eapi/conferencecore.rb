@@ -2603,33 +2603,33 @@ if @transmitters[userid]!=nil
 @transmitters[userid].put(message, type, pos_x, pos_y, frame_id, index)
 end
 elsif type==2
+transmitter=@transmitters[userid]
+return if transmitter==nil
 if p1==0
 cmessage=message
-if @transmitters[userid]!=nil
-cmessage = @transmitters[userid].chat_temp + message if @transmitters[userid].chat_temp!=nil
-@transmitters[userid].chat_temp=""
-end
-c = ChatMessage.new(userid, @transmitters[userid].username, cmessage)
+cmessage = transmitter.chat_temp + message if transmitter.chat_temp!=nil
+transmitter.chat_temp=""
+c = ChatMessage.new(userid, transmitter.username, cmessage)
 @chat.push(c)
-if @transmitters[userid]!=nil
-@fullsave_chat.write("#{Time.now.strftime("%Y-%m-%d %H:%M:%S")},#{userid},#{@transmitters[userid].username},\"#{cmessage.gsub("\\","\\\\").gsub("\"","\\\"")}\"\n") if @fullsave_chat!=nil
-@text_hooks.each{|h|h.call(@transmitters[userid].username, userid, cmessage)}
-end
+@fullsave_chat.write("#{Time.now.strftime("%Y-%m-%d %H:%M:%S")},#{userid},#{transmitter.username},\"#{cmessage.gsub("\\","\\\\").gsub("\"","\\\"")}\"\n") if @fullsave_chat!=nil
+@text_hooks.each{|h|h.call(transmitter.username, userid, cmessage)}
 elsif p1==1
-if @transmitters[userid]!=nil
-@transmitters[userid].chat_temp||=""
-@transmitters[userid].chat_temp+=message
-end
+transmitter.chat_temp||=""
+transmitter.chat_temp+=message
 end
 elsif type==3
+transmitter=@transmitters[userid]
+return if transmitter==nil
 if @whisper_sound!=nil
 Bass::BASS_ChannelSetAttribute.call(@whisper_sound, 2, ($volume/100.0)) if $volume!=nil
 Bass::BASS_ChannelPlay.call(@whisper_sound,0)
 end
 pos_x=@position.x
 pos_y=@position.y
-@transmitters[userid].put(message, type, pos_x, pos_y, 0, index)
+transmitter.put(message, type, pos_x, pos_y, 0, index)
 elsif type==4
+transmitter=@transmitters[userid]
+return if transmitter==nil
 if @whisper_sound!=nil
 Bass::BASS_ChannelSetAttribute.call(@whisper_sound, 2, ($volume/100.0)) if $volume!=nil
 Bass::BASS_ChannelPlay.call(@whisper_sound,0)
@@ -2655,7 +2655,7 @@ rest=message.byteslice(256..-1)
 if rest!=nil && rest.bytesize>0
 msg+=aes.update(rest)+aes.final
 end
-@transmitters[userid].put(msg, 3, pos_x, pos_y, 0, index)
+transmitter.put(msg, 3, pos_x, pos_y, 0, index)
 end
 rescue Exception
 log(2, "Conference: receive encrypted whisper - #{$!.to_s}")
