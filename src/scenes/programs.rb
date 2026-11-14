@@ -570,34 +570,39 @@ class Scene_Programs
        end
      end
 
-     def check_updates
+     def check_updates(automatic: false)
        return unless refresh_programs
        updates=available_updates
+       if automatic
+         updates.select!{|installed, _remote| installed.installation_source=="server"}
+       end
        if updates.empty?
-         alert(p_("Programs", "All installed programs are up to date."))
+         alert(p_("Programs", "All installed programs are up to date.")) unless automatic
          return
        end
+       return install_updates(updates) if automatic
+
        lines=[p_("Programs", "Updates available:"), ""]
        updates.each do |installed, remote|
          lines.push("#{remote.name} #{installed.version} -> #{remote.version}")
        end
        lines.push("", p_("Programs", "Do you want to update all programs now?"))
-       confirm(lines.join("\n")) do
-         ok=0
-         failed=[]
-         updates.each do |_installed, remote|
-           if install_remote_program(remote, ask: false)
-             ok+=1
-           else
-             failed.push(remote.name)
-           end
-         end
-         @refresh=true if ok>0
-         if failed.empty?
-           alert(p_("Programs", "Updates installed."))
+       confirm(lines.join("\n")) { install_updates(updates) }
+     end
+
+     def install_updates(updates)
+       failed=[]
+       updates.each do |_installed, remote|
+         if install_remote_program(remote, ask: false)
+           @refresh=true
          else
-           alert(p_("Programs", "Some updates could not be installed: %{names}")%{:names=>failed.join(", ")})
+           failed.push(remote.name)
          end
+       end
+       if failed.empty?
+         alert(p_("Programs", "Updates installed."))
+       else
+         alert(p_("Programs", "Some updates could not be installed: %{names}")%{:names=>failed.join(", ")})
        end
      end
 
