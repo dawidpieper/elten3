@@ -114,39 +114,43 @@ module EltenAPI
         menu.option(p_("Drafts", "Remember drafts")) do
           selected = selector(mode_labels, header: p_("Drafts", "Remember drafts"),
             start_index: MODES.index(mode), cancel_index: -1, flags: Controls::ListBox::Flags::AnyDir)
-          LocalConfig[@config_key] = MODES[selected] if selected >= 0
+          set_mode(MODES[selected]) if selected >= 0
         end
       end
 
       def close(detach: true, editor: @editor)
         data = snapshot
         target = mode
-        if !empty?(data) && target == "disabled" && editor
+        if !empty?(data) && target == "disabled" && !mode_configured? && editor
           selected = selector([p_("Drafts", "Return to editing"), p_("Drafts", "Discard"),
             p_("Drafts", "Save locally"), p_("Drafts", "Save on the server")],
             header: p_("Drafts", "What would you like to do with the draft?"),
             cancel_index: 0, flags: Controls::ListBox::Flags::AnyDir)
-          return discard(detach: detach) if selected == 1
+          if selected == 1
+            set_mode("disabled")
+            return discard(detach: detach)
+          end
           return false unless [2, 3].include?(selected)
           target = MODES[selected - 1]
-          LocalConfig[@config_key] = target
-        elsif !empty?(data) && target == "disabled"
+          set_mode(target)
+        elsif !empty?(data) && target == "disabled" && !mode_configured?
           selected = selector([p_("Drafts", "Return to editing"), p_("Drafts", "Discard"), p_("Drafts", "Remember")],
             header: p_("Drafts", "What would you like to do with the draft?"), cancel_index: 0, flags: Controls::ListBox::Flags::AnyDir)
           case selected
           when 1
+            set_mode("disabled")
             return discard(detach: detach)
           when 2
             target = selector([p_("Drafts", "Remember locally"), p_("Drafts", "Remember on the server"), _("Cancel")],
               header: p_("Drafts", "Remember drafts"), cancel_index: 2, flags: Controls::ListBox::Flags::AnyDir)
             return false unless [0, 1].include?(target)
             target = MODES[target + 1]
-            LocalConfig[@config_key] = target
+            set_mode(target)
           else
             return false
           end
         end
-        return discard(detach: detach) if empty?(data)
+        return discard(detach: detach) if target == "disabled" || empty?(data)
         return false unless save(data, target: target, wait: true)
         self.detach if detach
         true
@@ -170,6 +174,15 @@ module EltenAPI
       def mode
         value = LocalConfig[@config_key, "disabled", type: :string]
         MODES.include?(value) ? value : "disabled"
+      end
+
+      def mode_configured?
+        LocalConfig["#{@config_key}Configured", false, type: :bool]
+      end
+
+      def set_mode(value)
+        LocalConfig[@config_key] = value
+        LocalConfig["#{@config_key}Configured"] = true
       end
 
       def mode_labels
