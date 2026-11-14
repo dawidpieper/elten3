@@ -20,9 +20,12 @@ module Programs
         prepared = metadata.dup
         encoding = normalize_sources_default_encoding(prepared["sources_default_encoding"])
         prepared["sources_default_encoding"] = encoding.name if encoding != nil
-        main = prepared["main"].to_s
+        main = prepared["main"].to_s.tr("\\", "/").delete_prefix("./")
         main = "__app.rb" if main.empty?
         raise_metadata_error("Main file #{main} is excluded by .eltenignore") if sources.excluded?(main)
+        if File.extname(main).downcase != ".rb" || !sources.files.include?(File.join(root, main))
+          raise_metadata_error("Main Ruby file #{main} is missing from the package")
+        end
         files, detected_languages = scan_locale(root, sources)
 
         LOCALIZED_FIELDS.each do |manifest_key, file_kind|

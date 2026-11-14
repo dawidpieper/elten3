@@ -4,8 +4,9 @@
 
 module Programs
   class PackageSources
-    def initialize(root)
-      @root = root
+    def initialize(root, &accept_file)
+      @root = File.expand_path(root)
+      @accept_file = accept_file
       ignore = File.join(root, ".eltenignore")
       @rules = []
       return unless File.file?(ignore) && !File.symlink?(ignore)
@@ -38,7 +39,7 @@ module Programs
     def files
       @files ||= Dir.glob("**/*", base: @root).filter_map do |relative|
         path = File.join(@root, relative)
-        path if File.file?(path) && !excluded?(relative)
+        path if File.file?(path) && !excluded?(relative) && (!@accept_file || @accept_file.call(path))
       end
     end
   end

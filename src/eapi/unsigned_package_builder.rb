@@ -90,10 +90,12 @@ module Programs
         format = format.to_s.downcase
         raise ProgramError, "format must be eltenapp or eltsetup" if !%w[eltenapp eltsetup].include?(format)
         raise ProgramError, "Package metadata must be an object" if !metadata.is_a?(Hash)
-        sources = PackageSources.new(root)
+        root_key = normalized_path(root)
+        sources = PackageSources.new(root) do |file|
+          !File.symlink?(file) && normalized_path(File.realpath(file)).start_with?(root_key + "/")
+        end
         metadata = ProgramPackageMetadata.prepare(metadata, :source_dir => root, :sources => sources, :warning => method(:metadata_warning))
         raise ProgramError, "Unsigned developer builder does not bundle declared gems" if !Array(metadata["gems"]).empty?
-        root_key = normalized_path(root)
         target_key = normalized_path(target)
         raise ProgramError, "Package output cannot be inside its source directory" if target_key.start_with?(root_key + "/")
         FileUtils.mkdir_p(File.dirname(target))
@@ -153,11 +155,7 @@ module Programs
       end
 
       def each_source_file(root, sources)
-        root_key = normalized_path(root)
         sources.files.each do |file|
-          next if File.symlink?(file)
-          resolved = normalized_path(File.realpath(file))
-          next if !resolved.start_with?(root_key + "/")
           yield file, file.delete_prefix(root + File::SEPARATOR).tr("\\", "/")
         end
       end
