@@ -416,7 +416,7 @@ pcm=@decoder.decode(frame, true) if @decoder!=nil
 end
 out=""
 if @spatialization==1 || @spatialization==2
-out = pcm.unpack("s"*(pcm.bytesize/2)).map{|s|s/32768.0}.pack("f"*(pcm.bytesize/2))
+out = pcm.unpack("s*").map{|s|s/32768.0}.pack("f*")
 suc=false
 if @hrtf!=nil && ((@rx!=nil && @ry!=nil) || @spatialization==2)
 suc=true
@@ -443,10 +443,10 @@ rz=-0.075 if rz==0
 out=@hrtf.process(@hrtf_effect, out, rx, ry, rz)
 end
 else
-rout = out.unpack("f"*(out.bytesize/4))
+rout = out.unpack("f*")
 fout=[]
 rout.each{|f|fout.push(f,f)}
-out=fout.pack("f"*fout.size)
+out=fout.pack("f*")
 end
 else
 out=pcm
@@ -493,7 +493,7 @@ end
 @fsec+=1
 out=""
 if @spatialization==1 || @spatialization==2
-out = pcm.unpack("s"*(pcm.bytesize/2)).map{|s|s/32768.0}.pack("f"*(pcm.bytesize/2))
+out = pcm.unpack("s*").map{|s|s/32768.0}.pack("f*")
 suc=false
 if @hrtf!=nil && ((@rx!=nil && @ry!=nil) || @spatialization==2)
 if @spatialization!=2
@@ -512,10 +512,10 @@ ry=0
 out=@hrtf.process(@hrtf_effect, out, rx, ry, rz)
 end
 else
-rout = out.unpack("f"*(out.bytesize/4))
+rout = out.unpack("f*")
 fout=[]
 rout.each{|f|fout.push(f,f)}
-out=fout.pack("f"*fout.size)
+out=fout.pack("f*")
 end
 else
 out=pcm
@@ -881,7 +881,7 @@ pcm=@decoder.decode(frame, true) if @decoder!=nil
 end
 out=""
 if @spatialization==1 || @spatialization==2
-out = pcm.unpack("s"*(pcm.bytesize/2)).map{|s|s/32768.0}.pack("f"*(pcm.bytesize/2))
+out = pcm.unpack("s*").map{|s|s/32768.0}.pack("f*")
 suc=false
 if @hrtf!=nil && @rx!=nil && @ry!=nil && @stream_x!=-1 && (@spatialization==1)
 suc=true
@@ -902,10 +902,10 @@ rz=-0.075 if rz==0
 out=@hrtf.process(@hrtf_effect, out, rx, ry, rz)
 end
 elsif @channels==1
-rout = out.unpack("f"*(out.bytesize/4))
+rout = out.unpack("f*")
 fout=[]
 rout.each{|f|fout.push(f,f)}
-out=fout.pack("f"*fout.size)
+out=fout.pack("f*")
 end
 else
 out=pcm
@@ -943,7 +943,7 @@ end
 @fsec+=1
 out=""
 if @spatialization==1 || @spatialization==2
-out = pcm.unpack("s"*(pcm.bytesize/2)).map{|s|s/32768.0}.pack("f"*(pcm.bytesize/2))
+out = pcm.unpack("s*").map{|s|s/32768.0}.pack("f*")
 suc=false
 if @hrtf!=nil && @rx!=nil && @ry!=nil && @stream_x!=-1
 suc=true
@@ -954,10 +954,10 @@ rz=-0.075 if rz==0
 @hrtf.set_bilinear(@hrtf_effect, ($usebilinearhrtf==1))
 out=@hrtf.process(@hrtf_effect, out, rx, ry, rz)
 elsif @channels==1
-rout = out.unpack("f"*(out.bytesize/4))
+rout = out.unpack("f*")
 fout=[]
 rout.each{|f|fout.push(f,f)}
-out=fout.pack("f"*fout.size)
+out=fout.pack("f*")
 end
 else
 out=pcm
@@ -3033,7 +3033,7 @@ end
 end
 if @fullsave_myrec!=nil
 if vorqueued.bytesize>=48000*2*2
-fr = vorqueued.unpack("s"*(vorqueued.bytesize/2)).map{|s|s/32768.0}.pack("f"*(vorqueued.bytesize/2))
+fr = vorqueued.unpack("s*").map{|s|s/32768.0}.pack("f*")
 $vorbisrecordproc.call(0, fr, fr.bytesize, @fullsave_myrec)
 vorqueued="".b
 end
