@@ -62,6 +62,8 @@ module EltenAPI
             scene = Scene_Notifications.whatsnew
             scene == nil ? alert(p_("Notifications", "There is nothing new."), false) : insert_scene(scene)
           end
+        when :latest_notification
+          Scene_Notifications.new.open_latest unless GlobalMenu.opened?
         when :context
                    $opencontextmenu=true if !GlobalMenu.opened?
         when :lastspeech
@@ -342,6 +344,7 @@ end
 [:conference_pushtotalk, p_("EAPI_QuickActions", "Conferences: switch push-to-talk"), [], 0, false],
 [:conference_diceroll, p_("EAPI_QuickActions", "Conferences: roll a 6-sided die"), [], 0, false],
 [:conference_dicerollcustom, p_("EAPI_QuickActions", "Conferences: roll a custom die"), [], 0, false],
+[:latest_notification, p_("EAPI_QuickActions", "Open the latest notification"), [], 0, false],
 [:alarm, p_("EAPI_QuickActions", "Add alarm"), [], 0, false],
         ]
         for ac in @@addprocs
