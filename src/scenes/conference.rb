@@ -136,7 +136,7 @@ class Scene_Conference
       }
       }
       menu.option(p_("Conference", "VST chain"), nil, "t") {
-      if requires_premiumpackage("director")
+      if requires_premiumpackage("director", p_("Conference", "Apply VST effects to an individual conference participant."))
   insert_scene(Scene_Conference_VSTS.new(user.id))
 end
 }
@@ -181,7 +181,7 @@ end
       if Conference.channel.administrators.include?(Session.name)
         if user.supervisor==nil || user.supervisor==0
                 menu.option(p_("Conference", "Take over this user's stream")) {
-                if requires_premiumpackage("director") && user.name!=Session.name
+                if requires_premiumpackage("director", p_("Conference", "Take control of another participant's audio stream.")) && user.name!=Session.name
       Conference.supervise(user.id)
     end
     }
@@ -684,28 +684,28 @@ chk_hidden = CheckBox.new(p_("Conference", "Make this channel hidden"), checked:
     }
     chk_p2p.trigger(:change)
     chk_permanent.on(:change) {
-    if !holds_premiumpackage("director") && !requires_premiumpackage("audiophile")
+    if !holds_premiumpackage("director") && !requires_premiumpackage("audiophile", p_("Conference", "Keep the channel available after the last participant leaves."))
     chk_permanent.checked = channel.permanent
       end
     }
 
     chk_conference.on(:change) {
-    if !requires_premiumpackage("director")
+    if !requires_premiumpackage("director", p_("Conference", "Restrict speaking to channel administrators and participants who have been given permission."))
     chk_conference.checked = channel.conference_mode>0
       end
     }
     edt_width.on(:change) {
-    if !requires_premiumpackage("director")
+    if !requires_premiumpackage("director", p_("Conference", "Set the width of the conference channel space."))
       edt_width.set_text(channel.width.to_s)
   end
   }
   edt_height.on(:change) {
-    if !requires_premiumpackage("director")
+    if !requires_premiumpackage("director", p_("Conference", "Set the height of the conference channel space."))
       edt_height.set_text(channel.height.to_s)
   end
   }
   chk_hidden.on(:change) {
-    if !requires_premiumpackage("director")
+    if !requires_premiumpackage("director", p_("Conference", "Keep the conference channel out of the public channel list."))
       chk_hidden.checked = !channel.public
   end
   }
@@ -939,7 +939,7 @@ sel.focus
     lst_objects.bind_context{|menu|
     if objs.find_all{|o|o['owner']==Session.name}.size<10
       menu.option(p_("Conference", "Upload new sound")) {
-      if requires_premiumpackage("director")
+      if requires_premiumpackage("director", p_("Conference", "Upload an audio file to place it as a sound object in a channel."))
       file=get_file(p_("Conference", "Select audio file"), path: EltenPath.with_separator(Dirs.documents), save: false, extensions: [".mp3",".wav",".ogg",".mod",".m4a",".flac",".wma",".opus",".aac",".aiff",".w64"])
       if file!=nil
         if File.size(file)>16777216
@@ -1273,13 +1273,13 @@ formats+=[".avi", ".mp4", ".mov", ".mkv"] if holds_premiumpackage("audiophile")
 end
   if Conference.shoutcast?
     menu.option(p_("Conference", "Remove shoutcast stream")) {
-    if requires_premiumpackage("director")
+    if requires_premiumpackage("director", p_("Conference", "Remove the outgoing stream to the Shoutcast server."))
     Conference.remove_shoutcast
     end
     }
   else
     menu.option(p_("Conference", "Stream this conference to a shoutcast server")) {
-    if requires_premiumpackage("director")
+    if requires_premiumpackage("director", p_("Conference", "Broadcast the channel to a Shoutcast or Icecast server."))
     bitrates=[96, 128, 192, 256, 320]
     form = Form.new([
     lst_type = ListBox.new(["Shoutcast V2", "Shoutcast V1", "Icecast"], header: p_("Conference", "Server type")),
@@ -1391,7 +1391,7 @@ end
     save
     }
     m.option(p_("Conference", "Save separate streams (experimental)"), nil, "S") {
-    if requires_premiumpackage("audiophile")
+    if requires_premiumpackage("audiophile", p_("Conference", "Record the conference as separate audio streams."))
     fullsave
     end
     }
@@ -1418,7 +1418,7 @@ pushtotalk_setkeys
 }
   }
   menu.option(p_("Conference", "VST chain"), nil, "T") {
-  if requires_premiumpackage("audiophile")
+  if requires_premiumpackage("audiophile", p_("Conference", "Apply VST effects to your conference audio."))
   insert_scene(Scene_Conference_VSTS.new)
   end
   }
@@ -1430,7 +1430,7 @@ self.class.custom_diceroll
     }
   menu.option(p_("Conference", "Show status")) {showstatus}
 menu.option(p_("Conference", "Change output sound card")) {
-if requires_premiumpackage("director")
+if requires_premiumpackage("director", p_("Conference", "Play conference audio through a separate output device."))
       cards=[p_("Conference", "Use Elten sound card")]+Bass.soundcards[2..-1].map{|c|c.name}
       cardid=-1
 form=Form.new([

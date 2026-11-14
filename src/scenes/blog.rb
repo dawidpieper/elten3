@@ -62,11 +62,11 @@ class Scene_Blog
                         $scene = Scene_Blog_List.new(5, self, r)
                       end
         when 7
-          if requires_premiumpackage("courier")
+          if requires_premiumpackage("courier", p_("Blog", "Browse the posts you follow across blogs."))
           $scene = Scene_Blog_Posts.new(Session.name,"FOLLOWED")
           end
           when 8
-          if requires_premiumpackage("courier")
+          if requires_premiumpackage("courier", p_("Blog", "Browse mentions you have received in blog posts."))
             $scene = Scene_Blog_Posts.new(Session.name,"MENTIONED")
             end
           when 9
@@ -517,7 +517,7 @@ else
   if Session.logged? && (post.followed==true || !post.owner.to_s.start_with?("[*"))
     opt=post.followed==true ? p_("Blog", "Unfollow this post") : p_("Blog", "Follow this post")
     menu.option(opt, nil, "l") {
-      next if post.followed==false && !requires_premiumpackage("courier")
+      next if post.followed==false && !requires_premiumpackage("courier", p_("Blog", "Follow new comments on this blog post."))
       begin
         if post.followed==true
           EltenLink::Blog.unfollow_post(elten_link, blog: post.owner, post_id: post.id)
@@ -792,7 +792,7 @@ def context(menu)
     if Session.logged? && (@post.followed==true || (@iseltenblog && @post.followed==false))
       opt=@post.followed==true ? p_("Blog", "Unfollow this post") : p_("Blog", "Follow this post")
       menu.option(opt, nil, "l") {
-        next if @post.followed==false && !requires_premiumpackage("courier")
+        next if @post.followed==false && !requires_premiumpackage("courier", p_("Blog", "Follow new comments on this blog post."))
         begin
           if @post.followed==true
             EltenLink::Blog.unfollow_post(elten_link, blog: @post.owner, post_id: @post.id)
@@ -1298,7 +1298,7 @@ rescue EltenLink::Error
       $scene=Scene_Main.new
       can=false
     else
-      can=false if b.size>0 && !requires_premiumpackage("scribe")
+      can=false if b.size>0 && !requires_premiumpackage("scribe", p_("Blog", "Create another blog in addition to your first blog."))
     end
     if can==true
 $bloglistindex = @sel.index
