@@ -469,6 +469,8 @@ def make_window
       @soundsettings=true
     end
     make_setting(p_("Settings", "Output device"), @soundcards, "SoundCard", "SoundCard", @soundcardsmapping)
+    ringtone_devices = [p_("Settings", "Use Elten output device")] + @soundcards.drop(1)
+    make_setting(p_("Settings", "Incoming call ringtone output device"), ringtone_devices, "SoundCard", "RingtoneDevice", @soundcardsmapping)
     make_setting(p_("Settings", "Input device"), @microphones, "SoundCard", "Microphone", @microphonesmapping)
     make_setting(p_("Settings", "Mute the microphone in conferences while recording other content"), :bool, "Advanced", "DisableConferenceMicOnRecord")
     make_setting(p_("Settings", "Use noise reduction"), [p_("Settings", "Never"), p_("Settings", "In audio conferences only"), p_("Settings", "In audio conferences and when recording")], "Advanced", "UseDenoising", ["never", "conferences", "conferences_and_recording"])
