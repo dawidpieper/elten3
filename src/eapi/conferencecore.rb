@@ -583,6 +583,7 @@ ch=2 if spatialization==1 || spatialization==2
 @username=username
 @hrtf=nil
 @hrtf_effect=nil
+@channel_mixer=nil
 @spatialization=spatialization
 @mutex = Mutex.new
 @master_volume=[[master_volume, 0].max, 100].min
@@ -597,7 +598,12 @@ setvolume(volume)
 @thread=Thread.new{thread}
 end
 def set_mixer(mixer)
-Bass::BASS_Mixer_StreamAddChannel.call(mixer, @stream, 0)
+@mutex.synchronize {
+return if @channel_mixer==mixer
+result=Bass::BASS_Mixer_StreamAddChannel.call(mixer, @stream, 0)
+@channel_mixer=mixer if result!=0
+result
+}
 end
 def setvolume(volume)
 if volume.is_a?(Array)
@@ -998,6 +1004,7 @@ def initialize(id, resid, position, transmitter_x, transmitter_y, spatialization
 @source_mixer = Bass::BASS_Mixer_StreamCreate.call(48000, 2, 0x1000|0x200000|256)
 @hrtf=nil
 @hrtf_effect=nil
+@target_mixer=nil
 @spatialization=spatialization
 @mutex = Mutex.new
 @closing=false
@@ -1005,7 +1012,12 @@ update_position
 @thread=Thread.new{thread}
 end
 def set_mixer(mixer)
-Bass::BASS_Mixer_StreamAddChannel.call(mixer, @stream, 0)
+@mutex.synchronize {
+return if @target_mixer==mixer
+result=Bass::BASS_Mixer_StreamAddChannel.call(mixer, @stream, 0)
+@target_mixer=mixer if result!=0
+result
+}
 end
 def update_position
 @listener_x, @listener_y, @listener_dir = @position.x, @position.y, @position.dir
@@ -1311,6 +1323,7 @@ Bass::BASS_Mixer_StreamAddChannel.call(@output, @out, 0)
 @sources=[]
 @locally_muted=false
 @relvolume=1
+@target_mixer=nil
 @master_volume=[[master_volume, 0].max, 100].min
 self.volume=100
 end
@@ -1435,7 +1448,12 @@ end
 @locally_muted = (mt==true)
 end
 def set_mixer(mixer)
-Bass::BASS_Mixer_StreamAddChannel.call(mixer, @listener, 0)
+@mutex.synchronize {
+return if @target_mixer==mixer
+result=Bass::BASS_Mixer_StreamAddChannel.call(mixer, @listener, 0)
+@target_mixer=mixer if result!=0
+result
+}
 end
 def free
 @sources.each{|s|s.free}
