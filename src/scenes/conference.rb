@@ -429,6 +429,17 @@ def list_channels(user=nil)
       channels.each_with_index{|ch,i|lst_channels.set_row_status(i, "conference_someoneonchannel", "", "") if ch.users.size>0}
       }
       locha.call(@chans)
+      lst_channels.add_tip(p_("Conference", "Use Shift+Up/Down Arrow to move between open, waiting room and password-protected channels"))
+      {key_up: -1, key_down: 1}.each do |key, direction|
+        lst_channels.on(key) do |shift, control, alt|
+          next unless shift && !control && !alt
+          index = channel_group_target(channels, lst_channels.index, direction)
+          if index
+            lst_channels.index = index
+            lst_channels.sel.say_option
+          end
+        end
+      end
       lst_channels.focus
   lst_channels.bind_context{|menu|
   ch=lst_channels.index>=0 ? channels[lst_channels.index] : nil
@@ -865,13 +876,19 @@ end
 if Conference.channels==[]
     Conference.update_channels
   end
-  chans=Conference.channels.dup
-  ret=chans.sort{|a,b|
-  s=b.users.size<=>a.users.size
-  s=a.id<=>b.id if s==0
-  s
-  }
-return ret
+  Conference.channels.sort_by{|ch| [channel_access_group(ch), -ch.users.size, ch.id]}
+end
+
+def channel_access_group(channel)
+  return 2 if channel.passworded
+  channel.waiting_type > 0 ? 1 : 0
+end
+
+def channel_group_target(channels, index, direction)
+  return if index < 0 || !channels[index]
+  starts = channels.each_index.select{|i| i == 0 || channel_access_group(channels[i]) != channel_access_group(channels[i - 1])}
+  group = starts.rindex{|i| i <= index}
+  starts[(group + direction) % starts.size]
 end
 def chanobjects
   objs=Conference.channel.objects.deep_dup
