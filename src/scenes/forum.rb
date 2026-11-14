@@ -4418,22 +4418,10 @@ if post.edited && !post.locked
               end
             end
           }
-          m.option(p_("Forum", "Change post position"), nil, "o") {
-            sels = []
-            for post in @posts
-              sels.push((sels.size + 1).to_s + ": " + post.author + ": " + (post.transcription.strip!="" ? post.transcription[0...5000] : post.post[0...5000]) + ": " + post.date)
-            end
-            sels.push(p_("Forum", "Move to end"))
-            dest = selector(sels, header: p_("Forum", "Place post above"), start_index: @form.index, cancel_index: -1)
-            if dest != -1
-              if forum_attempt(nil) {
-                EltenLink::Forum.reorder_post(elten_link, post_id: @posts[@form.index / POST_FIELDS].id, before_post_id: ((dest<@posts.size)?(@posts[dest].id):(0)))
-              }
-                alert(p_("Forum", "The post has been repositioned."))
-              end
-              main
-            end
-          }
+          m.submenu(p_("Forum", "Change post position")) do |positions|
+            positions.option(p_("Forum", "Place post above"), nil, "o") { reposition_post(false) }
+            positions.option(p_("Forum", "Place post below")) { reposition_post(true) }
+          end
             m.option(p_("Forum", "Mass Actions"), nil, "\\") {
             moderation_mass_posts
             }
@@ -4443,6 +4431,29 @@ if post.edited && !post.locked
         menu.option(_("Refresh"), nil, "r") {
       refresh
     }
+  end
+
+  def reposition_post(below)
+    current = @form.index / POST_FIELDS
+    anchors = @posts.reject { |post| post.id == @posts[current].id }
+    return if anchors.empty?
+    choices = @posts.each_with_index.filter_map do |post, index|
+      next if index == current
+      text = post.transcription.strip.empty? ? post.post : post.transcription
+      "#{index + 1}: #{post.author}: #{text[0...5000]}: #{post.date}"
+    end
+    choices << p_("Forum", "Move to end") unless below
+    header = below ? p_("Forum", "Place post below") : p_("Forum", "Place post above")
+    start = below ? [current - 1, 0].max : current
+    destination = selector(choices, header: header, start_index: start, cancel_index: -1)
+    return if destination < 0
+    following = anchors[destination + (below ? 1 : 0)]
+    if forum_attempt(nil) {
+      EltenLink::Forum.reorder_post(elten_link, post_id: @posts[current].id, before_post_id: following ? following.id : 0)
+    }
+      alert(p_("Forum", "The post has been repositioned."))
+      main
+    end
   end
 
   def reply_to_mention(mention, select_type=false)
