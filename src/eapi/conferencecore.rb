@@ -469,16 +469,17 @@ end
 end
 @ogg_mutex.synchronize {
 if @ogg!=nil
+samples=(@framesize*48).to_i
 if lostframes>0
 e=Opus::Encoder.new(48000, @channels)
-fr=e.encode("\0"*@framesize*48*2*@channels, 48*@framesize)
+fr=e.encode("\0"*(samples*2*@channels), samples)
 e.free
 lostframes.times {
-@granulepos+=@framesize*48
+@granulepos+=samples
 ogg_addpacket(fr)
 }
 end
-@granulepos+=@framesize*48
+@granulepos+=samples
 ogg_addpacket(frame)
 end
 }
@@ -919,16 +920,17 @@ last_frame_id=frame_id
 update_position if @listener_x!=@position.x || @listener_y!=@position.y || @listener_dir != @position.dir
 @ogg_mutex.synchronize {
 if @ogg!=nil
+samples=(@framesize*48).to_i
 if lostframes>0
 e=Opus::Encoder.new(48000, @channels)
-fr=e.encode("\0"*@framesize*48*2*@channels, 48*@framesize)
+fr=e.encode("\0"*(samples*2*@channels), samples)
 e.free
 lostframes.times {
-@granulepos+=@framesize*48
+@granulepos+=samples
 ogg_addpacket(fr)
 }
 end
-@granulepos+=@framesize*48
+@granulepos+=samples
 ogg_addpacket(frame)
 end
 }
@@ -1061,7 +1063,7 @@ def thread
 @source = Bass.create_url_stream(@url, 0, 0x200000|4|256, 0, 0)
 Bass::BASS_Mixer_StreamAddChannel.call(@source_mixer, @source, 0)
 queue="".b
-fsize=48*@framesize*2*4
+fsize=(48*@framesize*2*4).to_i
 buf="\0"*fsize
 until @closing
 if (sz=Bass::BASS_ChannelGetData.call(@source_mixer, buf, fsize))>0
@@ -2990,7 +2992,7 @@ break if @closing
 sf=@framesize
 sf=2.5 if sf==0 || sf==nil
 sf=@speexdsp_framesize if @speexdsp_framesize!=nil and @speexdsp_framesize>0
-sf*=48*2*2
+sf=(sf*48*2*2).to_i
 sz=0
 @record_mutex.synchronize {
 if (sz=Bass::BASS_ChannelGetData.call(@record_mixer, buf, bufsize))>0
@@ -3056,7 +3058,7 @@ if @output!=nil && (sz=Bass::BASS_ChannelGetData.call(@output, buf, bufsize))>0
 maxBytes=sz
 @encoder_mutex.synchronize {
 if @framesize>0 and @channels!=nil
-fs=@framesize*48*2*@channels
+fs=(@framesize*48*2*@channels).to_i
 au=(audio||"").b+buf.byteslice(0...sz).b
 audio.clear
 index=0
@@ -3123,7 +3125,7 @@ sz=Bass::BASS_ChannelGetData.call(s.output, buf, mb)
 s.bytes_remaining=sz>0 ? [mb-sz, 0].max : 0
 if sz>0
 if @stream_framesize>0 and s.channels!=nil
-fs=@stream_framesize*48*2*s.channels
+fs=(@stream_framesize*48*2*s.channels).to_i
 au=(s.buf||"").b+buf.byteslice(0...sz).b
 s.buf.clear
 index=0
@@ -3213,7 +3215,7 @@ sleep(0.01)
 break if @closing
 sf=2.5
 sf=@speexdsp_framesize if @speexdsp_framesize!=nil and @speexdsp_framesize>0
-sf*=48*2*2
+sf=(sf*48*2*2).to_i
 if $useechocancellation!=nil && $useechocancellation>0
 if (sz=Bass::BASS_ChannelGetData.call(@processor_mixer, buf, bufsize))>0
 audiobuf<<buf.byteslice(0..sz)
