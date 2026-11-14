@@ -3216,9 +3216,9 @@ sf=@speexdsp_framesize if @speexdsp_framesize!=nil and @speexdsp_framesize>0
 sf*=48*2*2
 if $useechocancellation!=nil && $useechocancellation>0
 if (sz=Bass::BASS_ChannelGetData.call(@processor_mixer, buf, bufsize))>0
+@lastframe_mutex.synchronize {
 audiobuf<<buf.byteslice(0..sz)
 audiobuf=audiobuf.byteslice(-sf..-1) if audiobuf.bytesize>sf
-@lastframe_mutex.synchronize {
 @lastframe=audiobuf
 }
 end
