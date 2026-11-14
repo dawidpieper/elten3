@@ -4236,21 +4236,30 @@ if post.edited && !post.locked
     if @form.index < @posts.size * POST_FIELDS
       if @type!=2
       menu.option(p_("Forum", "Listen to the thread")) {
-        if speech_output_nvda? and @type == 0
-          text = ""
-          for pst in @posts[@form.index / POST_FIELDS..@posts.size]
-            text += pst.author + "\r\n" + pst.post + "\r\n" + pst.date + "\r\n\r\n"
+        nvda_text = speech_output_nvda? && @type == 0
+        separator = LocalConfig["ForumThreadPostSeparator", !nvda_text, type: :bool]
+        if nvda_text
+          indexed = separator && speech_indexes_supported?
+          parts = []
+          @posts.drop(@form.index / POST_FIELDS).each do |post|
+            if indexed && !parts.empty?
+              parts << EltenAPI::SpeechCommands::SoundCommand.new("signal", immediate: false)
+            end
+            parts << "#{post.author}\r\n#{post.post}\r\n#{post.date}\r\n\r\n"
           end
-          speak(text)
+          speak(indexed ? EltenAPI::SpeechSequence.new(parts) : parts.join)
         else
           cur = @form.index / POST_FIELDS - 1
+          started = false
           while cur < @posts.size
             loop_update
             if speech_actived == false and !(speech_output.pause_supported? && speech_output.paused?)
               cur += 1
-              play_sound("signal")
+              break if cur >= @posts.size
+              play_sound("signal") if separator && started
+              started = true
               pst = @posts[cur]
-              speak("#{(cur + 1).to_s}: " + pst.author + ":\r\n" + pst.post) if pst != nil
+              speak("#{(cur + 1).to_s}: " + pst.author + ":\r\n" + pst.post)
             end
             if (key_pressed?(:key_right) and !key_held?(0x10))
               speech_stop
@@ -4312,6 +4321,15 @@ if post.edited && !post.locked
         end
       end
     }
+    nvda_text = speech_output_nvda? && @type == 0
+    if @type != 2 && (!nvda_text || speech_indexes_supported?)
+      menu.option(p_("Forum", "Sound between posts during thread playback")) do
+        enabled = LocalConfig["ForumThreadPostSeparator", !nvda_text, type: :bool]
+        choice = selector([_("No"), _("Yes")], header: p_("Forum", "Sound between posts during thread playback"),
+          start_index: enabled ? 1 : 0, cancel_index: -1)
+        LocalConfig["ForumThreadPostSeparator"] = choice == 1 if choice >= 0
+      end
+    end
     menu.option(p_("Forum", "Signature notifications")) {
       current_mode = forum_signature_mode
       selected = selector(
