@@ -922,75 +922,93 @@ sel.focus
   loop_update
   end
   def getobject
-    begin
-      objs=EltenLink::ConferenceResources.list(elten_link)
-    rescue EltenLink::Error => e
-      Log.warning("Conference resources list failed: #{e.message}")
-      objs=[]
-      alert(_("Error"))
-    end
-    form=Form.new([
-    lst_objects=ListBox.new(objs.map{|o|o['name']}, header: p_("Conference", "Available objects")),
-    lst_position = ListBox.new([p_("Conference", "Here"), p_("Conference", "Everywhere")], header: p_("Conference", "Object position")),
-    btn_ok = Button.new(p_("Conference", "Place object")),
+    objs = []
+    lst_objects = ListBox.new([], header: p_("Conference", "Available objects"), keys: [])
+    btn_upload = Button.new(p_("Conference", "Upload new sound"))
+    lst_position = ListBox.new([p_("Conference", "Here"), p_("Conference", "Everywhere")], header: p_("Conference", "Object position"))
+    btn_ok = Button.new(p_("Conference", "Place object"))
     btn_cancel = Button.new(_("Cancel"))
-    ], index: 0, silent: false, quiet: true)
-    refr=false
-    lst_objects.bind_context{|menu|
-    if objs.find_all{|o|o['owner']==Session.name}.size<10
-      menu.option(p_("Conference", "Upload new sound")) {
-      if requires_premiumpackage("director")
-      file=get_file(p_("Conference", "Select audio file"), path: EltenPath.with_separator(Dirs.documents), save: false, extensions: [".mp3",".wav",".ogg",".mod",".m4a",".flac",".wma",".opus",".aac",".aiff",".w64"])
-      if file!=nil
-        if File.size(file)>16777216
-          alert(p_("Conference", "This file is too large"))
-          else
-        begin
-          File.open(file, "rb") do |input|
-            EltenLink::ConferenceResources.add(elten_link, File.basename(file, File.extname(file)), input)
-          end
-        rescue EltenLink::Error => e
-          Log.warning("Conference resource upload failed: #{e.message}")
-          alert(_("Error"))
-        end
-        refr=true
-        form.resume
-        end
-      else
-        form.focus
-      end
-    end
-    }
-    end
-    if objs.size>0
-      obj=objs[lst_objects.index]
-      if obj['owner']==Session.name && !Conference.channel.objects.map{|o|o.resid}.include?(obj['resid'])
-        menu.option(p_("Conference", "Delete")) {
-        begin
-          EltenLink::ConferenceResources.delete(elten_link, obj['resid'])
-        rescue EltenLink::Error => e
-          Log.warning("Conference resource delete failed: #{e.message}")
+    form = Form.new([lst_objects, btn_upload, lst_position, btn_ok, btn_cancel], index: 0, silent: false, quiet: true)
+    can_upload = false
+    form.hide(btn_upload)
+    refresh = lambda do |uploaded_name = nil|
+      begin
+        resources = EltenLink::ConferenceResources.list(elten_link)
+      rescue EltenLink::Error => e
+        Log.warning("Conference resources list failed: #{e.message}")
         alert(_("Error"))
-      else
-        alert(p_("Conference", "Object deleted"))
+        next
       end
-      refr=true
-      form.resume
-      }
+      previous_ids = objs.map{|o| o['resid']}
+      objs = resources
+      lst_objects.update_options(objs.map{|o| o['name']}, keys: objs.map{|o| o['resid']})
+      if uploaded_name
+        matches = objs.each_index.select do |i|
+          obj = objs[i]
+          obj['owner'] == Session.name && obj['name'] == uploaded_name && !previous_ids.include?(obj['resid'])
+        end
+        lst_objects.index = matches.first if matches.one?
+      end
+      can_upload = objs.count{|o| o['owner'] == Session.name} < 10
+      if can_upload
+        form.show(btn_upload)
+      else
+        form.hide(btn_upload)
+      end
+    end
+    refresh.call
+    upload = proc do
+      name = upload_conference_object
+      if name
+        refresh.call(name)
+        form.index = lst_objects
+      end
+      form.focus
+    end
+    btn_upload.on(:press, &upload)
+    lst_objects.bind_context do |menu|
+      menu.option(p_("Conference", "Upload new sound"), &upload) if can_upload
+      obj = objs[lst_objects.index]
+      if obj && obj['owner'] == Session.name && Conference.channel.objects.none?{|o| o.resid == obj['resid']}
+        menu.option(p_("Conference", "Delete")) do
+          begin
+            EltenLink::ConferenceResources.delete(elten_link, obj['resid'])
+            alert(p_("Conference", "Object deleted"))
+            refresh.call
+          rescue EltenLink::Error => e
+            Log.warning("Conference resource delete failed: #{e.message}")
+            alert(_("Error"))
+          end
+          form.focus
         end
       end
-    }
-    form.cancel_button=btn_cancel
-    btn_cancel.on(:press) {form.resume}
-    btn_ok.on(:press) {
-    if objs.size>0
-    return ["$"+objs[lst_objects.index]['resid'], objs[lst_objects.index]['name'], lst_position.index]
-  end
-  form.resume
-    }
+    end
+    form.cancel_button = btn_cancel
+    btn_cancel.on(:press) { form.resume }
+    btn_ok.on(:press) do
+      obj = objs[lst_objects.index]
+      return ["$" + obj['resid'], obj['name'], lst_position.index] if obj
+      form.resume
+    end
     form.wait
-    return getobject if refr
-    return nil
+    nil
+  end
+
+  def upload_conference_object
+    return unless requires_premiumpackage("director")
+    file = get_file(p_("Conference", "Select audio file"), path: EltenPath.with_separator(Dirs.documents), save: false, extensions: [".mp3", ".wav", ".ogg", ".mod", ".m4a", ".flac", ".wma", ".opus", ".aac", ".aiff", ".w64"])
+    return unless file
+    if File.size(file) > 16777216
+      alert(p_("Conference", "This file is too large"))
+      return
+    end
+    name = File.basename(file, File.extname(file))
+    File.open(file, "rb") {|input| EltenLink::ConferenceResources.add(elten_link, name, input)}
+    name
+  rescue EltenLink::Error, SystemCallError => e
+    Log.warning("Conference resource upload failed: #{e.message}")
+    alert(_("Error"))
+    nil
   end
   def save
 if !Conference.saving?
