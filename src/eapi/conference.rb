@@ -555,16 +555,20 @@ def self.saving?
   @@saving==true
   end
 def self.begin_save(file)
-  safe {@@core.begin_save(file) if @@core!=nil && file.is_a?(String)}
-  @@saving=true
+  @@saving=safe(false) {
+    @@core.begin_save(file) if @@core!=nil && file.is_a?(String)
+    @@core!=nil && @@core.saving?
+  }
 end
 def self.begin_fullsave(dir)
-  safe {@@core.begin_fullsave(dir) if @@core!=nil && dir.is_a?(String)}
-  @@saving=true
+  @@saving=safe(false) {
+    @@core.begin_fullsave(dir) if @@core!=nil && dir.is_a?(String)
+    @@core!=nil && @@core.saving?
+  }
 end
 def self.end_save
   safe {@@core.end_save if @@core!=nil}
-  @@saving=false
+  @@saving=safe(false) {@@core!=nil && @@core.saving?}
 end
 def self.set_device(dev)
   safe {@@core.set_device(dev) if @@core!=nil}
