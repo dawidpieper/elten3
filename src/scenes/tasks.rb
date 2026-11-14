@@ -301,7 +301,8 @@ module TasksSceneHelpers
                elsif goal && parent.due?
                  parent.plantime
                else
-                 Time.now
+                 today = Date.today
+                 Time.local(today.year, today.month, today.day, 23, 59, 59)
                end
     min_year = [due_time.year, Time.now.year].min
     max_year = [due_time.year, Time.now.year].max + 20
@@ -339,11 +340,11 @@ module TasksSceneHelpers
                     else
                       CheckBox.new(p_("Tasks", "Set a due date"), checked: task != nil && task.due?)
                     end,
-      btn_due = DateButton.new(p_("Tasks", "Due date"), (min_year..max_year), include_hour: false),
+      btn_due = DateButton.new(p_("Tasks", "Due date"), (min_year..max_year), include_hour: true),
       Button.new(task == nil ? p_("Tasks", "Add task") : _("Save")),
       Button.new(_("Cancel"))
     ]
-    btn_due.setdate(due_time.year, due_time.month, due_time.day, 0, 0, 0)
+    btn_due.setdate(due_time.year, due_time.month, due_time.day, due_time.hour, due_time.min, due_time.sec)
     form = Form.new(fields)
     form.hide(lst_project) if goal
     manual_due_selected = proc do
@@ -382,7 +383,7 @@ module TasksSceneHelpers
           alert(p_("Tasks", "Select a valid due date"))
         else
           if manual_due_selected.call
-            plantime = Time.local(btn_due.year, btn_due.month, btn_due.day, 23, 59, 59)
+            plantime = Time.local(btn_due.year, btn_due.month, btn_due.day, btn_due.hour, btn_due.min, btn_due.sec)
             if goal && parent.due? && plantime.to_i > parent.plantime.to_i
               alert(p_("Tasks", "The goal due date cannot be after the task due date"))
               next
@@ -412,7 +413,7 @@ module TasksSceneHelpers
   end
 
   def task_date_label(time)
-    format_localized_date(Date.new(time.year, time.month, time.day))
+    "#{format_localized_date(time.to_date)}, #{time.strftime("%H:%M:%S")}"
   end
 
   def effective_task_due_time(task, parent=nil)
