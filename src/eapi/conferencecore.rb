@@ -205,9 +205,14 @@ end
 end
 def set_hrtf(hrtf)
 @mutex.synchronize {
+return if @hrtf.equal?(hrtf) && (@hrtf==nil || (@hrtf_effect.is_a?(Integer) && @hrtf_effect>=0))
+@hrtf.remove_effect(@hrtf_effect) if @hrtf!=nil && @hrtf_effect.is_a?(Integer) && @hrtf_effect>=0
 @hrtf=hrtf
 @hrtf_effect=nil
-@hrtf_effect = @hrtf.add_effect(@channels) if @hrtf!=nil
+if @hrtf!=nil
+effect=@hrtf.add_effect(@channels)
+@hrtf_effect=effect if effect.is_a?(Integer) && effect>=0
+end
 }
 end
 def reset
@@ -301,6 +306,11 @@ def free
 EltenAPI::Conference::Core.wake_and_join_thread(@thread)
 @thread=nil
 end_save if @ogg!=nil
+begin
+set_hrtf(nil)
+rescue Exception
+log(2, "Conference: Transmitter HRTF free error: "+$!.to_s+" "+$@.to_s)
+end
 @mutex.synchronize {
 Bass::BASS_StreamFree.call(@stream)
 Bass::BASS_StreamFree.call(@whisper)
@@ -668,9 +678,14 @@ Bass::BASS_ChannelSetAttribute.call(@stream, 2, vol)
 end
 def set_hrtf(hrtf)
 @mutex.synchronize {
+return if @hrtf.equal?(hrtf) && (@hrtf==nil || (@hrtf_effect.is_a?(Integer) && @hrtf_effect>=0))
+@hrtf.remove_effect(@hrtf_effect) if @hrtf!=nil && @hrtf_effect.is_a?(Integer) && @hrtf_effect>=0
 @hrtf=hrtf
 @hrtf_effect=nil
-@hrtf_effect = @hrtf.add_effect(@channels) if @hrtf!=nil
+if @hrtf!=nil
+effect=@hrtf.add_effect(@channels)
+@hrtf_effect=effect if effect.is_a?(Integer) && effect>=0
+end
 }
 end
 def reset
@@ -764,6 +779,11 @@ def free
 EltenAPI::Conference::Core.wake_and_join_thread(@thread)
 @thread=nil
 end_save if @ogg!=nil
+begin
+set_hrtf(nil)
+rescue Exception
+log(2, "Conference: Stream HRTF free error: "+$!.to_s+" "+$@.to_s)
+end
 @mutex.synchronize {
 Bass::BASS_StreamFree.call(@stream)
 Bass::BASS_StreamFree.call(@preprocessor) if @preprocessor!=nil
@@ -1038,15 +1058,25 @@ end
 end
 def set_hrtf(hrtf)
 @mutex.synchronize {
+return if @hrtf.equal?(hrtf) && (@hrtf==nil || (@hrtf_effect.is_a?(Integer) && @hrtf_effect>=0))
+@hrtf.remove_effect(@hrtf_effect) if @hrtf!=nil && @hrtf_effect.is_a?(Integer) && @hrtf_effect>=0
 @hrtf=hrtf
 @hrtf_effect=nil
-@hrtf_effect = @hrtf.add_effect(2) if @hrtf!=nil
+if @hrtf!=nil
+effect=@hrtf.add_effect(2)
+@hrtf_effect=effect if effect.is_a?(Integer) && effect>=0
+end
 }
 end
 def free
 @closing=true
 EltenAPI::Conference::Core.wake_and_join_thread(@thread)
 @thread=nil
+begin
+set_hrtf(nil)
+rescue Exception
+log(2, "Conference: Object HRTF free error: "+$!.to_s+" "+$@.to_s)
+end
 @mutex.synchronize {
 Bass::BASS_StreamFree.call(@stream)
 Bass::BASS_StreamFree.call(@source) if @source!=nil && @source!=0
@@ -1512,6 +1542,9 @@ Bass.record_prepare
 @bitrate=0
 @stream_framesize=0
 @stream_bitrate=0
+@hrtf=nil
+@hrtf_framesize=nil
+@hrtf_spatialization=nil
 @voip.on_params {|params|onparams(params)}
 @voip.on_ping {|t|onping(t)}
 @voip.connect(@username, @token)
@@ -2791,11 +2824,16 @@ end
 else
 @speexdsp_framesize=0
 end
+spatialization=params['channel']['spatialization'].to_i
+if @hrtf_framesize!=@framesize || @hrtf_spatialization!=spatialization
 @hrtf.free if @hrtf!=nil
 @hrtf=nil
-if params['channel']['spatialization']!=0
+if spatialization!=0
 SteamAudio.load
 @hrtf=SteamAudio.new(48000, @framesize)
+end
+@hrtf_framesize=@framesize
+@hrtf_spatialization=spatialization
 end
 if params['channel']['channels']!=@channels
 Bass::BASS_StreamFree.call(@output) if @output!=0
