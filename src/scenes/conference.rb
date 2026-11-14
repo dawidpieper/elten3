@@ -375,13 +375,14 @@ elsif channel_target?(@target)
         Conference.close
         end
       end
-      Conference.remove_hook(@waitingchannel_hook)
+  $scene=Scene_Main.new
+ensure
+  Conference.remove_hook(@waitingchannel_hook)
   Conference.remove_hook(@users_hook)
   Conference.remove_hook(@status_hook)
   Conference.remove_hook(@text_hook)
   Conference.remove_hook(@close_hook)
   timeout_break
-  $scene=Scene_Main.new
 end
 def invite(user)
   begin
