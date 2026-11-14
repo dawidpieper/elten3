@@ -340,6 +340,9 @@ if c[2].is_a?(String)
           end
         }
     st_conference.bind_context{|menu|
+    if Conference.channel.id != 0 && Conference.channel.spatialization != 2
+      menu.option(p_("Conference", "Look around"), nil, :l) { look_around }
+    end
     menu.option(p_("Conference", "Read current position"), nil, :q) {speak(Conference.get_coordinates.map{|c|c.to_s}.join(", "))}
     menu.option(p_("Conference", "Read channel size"), nil, :e) {speak([Conference.channel.width, Conference.channel.height].map{|c|c.to_s}.join(", "))}
     menu.submenu(p_("Conference", "Conference")) {|menu|context(menu)}
@@ -860,6 +863,53 @@ end
     end
     delay(1)
   end
+  def look_around
+    channel = Conference.channel
+    x, y, direction = Conference.get_coordinates
+    angle = direction * Math::PI / 180
+    nearby = channel.users.filter_map do |user|
+      next if user.waiting || user.id == Conference.userid
+      tx, ty = Conference.get_coordinates(user.id)
+      next unless x > 0 && y > 0 && tx > 0 && ty > 0
+      dx, dy = tx - x, ty - y
+      distance = Math.hypot(dx, dy)
+      next if distance > 20
+      lateral = dx * Math.cos(angle) + dy * Math.sin(angle)
+      pan = 50 + 50 * (lateral / 8.0).clamp(-1, 1)
+      [distance, user.name, pan]
+    end
+    if nearby.empty?
+      alert(p_("Conference", "No participants nearby"))
+      return
+    end
+    nearby.sort_by!{|distance, name, _pan| [distance, name]}
+    cancel = Button.new(_("Cancel"))
+    form = Form.new([cancel], quiet: true)
+    form.cancel_button = cancel
+    timer = FormTimer.new(0.8, repeat: true) do
+      if !Conference.opened? || Conference.channel.id != channel.id
+        speech_stop
+        form.resume
+      elsif !speech_actived
+        if nearby.empty?
+          form.resume
+        else
+          distance, name, pan = nearby.shift
+          steps = distance.round
+          play_sound("listbox_focus", pan: pan, pitch: distance > 15 ? 75 : 100)
+          alert(np_("Conference", "%{name}, %{count} step", "%{name}, %{count} steps", steps) % {name: name, count: steps}, false)
+        end
+      end
+    end
+    form.add_timer(timer)
+    cancel.on(:press) do
+      timer.stop
+      speech_stop
+      form.resume
+    end
+    form.wait
+  end
+
   def get_channelslist
     Conference.update_channels
 if Conference.channels==[]
