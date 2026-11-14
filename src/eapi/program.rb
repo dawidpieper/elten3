@@ -2684,6 +2684,7 @@ module Programs
         description: manifest.description,
         raw_name: manifest.raw_name,
         raw_description: manifest.raw_description,
+        repository_url: manifest.raw["repository_url"],
         name_languages: manifest.name_languages,
         description_languages: manifest.description_languages,
         main_language: manifest.main_language,
@@ -2719,6 +2720,7 @@ module Programs
         description: manifest == nil ? "" : manifest.description,
         raw_name: manifest == nil ? entry.sub(/\.eltenapp\z/i, "") : manifest.raw_name,
         raw_description: manifest == nil ? "" : manifest.raw_description,
+        repository_url: manifest == nil ? nil : manifest.raw["repository_url"],
         name_languages: manifest == nil ? [] : manifest.name_languages,
         description_languages: manifest == nil ? [] : manifest.description_languages,
         main_language: manifest == nil ? :unknown : manifest.main_language,
@@ -2761,7 +2763,7 @@ module Programs
     end
 
     def local_entry_record(entry:, id:, name:, version:, build_id:, author:, size:, install_type:, status:, source_type: nil, source_path: nil, signature_info: nil, elten_api_version: "", platforms: [], main: "", error: nil,
-      description: "", raw_name: nil, raw_description: "", name_languages: [], description_languages: [], main_language: :unknown, supported_languages: [])
+      description: "", raw_name: nil, raw_description: "", repository_url: nil, name_languages: [], description_languages: [], main_language: :unknown, supported_languages: [])
       storage_id = storage_id_for_entry(entry, uuid: id)
       record = apps_registry["apps"][storage_id]
       installation_source = record.is_a?(Hash) ? record["installation_source"].to_s : "autodetected"
@@ -2775,6 +2777,7 @@ module Programs
         :description => description.to_s,
         :raw_name => (raw_name == nil ? name : raw_name).to_s,
         :raw_description => raw_description.to_s,
+        :repository_url => repository_url,
         :name_languages => Array(name_languages).map(&:to_sym),
         :description_languages => Array(description_languages).map(&:to_sym),
         :main_language => main_language.to_sym,

@@ -72,6 +72,10 @@ module EltenLink
       @verified == true
     end
 
+    def repository_url
+      @metadata["repository_url"]
+    end
+
     def name(language = nil)
       localized_value(@localized_names, @raw_name, language)
     end
