@@ -24,6 +24,7 @@ ResponseAliases={'success'=>0,'error'=>1}
 CommandTimeout = 5.0
 CommandReadChunk = 16 * 1024
 ConferenceHost = "conferencing.elten.link"
+ChannelSecretLimit = 16
 
 class CommandTimeoutError < StandardError; end
 
@@ -63,7 +64,7 @@ def initialize
 @connected=false
 @cipher_mutex=Mutex.new
 @cipher=OpenSSL::Cipher::AES256.new :CTR
-@channel_secrets=[]
+@channel_secrets={}
 @received={}
 @receive_mutex=Mutex.new
 @pings={}
@@ -222,7 +223,14 @@ log(-1, "Conference: updating parameters")
 @cur_rx_packets=0
 @cur_lostpackets=0
 @index=1
-@channel_secrets[@stamp]=Base64.strict_decode64(resp['channel_secret']) if resp['channel_secret']!=nil
+if resp['channel_secret']!=nil
+secret=Base64.strict_decode64(resp['channel_secret'])
+@cipher_mutex.synchronize do
+@channel_secrets.delete(@stamp)
+@channel_secrets[@stamp]=secret
+@channel_secrets.shift while @channel_secrets.size>ChannelSecretLimit
+end
+end
 @receive_mutex.synchronize { @received={} }
 if resp['params']!=nil
 @params_queue << resp['params']
@@ -350,7 +358,7 @@ def generate_packet(type, message, p1=0, p2=0, p3=0, p4=0, userid=nil, index=nil
 return nil if @chid==0 && type<200
 return nil if (message=="" && type<10) || !message.is_a?(String)
 message=message+""
-return nil if @channel_secrets[@stamp]==nil && type<200
+return nil if type<200 && @cipher_mutex.synchronize { @channel_secrets[@stamp]==nil }
 crc=Zlib.crc32(message)
 if index==nil
 index=@index
