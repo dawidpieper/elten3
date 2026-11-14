@@ -2940,15 +2940,14 @@ module Programs
         raise ProgramError, "More than one eltenapp file in #{entry}"
       end
 
+      sources = PackageSources.new(folder)
       default = EltenPath.join(folder, "__app.rb")
-      if File.file?(default)
+      if File.file?(default) && !sources.excluded?("__app.rb")
         return code_source(entry, folder, "__app.rb", default)
       end
 
-      matches = []
-      Dir.glob(EltenPath.join(folder, "**", "*.rb")).each do |file|
-        code = File.binread(file)
-        matches << file if CodeManifestParser.has_manifest?(code)
+      matches = sources.files.select do |file|
+        File.extname(file) == ".rb" && CodeManifestParser.has_manifest?(File.binread(file))
       end
       raise ProgramError, "More than one Elten3AppInfo block in #{entry}" if matches.size > 1
       return nil if matches.empty?

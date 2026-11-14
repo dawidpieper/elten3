@@ -45,12 +45,12 @@ def extract_manifest(code, source)
   JSON.parse(rest[0...end_match.begin(0)].to_s)
 end
 
-def manifest_file(source_dir)
+def manifest_file(source_dir, sources)
   default = File.join(source_dir, "__app.rb")
-  return default if File.file?(default)
+  return default if File.file?(default) && !sources.excluded?("__app.rb")
 
-  matches = Dir.glob(File.join(source_dir, "**", "*.rb")).select do |file|
-    File.binread(file).match?(MANIFEST_BEGIN)
+  matches = sources.files.select do |file|
+    File.extname(file) == ".rb" && File.binread(file).match?(MANIFEST_BEGIN)
   end
   raise "More than one Elten3AppInfo block found" if matches.size > 1
   raise "No Elten3AppInfo block found" if matches.empty?
@@ -227,7 +227,7 @@ def write_named_record(buffer, type, name, content)
   buffer << content
 end
 
-def build_code_container(source_dir, metadata, signing_options)
+def build_code_container(source_dir, sources, metadata, signing_options)
   buffer = +"".b
   buffer << CODE_MAGIC
   compressed_metadata = Zstd.compress(JSON.generate(metadata).b, level: 19)
@@ -237,8 +237,7 @@ def build_code_container(source_dir, metadata, signing_options)
   gem_specs = collect_gem_specs(metadata)
   puts "Bundling gems: #{gem_specs.map(&:full_name).join(", ")}" if !gem_specs.empty?
 
-  Dir.glob(File.join(source_dir, "**", "*")).sort.each do |file|
-    next if !File.file?(file)
+  sources.files.each do |file|
     relative = normalize(file.delete_prefix(source_dir + File::SEPARATOR))
     ext = File.extname(relative).downcase
     if ext == ".rb"
@@ -374,10 +373,11 @@ if signing_options[:sign] && !Programs::ProgramSigning.signing_available?(signin
   raise "Program signing certificate or key is missing. Use --cert/--key or --unsigned."
 end
 
-main_file = manifest_file(source_dir)
+sources = Programs::PackageSources.new(source_dir)
+main_file = manifest_file(source_dir, sources)
 metadata = extract_manifest(File.binread(main_file), main_file)
 metadata["main"] = normalize(main_file.delete_prefix(source_dir + File::SEPARATOR)) if metadata["main"].to_s == ""
-metadata = Programs::ProgramPackageMetadata.prepare(metadata, :source_dir => source_dir,
+metadata = Programs::ProgramPackageMetadata.prepare(metadata, :source_dir => source_dir, :sources => sources,
   :warning => ->(message) { warn "Warning: #{message}" })
 
 code_name = "#{File.basename(output, ".eltsetup")}.eltenapp"
@@ -389,10 +389,9 @@ setup_manifest = {
 FileUtils.mkdir_p(File.dirname(output))
 writer = EltsetupZipWriter.new(output)
 writer.add("__manifest.json", JSON.pretty_generate(setup_manifest) + "\n")
-writer.add(code_name, build_code_container(source_dir, metadata, signing_options))
+writer.add(code_name, build_code_container(source_dir, sources, metadata, signing_options))
 
-Dir.glob(File.join(source_dir, "**", "*")).sort.each do |file|
-  next if !File.file?(file)
+sources.files.each do |file|
   relative = normalize(file.delete_prefix(source_dir + File::SEPARATOR))
   ext = File.extname(relative).downcase
   next if ext == ".rb" || ext == ".eltenapp"

@@ -669,6 +669,20 @@ For an installable package, use the full setup builder:
 bundle exec ruby tools/build-eltsetup.rb --unsigned path/to/source dist/example.eltsetup
 ```
 
+### Excluding development files
+
+Place an optional `.eltenignore` in the source directory. The command-line and unsigned developer builders apply its rules to Ruby code, sounds, translations, localised metadata and other setup files. The manifest's main Ruby file must be included.
+
+Write one pattern per line. Blank lines and lines beginning with `#` are ignored. A name such as `*.log` matches at any depth. Patterns with a slash are relative to the source directory, and a leading slash anchors a name there. A trailing slash matches directories. Use `**/` to match any number of directories. Prefix a rule with `!` to include a match again. Later matching rules take precedence.
+
+```text
+test/
+/build/
+*.log
+assets/**/*.wav
+!assets/release/intro.wav
+```
+
 ### Gems supplied by Elten 3.0
 
 Applications may use the gems which are already part of the Elten 3.0 runtime. As a rule, these direct dependencies can be treated as present wherever a compatible Elten 3.0 client runs. They should be required normally, but must not be repeated in the manifest's `gems` array. The setup builder recognises them as host dependencies and deliberately does not bundle private copies.

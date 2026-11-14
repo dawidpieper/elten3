@@ -32,12 +32,12 @@ def extract_manifest(code, source)
   JSON.parse(rest[0...end_match.begin(0)].to_s)
 end
 
-def manifest_file(source_dir)
+def manifest_file(source_dir, sources)
   default = File.join(source_dir, "__app.rb")
-  return default if File.file?(default)
+  return default if File.file?(default) && !sources.excluded?("__app.rb")
 
-  matches = Dir.glob(File.join(source_dir, "**", "*.rb")).select do |file|
-    File.binread(file).match?(MANIFEST_BEGIN)
+  matches = sources.files.select do |file|
+    File.extname(file) == ".rb" && File.binread(file).match?(MANIFEST_BEGIN)
   end
   raise "More than one Elten3AppInfo block found" if matches.size > 1
   raise "No Elten3AppInfo block found" if matches.empty?
@@ -98,15 +98,15 @@ if options[:sign] && !Programs::ProgramSigning.signing_available?(options[:certi
   raise "Program signing certificate or key is missing. Use --cert/--key or --unsigned."
 end
 
-main_file = manifest_file(source_dir)
+sources = Programs::PackageSources.new(source_dir)
+main_file = manifest_file(source_dir, sources)
 metadata = extract_manifest(File.binread(main_file), main_file)
 metadata["main"] = normalize(main_file.delete_prefix(source_dir + File::SEPARATOR)) if metadata["main"].to_s == ""
-metadata = Programs::ProgramPackageMetadata.prepare(metadata, :source_dir => source_dir,
+metadata = Programs::ProgramPackageMetadata.prepare(metadata, :source_dir => source_dir, :sources => sources,
   :warning => ->(message) { warn "Warning: #{message}" })
 
 files = []
-Dir.glob(File.join(source_dir, "**", "*")).sort.each do |file|
-  next if !File.file?(file)
+sources.files.each do |file|
   relative = normalize(file.delete_prefix(source_dir + File::SEPARATOR))
   ext = File.extname(relative).downcase
   if ext == ".rb"

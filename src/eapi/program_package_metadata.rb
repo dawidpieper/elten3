@@ -3,6 +3,7 @@
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License, version 3.
 
 require "json"
+require_relative "package_sources" unless defined?(Programs::PackageSources)
 
 module Programs
   module ProgramPackageMetadata
@@ -13,13 +14,16 @@ module Programs
     LOCALIZED_FILE_PATTERN = /\Alocale\/([a-zA-Z]{2}(?:[-_][a-zA-Z]{2})?)_metadata\.json\z/i.freeze
 
     class << self
-      def prepare(metadata, source_dir:, warning: nil)
+      def prepare(metadata, source_dir:, warning: nil, sources: PackageSources.new(source_dir))
         raise_metadata_error("Package metadata must be an object") if !metadata.is_a?(Hash)
         root = File.expand_path(source_dir)
         prepared = metadata.dup
         encoding = normalize_sources_default_encoding(prepared["sources_default_encoding"])
         prepared["sources_default_encoding"] = encoding.name if encoding != nil
-        files, detected_languages = scan_locale(root)
+        main = prepared["main"].to_s
+        main = "__app.rb" if main.empty?
+        raise_metadata_error("Main file #{main} is excluded by .eltenignore") if sources.excluded?(main)
+        files, detected_languages = scan_locale(root, sources)
 
         LOCALIZED_FIELDS.each do |manifest_key, file_kind|
           values = normalize_localizations(prepared[manifest_key], manifest_key)
@@ -89,15 +93,15 @@ module Programs
 
       private
 
-      def scan_locale(root)
+      def scan_locale(root, sources)
         values = { "name" => {}, "description" => {} }
         detected = []
         locale_root = File.join(root, "locale")
         return [values, detected] if !File.directory?(locale_root)
 
-        Dir.glob(File.join(locale_root, "**", "*")).sort.each do |file|
-          next if !File.file?(file)
-          relative = file.delete_prefix(root + File::SEPARATOR).tr("\\", "/")
+        Dir.glob("locale/**/*", base: root).each do |relative|
+          file = File.join(root, relative)
+          next if !File.file?(file) || sources.excluded?(relative)
           match = LOCALIZED_FILE_PATTERN.match(relative)
           if match != nil
             language = normalize_language!(match[1], relative)

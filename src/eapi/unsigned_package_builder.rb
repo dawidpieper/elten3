@@ -90,18 +90,19 @@ module Programs
         format = format.to_s.downcase
         raise ProgramError, "format must be eltenapp or eltsetup" if !%w[eltenapp eltsetup].include?(format)
         raise ProgramError, "Package metadata must be an object" if !metadata.is_a?(Hash)
-        metadata = ProgramPackageMetadata.prepare(metadata, :source_dir => root, :warning => method(:metadata_warning))
+        sources = PackageSources.new(root)
+        metadata = ProgramPackageMetadata.prepare(metadata, :source_dir => root, :sources => sources, :warning => method(:metadata_warning))
         raise ProgramError, "Unsigned developer builder does not bundle declared gems" if !Array(metadata["gems"]).empty?
         root_key = normalized_path(root)
         target_key = normalized_path(target)
         raise ProgramError, "Package output cannot be inside its source directory" if target_key.start_with?(root_key + "/")
         FileUtils.mkdir_p(File.dirname(target))
         temporary = "#{target}.tmp-#{SecureRandom.hex(6)}"
-        code = code_container(root, metadata)
+        code = code_container(root, sources, metadata)
         if format == "eltenapp"
           File.binwrite(temporary, code)
         else
-          setup_package(root, temporary, target, metadata, code)
+          setup_package(root, sources, temporary, target, metadata, code)
         end
         File.rename(temporary, target)
         { "path" => target, "format" => format, "size" => File.size(target).to_i,
@@ -114,12 +115,12 @@ module Programs
 
       private
 
-      def code_container(root, metadata)
+      def code_container(root, sources, metadata)
         buffer = +"".b
         buffer << Programs::MAGIC
         compressed_metadata = Zstd.compress(JSON.generate(metadata).b, :level => 19)
         buffer << [compressed_metadata.bytesize].pack("L<") << compressed_metadata
-        each_source_file(root) do |file, relative|
+        each_source_file(root, sources) do |file, relative|
           extension = File.extname(relative).downcase
           if extension == ".rb"
             write_named_record(buffer, 1, relative, Zstd.compress(File.binread(file).b, :level => 19))
@@ -133,13 +134,13 @@ module Programs
         buffer
       end
 
-      def setup_package(root, output, final_output, metadata, code)
+      def setup_package(root, sources, output, final_output, metadata, code)
         code_name = "#{File.basename(final_output, ".eltsetup")}.eltenapp"
         setup_manifest = { "type" => "application", "payload" => metadata.merge("entry" => code_name) }
         writer = ZipWriter.new(output)
         writer.add("__manifest.json", JSON.pretty_generate(setup_manifest) + "\n")
         writer.add(code_name, code)
-        each_source_file(root) do |file, relative|
+        each_source_file(root, sources) do |file, relative|
           extension = File.extname(relative).downcase
           next if extension == ".rb" || extension == ".eltenapp" || relative == "__manifest.json"
           next if relative.start_with?("Audio/") && Programs::SOUND_EXTENSIONS.include?(extension)
@@ -151,10 +152,10 @@ module Programs
         writer.close if defined?(writer) && writer != nil
       end
 
-      def each_source_file(root)
+      def each_source_file(root, sources)
         root_key = normalized_path(root)
-        Dir.glob(File.join(root, "**", "*")).sort.each do |file|
-          next if !File.file?(file) || File.symlink?(file)
+        sources.files.each do |file|
+          next if File.symlink?(file)
           resolved = normalized_path(File.realpath(file))
           next if !resolved.start_with?(root_key + "/")
           yield file, file.delete_prefix(root + File::SEPARATOR).tr("\\", "/")
