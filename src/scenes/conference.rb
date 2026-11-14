@@ -431,16 +431,6 @@ def list_channels(user=nil)
       }
       locha.call(@chans)
       lst_channels.add_tip(p_("Conference", "Use Shift+Up/Down Arrow to move between open, waiting room and password-protected channels"))
-      {key_up: -1, key_down: 1}.each do |key, direction|
-        lst_channels.on(key) do |shift, control, alt|
-          next unless shift && !control && !alt
-          index = channel_group_target(channels, lst_channels.index, direction)
-          if index
-            lst_channels.index = index
-            lst_channels.sel.say_option
-          end
-        end
-      end
       lst_channels.focus
   lst_channels.bind_context{|menu|
   ch=lst_channels.index>=0 ? channels[lst_channels.index] : nil
@@ -580,6 +570,17 @@ when 1
   loop do
     loop_update
     lst_channels.update
+    if key_held?(:key_shift) && !modifier_held?(:main_modifier) && !modifier_held?(:option)
+      direction = -1 if key_pressed?(:key_up)
+      direction = 1 if key_pressed?(:key_down)
+      if direction
+        index = channel_group_target(channels, lst_channels.index, direction)
+        if index
+          lst_channels.index = index
+          lst_channels.sel.say_option
+        end
+      end
+    end
     ch=lst_channels.index>=0 ? channels[lst_channels.index] : nil
     if lst_channels.selected? && ch!=nil
       return if Conference.channel.id==ch.id
