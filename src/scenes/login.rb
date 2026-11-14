@@ -245,6 +245,7 @@ else
   speak(Session.greeting) if $silentstart != true
   end
 EltenAPI::NotificationService.synchronize_runtime_state
+Scene_Programs.new.check_updates(automatic: true) if load_configuration_boolean("Updates", "AutoUpdatePrograms", false)
 else
   case login_error&.code.to_s
   when "network_error", "timeout", "cancelled"

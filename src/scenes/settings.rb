@@ -249,6 +249,7 @@ def make_window
           ["disabled", "hidden", "visible"]
         ) if tray_supported?
         make_setting(p_("Settings", "Check for updates at startup"), :bool, "Updates", "CheckAtStartup")
+        make_setting(p_("Settings", "Automatically update programs installed from the program centre when I log in"), :bool, "Updates", "AutoUpdatePrograms")
         make_setting(p_("Settings", "Updates branch"), [p_("Settings", "Auto"),p_("Settings", "Stable"), p_("Settings", "RC"), p_("Settings", "Beta")], "Updates", "Branch", ["auto","stable","rc","beta"])
         make_setting(p_("Settings", "Send Elten usage reports"), :bool, "Privacy", "RegisterActivity")
       end
