@@ -883,9 +883,11 @@ end
       return
     end
     nearby.sort_by!{|distance, name, _pan| [distance, name]}
-    cancel = Button.new(_("Cancel"))
+    cancel = Button.new(p_("Conference", "Stop looking around (Ctrl)"))
     form = Form.new([cancel], quiet: true)
-    form.cancel_button = cancel
+    form.add_timer(FormTimer.new(0, repeat: true) do
+      cancel.press if keyboard_modifier_state?(:control, :first_pressed)
+    end)
     timer = FormTimer.new(0.8, repeat: true) do
       if !Conference.opened? || Conference.channel.id != channel.id
         speech_stop
