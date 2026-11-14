@@ -11,6 +11,19 @@ class Scene_Notifications
     scene.prepare
   end
 
+  def open_latest
+    groups = build_active_main_notification_groups(EltenAPI::NotificationService.active_notifications)
+    latest = groups.max_by { |group| [group.date.to_i, group.ids.max.to_i] }
+    if latest == nil
+      alert(p_("Notifications", "There is nothing new."), false)
+      return
+    end
+    changed_at = Session.notifications_changed_at
+    return if changed_at && Process.clock_gettime(Process::CLOCK_MONOTONIC) - changed_at < 0.3
+
+    open_notification_group(latest)
+  end
+
   def initialize(quiet=false, mode: :history)
     raise ArgumentError, "Invalid notifications mode: #{mode}" if !MODES.include?(mode)
     @quiet = quiet
