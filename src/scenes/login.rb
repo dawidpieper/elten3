@@ -256,37 +256,37 @@ else
     Session.token = nil
     speech_wait
     @skipauto=true
-    return main
+    return
   when "session.account_not_activated"
     alert(p_("Login", "This account has not been activated yet."))
     Session.token = nil
     speech_wait
     @skipauto=true
-    return main
+    return
   when "authentication.sms_cooldown"
     alert(p_("Login", "A text message with a verification code can be requested only once per minute. Please try again later."))
     Session.token = nil
     speech_wait
     @skipauto=true
-    return main
+    return
   when "authentication.sms_daily_limit"
     alert(p_("Login", "The daily limit for text messages with verification codes has been reached. Please try again later."))
     Session.token = nil
     speech_wait
     @skipauto=true
-    return main
+    return
   when "authentication.sms_limiter_unavailable"
     alert(p_("Login", "Text message verification is temporarily unavailable. Please try again later."))
     Session.token = nil
     speech_wait
     @skipauto=true
-    return main
+    return
   else
     alert(p_("Login", "Login failure."))
     Session.token = nil
     speech_wait
     @skipauto=true
-    return main
+    return
   end
 end
                 $speech_wait = true
@@ -320,6 +320,7 @@ end
             code=input_text(label, flags: 0, text: "", escapable: true)
             return false if code==nil
             code=code.delete("\r\n ")
+            next if code==""
             begin
               EltenLink::Accounts.activate(elten_link, code: code)
               alert(p_("Login", "Account activated. You can now log in."))
