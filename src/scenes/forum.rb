@@ -861,6 +861,32 @@ return result
     end
     if @grpsel.index >= @grpheadindex and @grpsel.index < @grpheadindex + @sgroups.size
       g = @sgroups[@grpsel.index - @grpheadindex]
+      group_context(menu, g, type)
+    end
+    if Session.languages!=nil && Session.languages.size>0
+      s=p_("Forum", "Show groups in unknown languages")
+      s=p_("Forum", "Hide groups in unknown languages") if LocalConfig['ForumShowUnknownLanguages', type: :bool]
+      menu.option(s) {
+      LocalConfig['ForumShowUnknownLanguages'] = !LocalConfig['ForumShowUnknownLanguages', type: :bool]
+      getcache
+      groupsmain
+      }
+      end
+    sortermenu(0, type, menu)
+    if Session.logged?
+    menu.option(p_("Forum", "New group"), nil, "n") {
+      newgroup
+    }
+    end
+    menu.option(_("Refresh"), nil, "r") {
+      @grpindex[type] = @grpsel.index
+      next unless getcache
+      groupsmain
+    }
+  end
+
+  def group_context(menu, g, type)
+    menu.submenu(p_("Forum", "This group")) do |menu|
       copy_forum_url_option(menu, "group", g.id)
       menu.option(p_("Forum", "Show all threads"), nil, :shift_enter) {
       groupopen(@grpsel.index, type, true)
@@ -968,30 +994,13 @@ return result
         input_text(p_("Forum", "Group summary"), flags: EditBox::Flags::ReadOnly, text: s, escapable: true)
         loop_update
       }
-      if @sgroups[@grpsel.index - @grpheadindex].hasregulations or @sgroups[@grpsel.index - @grpheadindex].role==2
-                s=p_("Forum", "Group rules")
-        s=p_("Forum", "Edit group rules") if @sgroups[@grpsel.index - @grpheadindex].role==2
-              menu.option(s) {
-              groupregulationsdlg(@sgroups[@grpsel.index - @grpheadindex])
-              }
-            end
-if (((@sgroups[@grpsel.index - @grpheadindex].role==1 || (@sgroups[@grpsel.index - @grpheadindex].public && @sgroups[@grpsel.index - @grpheadindex].open)) && @sgroups[@grpsel.index - @grpheadindex].showpostreports>0) || @sgroups[@grpsel.index - @grpheadindex].role==2) && @sgroups[@grpsel.index - @grpheadindex].allowpostreporting            
-            menu.option(p_("Forum", "Show reported posts")) {
-            groupreports(@sgroups[@grpsel.index - @grpheadindex])
-            }
-            end
-      if forum_group_moderator?(g)
-        menu.option(p_("Forum", "Trash")) {
-          $scene = Scene_Forum_Trash.new(g, self)
-        }
+      unless g.role == 2
+        menu.option(p_("Forum", "Group rules")) { groupregulationsdlg(g) } if g.hasregulations
+        menu.option(p_("Forum", "Message of the day"), nil, "g") { groupmotddlg(g) } if g.hasmotd
+        if g.allowpostreporting && g.showpostreports > 0 && (g.role == 1 || (g.public && g.open))
+          menu.option(p_("Forum", "Show reported posts")) { groupreports(g) }
+        end
       end
-            if @sgroups[@grpsel.index - @grpheadindex].hasmotd or @sgroups[@grpsel.index - @grpheadindex].role==2
-                s=p_("Forum", "Message of the day")
-        s=p_("Forum", "Edit message of the day") if @sgroups[@grpsel.index - @grpheadindex].role==2
-              menu.option(s, nil, "g") {
-              groupmotddlg(@sgroups[@grpsel.index - @grpheadindex])
-              }
-              end
       menu.option(p_("Forum", "Group members"), nil, "m") {
         groupmembers(@sgroups[@grpsel.index - @grpheadindex])
       }
@@ -1067,51 +1076,37 @@ if (((@sgroups[@grpsel.index - @grpheadindex].role==1 || (@sgroups[@grpsel.index
           end
         end
       }
-      if @sgroups[@grpsel.index - @grpheadindex].founder == Session.name
-        menu.option(p_("Forum", "Edit group"), nil, "e") {
-          g = @sgroups[@grpsel.index - @grpheadindex]
-                    $scene = Scene_Forum_GroupSettings.new(g, $scene)
-        }
-      menu.option(p_("Forum", "Administrative log")) {
-      g = @sgroups[@grpsel.index - @grpheadindex]
-      grouplog(g)
-      @grpsel.focus
-      }
-        end
-      if @sgroups[@grpsel.index - @grpheadindex].forums == 0 and @sgroups[@grpsel.index - @grpheadindex].founder == Session.name
-        menu.option(p_("Forum", "Delete group")) {
-          confirm(p_("Forum", "Are you sure you want to delete %{groupname}?")%{ :groupname => @sgroups[@grpsel.index - @grpheadindex].name }) {
-          if forum_attempt(nil) {
-            EltenLink::Forum.delete_group(elten_link, group_id: @sgroups[@grpsel.index - @grpheadindex].id)
-          }
-              alert(p_("Forum", "Group has been deleted"))
+      if forum_group_moderator?(g) || g.founder == Session.name
+        menu.submenu(p_("Forum", "Moderation")) do |menu|
+          if g.role == 2
+            menu.option(p_("Forum", "Edit group rules")) { groupregulationsdlg(g) }
+            menu.option(p_("Forum", "Edit message of the day"), nil, "g") { groupmotddlg(g) }
+            menu.option(p_("Forum", "Show reported posts")) { groupreports(g) } if g.allowpostreporting
+          end
+          if forum_group_moderator?(g)
+            menu.option(p_("Forum", "Trash")) { $scene = Scene_Forum_Trash.new(g, self) }
+          end
+          if g.founder == Session.name
+            menu.option(p_("Forum", "Edit group"), nil, "e") { $scene = Scene_Forum_GroupSettings.new(g, $scene) }
+            menu.option(p_("Forum", "Administrative log")) do
+              grouplog(g)
+              @grpsel.focus
             end
-            getcache
-            groupsmain(type)
-          }
-        }
+            if g.forums == 0
+              menu.option(p_("Forum", "Delete group")) do
+                confirm(p_("Forum", "Are you sure you want to delete %{groupname}?") % { :groupname => g.name }) do
+                  if forum_attempt(nil) { EltenLink::Forum.delete_group(elten_link, group_id: g.id) }
+                    alert(p_("Forum", "Group has been deleted"))
+                  end
+                  getcache
+                  groupsmain(type)
+                end
+              end
+            end
+          end
+        end
       end
     end
-    if Session.languages!=nil && Session.languages.size>0
-      s=p_("Forum", "Show groups in unknown languages")
-      s=p_("Forum", "Hide groups in unknown languages") if LocalConfig['ForumShowUnknownLanguages', type: :bool]
-      menu.option(s) {
-      LocalConfig['ForumShowUnknownLanguages'] = !LocalConfig['ForumShowUnknownLanguages', type: :bool]
-      getcache
-      groupsmain
-      }
-      end
-    sortermenu(0, type, menu)
-    if Session.logged?
-    menu.option(p_("Forum", "New group"), nil, "n") {
-      newgroup
-    }
-    end
-    menu.option(_("Refresh"), nil, "r") {
-      @grpindex[type] = @grpsel.index
-      next unless getcache
-      groupsmain
-    }
   end
   
   def groupmotd(group)
