@@ -74,6 +74,7 @@ def initialize
 @status_hooks=[]
 @ping_hooks=[]
 @params_queue=Queue.new
+@params_queue_mutex=Mutex.new
 @params_stop=Object.new
 @params_stop_enqueued=false
 @params_thread=Thread.new do
@@ -225,7 +226,7 @@ log(-1, "Conference: updating parameters")
 @channel_secrets[@stamp]=Base64.strict_decode64(resp['channel_secret']) if resp['channel_secret']!=nil
 @receive_mutex.synchronize { @received={} }
 if resp['params']!=nil
-@params_queue << resp['params']
+queue_params(resp['params'])
 end
 end
 @udp_transport.configure(resp['udp'], requested_at) if @udp_transport && resp.is_a?(Hash)
@@ -240,6 +241,15 @@ end
 end
 }
 end
+def queue_params(params)
+@params_queue_mutex.synchronize do
+return false if @params_stop_enqueued
+@params_queue.clear
+@params_queue << params
+end
+true
+end
+private :queue_params
 def close_transport
 udpthread=@udpthread
 tcpthread=@tcpthread
@@ -285,9 +295,12 @@ def request_close
 @params_hooks.clear
 @status_hooks.clear
 @ping_hooks.clear
+@params_queue_mutex.synchronize do
 if !@params_stop_enqueued
 @params_stop_enqueued=true
+@params_queue.clear
 @params_queue << @params_stop
+end
 end
 [@tcp, @udp].each do |socket|
 begin
