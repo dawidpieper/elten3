@@ -129,12 +129,14 @@ module EltenAPI
 
       def reset_feeds
         ensure_state
+        @feed_replies = @feed_reply = nil
         @feed_id = nil
         @feed_lasttext = nil
       end
 
       def set_feed_id(id)
         ensure_state
+        @feed_replies = @feed_reply = nil if @feed_id != id.to_i
         @feed_id = id.to_i
       end
 
@@ -250,8 +252,7 @@ module EltenAPI
         @message_lasttext = nil
         @message_lastsubject = nil
         @message_lastrecipient = nil
-        @feed_id = nil
-        @feed_lasttext = nil
+        reset_feeds
       end
 
       def default_categories
@@ -457,6 +458,16 @@ module EltenAPI
 
       def navigate_feed(action)
         case action
+        when :pagedown
+          open_feed_replies
+        when :pageup
+          if @feed_replies
+            @feed_replies = @feed_reply = nil
+            quick_audio_stop
+            announce_feed(current_feed)
+          else
+            play_border
+          end
         when :up
           read_feed(:next)
         when :down
@@ -476,28 +487,51 @@ module EltenAPI
         end
       end
 
+      def open_feed_replies
+        feed = current_feed
+        return play_border if @feed_replies || !feed || feed.responses.to_i.zero?
+
+        session = session_name
+        replies = EltenLink::Feeds.responses(elten_link, feed.id).select do |reply|
+          reply.id != feed.id && (!reply.message.to_s.empty? || !feed_audio_url(reply).empty?)
+        end
+        return if @feed_id != feed.id || session_name != session
+        return play_border if replies.empty?
+
+        @feed_replies = replies
+        read_feed(:first)
+      rescue EltenLink::Error => e
+        Log.warning("Invisible Interface feed replies: #{e.message}")
+        say(_("Error"))
+      end
+
       def read_feed(action)
-        feeds = feed_values
+        feeds = (@feed_replies || feed_values).select { |f| !f.message.to_s.empty? || !feed_audio_url(f).empty? }
         if feeds.empty?
           play_border
           return
         end
         @feed_id = feeds.last.id if @feed_id == nil || @feed_id.to_i == 0
+        id = @feed_reply ? @feed_reply.id : @feed_id.to_i
         feed = case action
         when :prev
-          feeds.select { |f| f.id < @feed_id.to_i && f.message.to_s != "" }.max_by { |f| f.id }
+          feeds.select { |f| f.id < id }.max_by(&:id)
         when :next
-          feeds.select { |f| f.id > @feed_id.to_i && f.message.to_s != "" }.min_by { |f| f.id }
+          feeds.select { |f| f.id > id }.min_by(&:id)
         when :first
-          feeds.select { |f| f.message.to_s != "" }.min_by { |f| f.id }
+          feeds.min_by(&:id)
         when :last
-          feeds.select { |f| f.message.to_s != "" }.max_by { |f| f.id }
+          feeds.max_by(&:id)
         end
         if feed != nil
           quick_audio_stop
-          @feed_id = feed.id
-          Scene_Main.feed_id = feed.id if defined?(Scene_Main)
-          @feed_lasttext = feed.user.to_s + ": " + feed.message.to_s
+          if @feed_replies
+            @feed_reply = feed
+          else
+            @feed_id = feed.id
+            Scene_Main.feed_id = feed.id if defined?(Scene_Main)
+            @feed_lasttext = feed.user.to_s + ": " + feed.message.to_s
+          end
           play_move
           announce_feed(feed)
         else
@@ -539,6 +573,7 @@ module EltenAPI
       end
 
       def current_feed
+        return @feed_reply if @feed_reply
         return nil if @feed_id == nil
         feed_values.find { |feed| feed.id.to_i == @feed_id.to_i }
       end
@@ -560,6 +595,13 @@ module EltenAPI
           return
         end
         text = feed.user.to_s + ": " + feed.message.to_s
+        if feed.responses.to_i > 0
+          if Configuration.soundthemeactivation == true
+            play_sound("listbox_itemcontaining")
+          else
+            text = p_("FeedViewer", "Show responses") + ": " + text
+          end
+        end
         if feed_audio_url(feed) != ""
           if Configuration.soundthemeactivation == true
             play_sound("file_audio")

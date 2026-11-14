@@ -17,6 +17,8 @@ Now all you have to do is press a few keys to do this. You don't even have to mi
 A complete list of the shortcuts that work in Elten invisible interface can be found in the "Help" menu. Below are the most important ones. In the list below, the abbreviation MOD stands for Elten modifier.
 - MOD+UP/DOWN ARROWS: goes to next or previous item on a list.
 - MOD+LEFT/RIGHT ARROWS: Changes the current tab of the invisible interface.
+- MOD+PAGE DOWN: Opens the replies to the selected feed post. Use the usual navigation keys to read them.
+- MOD+PAGE UP: Returns from the replies to the original feed post.
 - MOD+SPACE: Repeats the last spoken invisible interface item.
 - MOD+R: Responds to the currently selected message or feed post.
 - MOD+M: Opens a window for creating a new message.
