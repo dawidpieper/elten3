@@ -709,6 +709,7 @@ class Scene_Tasks
       loop_update
       @sel.update
       $scene = Scene_Main.new if key_pressed?(:key_escape)
+      cycle_project_filter(raw_key_held?(:key_shift) ? -1 : 1) if key_pressed?(:key_tab)
       manage_goals(current_task) if @sel.selected? && current_task != nil
       if @reload
         selected_id = @selected_task_id || (current_task && current_task.id)
@@ -792,6 +793,12 @@ class Scene_Tasks
     @filter_project_id = project_id
     @status = status
     request_reload
+  end
+
+  def cycle_project_filter(direction)
+    filters = [nil] + @projects.sort_by { |project| task_project_label(project).downcase }.map(&:id)
+    position = filters.index(@filter_project_id) || 0
+    switch_filter(filters[(position + direction) % filters.size], @status)
   end
 
   def current_task
