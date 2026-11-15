@@ -824,10 +824,9 @@ class Scene_Tasks
              when :all then p_("Tasks", "All tasks")
              else p_("Tasks", "Pending tasks")
              end
-    return status if @filter_project_id == nil
-
-    project = @projects.find { |item| item.id == @filter_project_id }
-    project == nil ? status : "#{status}: #{task_project_label(project)}"
+    project = @projects.find { |item| item.id == @filter_project_id } if @filter_project_id != nil
+    filter = project == nil ? p_("Tasks", "All projects") : task_project_label(project)
+    "#{status}: #{filter}"
   end
 
   def save_task(task=nil, parent=nil)
