@@ -205,9 +205,14 @@ end
 end
 def set_hrtf(hrtf)
 @mutex.synchronize {
+return if @hrtf.equal?(hrtf) && (@hrtf==nil || (@hrtf_effect.is_a?(Integer) && @hrtf_effect>=0))
+@hrtf.remove_effect(@hrtf_effect) if @hrtf!=nil && @hrtf_effect.is_a?(Integer) && @hrtf_effect>=0
 @hrtf=hrtf
 @hrtf_effect=nil
-@hrtf_effect = @hrtf.add_effect(@channels) if @hrtf!=nil
+if @hrtf!=nil
+effect=@hrtf.add_effect(@channels)
+@hrtf_effect=effect if effect.is_a?(Integer) && effect>=0
+end
 }
 end
 def reset
@@ -301,6 +306,11 @@ def free
 EltenAPI::Conference::Core.wake_and_join_thread(@thread)
 @thread=nil
 end_save if @ogg!=nil
+begin
+set_hrtf(nil)
+rescue Exception
+log(2, "Conference: Transmitter HRTF free error: "+$!.to_s+" "+$@.to_s)
+end
 @mutex.synchronize {
 Bass::BASS_StreamFree.call(@stream)
 Bass::BASS_StreamFree.call(@whisper)
@@ -416,7 +426,7 @@ pcm=@decoder.decode(frame, true) if @decoder!=nil
 end
 out=""
 if @spatialization==1 || @spatialization==2
-out = pcm.unpack("s"*(pcm.bytesize/2)).map{|s|s/32768.0}.pack("f"*(pcm.bytesize/2))
+out = pcm.unpack("s*").map{|s|s/32768.0}.pack("f*")
 suc=false
 if @hrtf!=nil && ((@rx!=nil && @ry!=nil) || @spatialization==2)
 suc=true
@@ -443,10 +453,10 @@ rz=-0.075 if rz==0
 out=@hrtf.process(@hrtf_effect, out, rx, ry, rz)
 end
 else
-rout = out.unpack("f"*(out.bytesize/4))
+rout = out.unpack("f*")
 fout=[]
 rout.each{|f|fout.push(f,f)}
-out=fout.pack("f"*fout.size)
+out=fout.pack("f*")
 end
 else
 out=pcm
@@ -469,16 +479,17 @@ end
 end
 @ogg_mutex.synchronize {
 if @ogg!=nil
+samples=(@framesize*48).to_i
 if lostframes>0
 e=Opus::Encoder.new(48000, @channels)
-fr=e.encode("\0"*@framesize*48*2*@channels, 48*@framesize)
+fr=e.encode("\0"*(samples*2*@channels), samples)
 e.free
 lostframes.times {
-@granulepos+=@framesize*48
+@granulepos+=samples
 ogg_addpacket(fr)
 }
 end
-@granulepos+=@framesize*48
+@granulepos+=samples
 ogg_addpacket(frame)
 end
 }
@@ -493,7 +504,7 @@ end
 @fsec+=1
 out=""
 if @spatialization==1 || @spatialization==2
-out = pcm.unpack("s"*(pcm.bytesize/2)).map{|s|s/32768.0}.pack("f"*(pcm.bytesize/2))
+out = pcm.unpack("s*").map{|s|s/32768.0}.pack("f*")
 suc=false
 if @hrtf!=nil && ((@rx!=nil && @ry!=nil) || @spatialization==2)
 if @spatialization!=2
@@ -512,10 +523,10 @@ ry=0
 out=@hrtf.process(@hrtf_effect, out, rx, ry, rz)
 end
 else
-rout = out.unpack("f"*(out.bytesize/4))
+rout = out.unpack("f*")
 fout=[]
 rout.each{|f|fout.push(f,f)}
-out=fout.pack("f"*fout.size)
+out=fout.pack("f*")
 end
 else
 out=pcm
@@ -583,6 +594,7 @@ ch=2 if spatialization==1 || spatialization==2
 @username=username
 @hrtf=nil
 @hrtf_effect=nil
+@channel_mixer=nil
 @spatialization=spatialization
 @mutex = Mutex.new
 @master_volume=[[master_volume, 0].max, 100].min
@@ -597,7 +609,12 @@ setvolume(volume)
 @thread=Thread.new{thread}
 end
 def set_mixer(mixer)
-Bass::BASS_Mixer_StreamAddChannel.call(mixer, @stream, 0)
+@mutex.synchronize {
+return if @channel_mixer==mixer
+result=Bass::BASS_Mixer_StreamAddChannel.call(mixer, @stream, 0)
+@channel_mixer=mixer if result!=0
+result
+}
 end
 def setvolume(volume)
 if volume.is_a?(Array)
@@ -668,9 +685,14 @@ Bass::BASS_ChannelSetAttribute.call(@stream, 2, vol)
 end
 def set_hrtf(hrtf)
 @mutex.synchronize {
+return if @hrtf.equal?(hrtf) && (@hrtf==nil || (@hrtf_effect.is_a?(Integer) && @hrtf_effect>=0))
+@hrtf.remove_effect(@hrtf_effect) if @hrtf!=nil && @hrtf_effect.is_a?(Integer) && @hrtf_effect>=0
 @hrtf=hrtf
 @hrtf_effect=nil
-@hrtf_effect = @hrtf.add_effect(@channels) if @hrtf!=nil
+if @hrtf!=nil
+effect=@hrtf.add_effect(@channels)
+@hrtf_effect=effect if effect.is_a?(Integer) && effect>=0
+end
 }
 end
 def reset
@@ -764,6 +786,11 @@ def free
 EltenAPI::Conference::Core.wake_and_join_thread(@thread)
 @thread=nil
 end_save if @ogg!=nil
+begin
+set_hrtf(nil)
+rescue Exception
+log(2, "Conference: Stream HRTF free error: "+$!.to_s+" "+$@.to_s)
+end
 @mutex.synchronize {
 Bass::BASS_StreamFree.call(@stream)
 Bass::BASS_StreamFree.call(@preprocessor) if @preprocessor!=nil
@@ -881,7 +908,7 @@ pcm=@decoder.decode(frame, true) if @decoder!=nil
 end
 out=""
 if @spatialization==1 || @spatialization==2
-out = pcm.unpack("s"*(pcm.bytesize/2)).map{|s|s/32768.0}.pack("f"*(pcm.bytesize/2))
+out = pcm.unpack("s*").map{|s|s/32768.0}.pack("f*")
 suc=false
 if @hrtf!=nil && @rx!=nil && @ry!=nil && @stream_x!=-1 && (@spatialization==1)
 suc=true
@@ -902,10 +929,10 @@ rz=-0.075 if rz==0
 out=@hrtf.process(@hrtf_effect, out, rx, ry, rz)
 end
 elsif @channels==1
-rout = out.unpack("f"*(out.bytesize/4))
+rout = out.unpack("f*")
 fout=[]
 rout.each{|f|fout.push(f,f)}
-out=fout.pack("f"*fout.size)
+out=fout.pack("f*")
 end
 else
 out=pcm
@@ -919,16 +946,17 @@ last_frame_id=frame_id
 update_position if @listener_x!=@position.x || @listener_y!=@position.y || @listener_dir != @position.dir
 @ogg_mutex.synchronize {
 if @ogg!=nil
+samples=(@framesize*48).to_i
 if lostframes>0
 e=Opus::Encoder.new(48000, @channels)
-fr=e.encode("\0"*@framesize*48*2*@channels, 48*@framesize)
+fr=e.encode("\0"*(samples*2*@channels), samples)
 e.free
 lostframes.times {
-@granulepos+=@framesize*48
+@granulepos+=samples
 ogg_addpacket(fr)
 }
 end
-@granulepos+=@framesize*48
+@granulepos+=samples
 ogg_addpacket(frame)
 end
 }
@@ -943,7 +971,7 @@ end
 @fsec+=1
 out=""
 if @spatialization==1 || @spatialization==2
-out = pcm.unpack("s"*(pcm.bytesize/2)).map{|s|s/32768.0}.pack("f"*(pcm.bytesize/2))
+out = pcm.unpack("s*").map{|s|s/32768.0}.pack("f*")
 suc=false
 if @hrtf!=nil && @rx!=nil && @ry!=nil && @stream_x!=-1
 suc=true
@@ -954,10 +982,10 @@ rz=-0.075 if rz==0
 @hrtf.set_bilinear(@hrtf_effect, ($usebilinearhrtf==1))
 out=@hrtf.process(@hrtf_effect, out, rx, ry, rz)
 elsif @channels==1
-rout = out.unpack("f"*(out.bytesize/4))
+rout = out.unpack("f*")
 fout=[]
 rout.each{|f|fout.push(f,f)}
-out=fout.pack("f"*fout.size)
+out=fout.pack("f*")
 end
 else
 out=pcm
@@ -998,6 +1026,7 @@ def initialize(id, resid, position, transmitter_x, transmitter_y, spatialization
 @source_mixer = Bass::BASS_Mixer_StreamCreate.call(48000, 2, 0x1000|0x200000|256)
 @hrtf=nil
 @hrtf_effect=nil
+@target_mixer=nil
 @spatialization=spatialization
 @mutex = Mutex.new
 @closing=false
@@ -1005,7 +1034,12 @@ update_position
 @thread=Thread.new{thread}
 end
 def set_mixer(mixer)
-Bass::BASS_Mixer_StreamAddChannel.call(mixer, @stream, 0)
+@mutex.synchronize {
+return if @target_mixer==mixer
+result=Bass::BASS_Mixer_StreamAddChannel.call(mixer, @stream, 0)
+@target_mixer=mixer if result!=0
+result
+}
 end
 def update_position
 @listener_x, @listener_y, @listener_dir = @position.x, @position.y, @position.dir
@@ -1038,15 +1072,25 @@ end
 end
 def set_hrtf(hrtf)
 @mutex.synchronize {
+return if @hrtf.equal?(hrtf) && (@hrtf==nil || (@hrtf_effect.is_a?(Integer) && @hrtf_effect>=0))
+@hrtf.remove_effect(@hrtf_effect) if @hrtf!=nil && @hrtf_effect.is_a?(Integer) && @hrtf_effect>=0
 @hrtf=hrtf
 @hrtf_effect=nil
-@hrtf_effect = @hrtf.add_effect(2) if @hrtf!=nil
+if @hrtf!=nil
+effect=@hrtf.add_effect(2)
+@hrtf_effect=effect if effect.is_a?(Integer) && effect>=0
+end
 }
 end
 def free
 @closing=true
 EltenAPI::Conference::Core.wake_and_join_thread(@thread)
 @thread=nil
+begin
+set_hrtf(nil)
+rescue Exception
+log(2, "Conference: Object HRTF free error: "+$!.to_s+" "+$@.to_s)
+end
 @mutex.synchronize {
 Bass::BASS_StreamFree.call(@stream)
 Bass::BASS_StreamFree.call(@source) if @source!=nil && @source!=0
@@ -1061,13 +1105,13 @@ def thread
 @source = Bass.create_url_stream(@url, 0, 0x200000|4|256, 0, 0)
 Bass::BASS_Mixer_StreamAddChannel.call(@source_mixer, @source, 0)
 queue="".b
-fsize=48*@framesize*2*4
+fsize=(48*@framesize*2*4).to_i
 buf="\0"*fsize
 until @closing
 if (sz=Bass::BASS_ChannelGetData.call(@source_mixer, buf, fsize))>0
 queue += buf.byteslice(0...sz)
 end
-while queue.size>fsize
+while queue.size>=fsize
 frame=queue.byteslice(0...fsize)
 queue=queue.byteslice(fsize..-1)
 update_position if @listener_x!=@position.x || @listener_y!=@position.y || @listener_dir != @position.dir
@@ -1311,6 +1355,7 @@ Bass::BASS_Mixer_StreamAddChannel.call(@output, @out, 0)
 @sources=[]
 @locally_muted=false
 @relvolume=1
+@target_mixer=nil
 @master_volume=[[master_volume, 0].max, 100].min
 self.volume=100
 end
@@ -1435,7 +1480,12 @@ end
 @locally_muted = (mt==true)
 end
 def set_mixer(mixer)
-Bass::BASS_Mixer_StreamAddChannel.call(mixer, @listener, 0)
+@mutex.synchronize {
+return if @target_mixer==mixer
+result=Bass::BASS_Mixer_StreamAddChannel.call(mixer, @listener, 0)
+@target_mixer=mixer if result!=0
+result
+}
 end
 def free
 @sources.each{|s|s.free}
@@ -1513,6 +1563,9 @@ Bass.record_prepare
 @bitrate=0
 @stream_framesize=0
 @stream_bitrate=0
+@hrtf=nil
+@hrtf_framesize=nil
+@hrtf_spatialization=nil
 @voip.on_params {|params|onparams(params)}
 @voip.on_ping {|t|onping(t)}
 @voip.connect(@username, @token)
@@ -1952,7 +2005,7 @@ return id
 end
 
 def setvolume(user, volume=100, muted=false, chat_muted=false, streams_muted=false)
-volume*=300 if volume>300
+volume=300 if volume>300
 volume=10 if volume<10
 v=[volume, muted, chat_muted, streams_muted]
 @volumes[user]=v
@@ -2247,7 +2300,9 @@ Bass::BASS_StreamFree.call(@myself_mixer)
 Bass::BASS_StreamFree.call(@listen_mixer)
 Bass::BASS_StreamFree.call(@processor_mixer)
 Bass::BASS_StreamFree.call(@output) if @output!=0
+Bass::BASS_StreamFree.call(@output_stream) if @output_stream!=0
 Bass::BASS_StreamFree.call(@output_mixer)
+Bass::BASS_StreamFree.call(@saver)
 rescue Exception
 log(2, "Conference: Free error: "+$!.to_s+" "+$@.to_s)
 end
@@ -2806,11 +2861,16 @@ end
 else
 @speexdsp_framesize=0
 end
+spatialization=params['channel']['spatialization'].to_i
+if @hrtf_framesize!=@framesize || @hrtf_spatialization!=spatialization
 @hrtf.free if @hrtf!=nil
 @hrtf=nil
-if params['channel']['spatialization']!=0
+if spatialization!=0
 SteamAudio.load
 @hrtf=SteamAudio.new(48000, @framesize)
+end
+@hrtf_framesize=@framesize
+@hrtf_spatialization=spatialization
 end
 if params['channel']['channels']!=@channels
 Bass::BASS_StreamFree.call(@output) if @output!=0
@@ -3006,7 +3066,7 @@ break if @closing
 sf=@framesize
 sf=2.5 if sf==0 || sf==nil
 sf=@speexdsp_framesize if @speexdsp_framesize!=nil and @speexdsp_framesize>0
-sf*=48*2*2
+sf=(sf*48*2*2).to_i
 sz=0
 @record_mutex.synchronize {
 if (sz=Bass::BASS_ChannelGetData.call(@record_mixer, buf, bufsize))>0
@@ -3050,7 +3110,7 @@ end
 @fullsave_mutex.synchronize {
   if @fullsave_myrec!=nil
     if vorqueued.bytesize>=48000*2*2
-      fr = vorqueued.unpack("s"*(vorqueued.bytesize/2)).map{|s|s/32768.0}.pack("f"*(vorqueued.bytesize/2))
+      fr = vorqueued.unpack("s*").map{|s|s/32768.0}.pack("f*")
       $vorbisrecordproc.call(0, fr, fr.bytesize, @fullsave_myrec)
       vorqueued="".b
     end
@@ -3074,7 +3134,7 @@ if @output!=nil && (sz=Bass::BASS_ChannelGetData.call(@output, buf, bufsize))>0
 maxBytes=sz
 @encoder_mutex.synchronize {
 if @framesize>0 and @channels!=nil
-fs=@framesize*48*2*@channels
+fs=(@framesize*48*2*@channels).to_i
 au=(audio||"").b+buf.byteslice(0...sz).b
 audio.clear
 index=0
@@ -3141,7 +3201,7 @@ sz=Bass::BASS_ChannelGetData.call(s.output, buf, mb)
 s.bytes_remaining=sz>0 ? [mb-sz, 0].max : 0
 if sz>0
 if @stream_framesize>0 and s.channels!=nil
-fs=@stream_framesize*48*2*s.channels
+fs=(@stream_framesize*48*2*s.channels).to_i
 au=(s.buf||"").b+buf.byteslice(0...sz).b
 s.buf.clear
 index=0
@@ -3231,10 +3291,10 @@ sleep(0.01)
 break if @closing
 sf=2.5
 sf=@speexdsp_framesize if @speexdsp_framesize!=nil and @speexdsp_framesize>0
-sf*=48*2*2
+sf=(sf*48*2*2).to_i
 if $useechocancellation!=nil && $useechocancellation>0
 if (sz=Bass::BASS_ChannelGetData.call(@processor_mixer, buf, bufsize))>0
-audiobuf<<buf.byteslice(0..sz)
+audiobuf<<buf.byteslice(0...sz)
 audiobuf=audiobuf.byteslice(-sf..-1) if audiobuf.bytesize>sf
 @lastframe_mutex.synchronize {
 @lastframe=audiobuf
