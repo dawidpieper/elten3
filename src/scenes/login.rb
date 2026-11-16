@@ -144,6 +144,7 @@ while tries<3
     break
   end
   code=code.delete("\r\n")
+  next if code==""
   begin
     EltenLink::Authentication.authenticate(elten_link, appid: $appid, name: name, code: code)
   rescue EltenLink::Error
