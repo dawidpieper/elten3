@@ -16,11 +16,8 @@ module EltenAPI
   module TimeSource
     class << self
       def current_time
-        tm = nil
-        tm = NotificationService.server_time
-        tm = $wnlasttime if tm == nil && $wnlasttime != nil
-        tm = Time.now.to_i if Configuration.synctime == false || tm == nil
-        Time.at(tm)
+        return Time.now if Configuration.synctime == false
+        ServerClock.now || Time.now
       rescue Exception
         Time.now
       end
@@ -191,7 +188,7 @@ module EltenAPI
               else
                 false
               end
-        return nil if due != true || $donotdisturb == true
+        return nil if due != true || EltenAPI::UI.notifications_muted?
         [
           type == :voice_and_sound || type == :sound_only,
           (type == :voice_and_sound || type == :voice_only) ? sprintf("%02d:%02d", now.hour, now.min) : nil

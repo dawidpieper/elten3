@@ -16,12 +16,14 @@ module CalendarSceneHelpers
   end
 
   def event_label(event, calendar=nil)
+    starttime = event.timezone == nil || event.all_day_series? ? event.starttime : event.starttime.getlocal
+    endtime = event.timezone == nil || event.all_day_series? ? event.endtime : event.endtime.getlocal
     range = if event.all_day?
               p_("Calendar", "All day")
-            elsif same_day?(event.starttime, event.endtime)
-              "#{format_date(event.starttime, false, false)}-#{sprintf("%02d:%02d", event.endtime.hour, event.endtime.min)}"
+            elsif same_day?(starttime, endtime)
+              "#{format_date(starttime, false, false)}-#{sprintf("%02d:%02d", endtime.hour, endtime.min)}"
             else
-              "#{format_date(event.starttime, false, false)} - #{format_date(event.endtime, false, false)}"
+              "#{format_date(starttime, false, false)} - #{format_date(endtime, false, false)}"
             end
     parts = [event.name.to_s, range]
     parts << calendar_event_recurrence_label(event) if event.recurring?
@@ -34,6 +36,12 @@ module CalendarSceneHelpers
     if event.recurring?
       series = calendar_event_series(event)
       text += "\r\n#{p_("Calendar", "Series range: %{start} - %{end}") % { start: format_date(series.starttime), end: format_date(series.endtime) }}"
+    end
+    if event.timezone != nil
+      text += "\r\n#{p_("Calendar", "Time zone")}: #{event.timezone}"
+      unless event.all_day_series?
+        text += "\r\n#{format_date(event.starttime, false, false)} - #{format_date(event.endtime, false, false)}"
+      end
     end
     text += "\r\n#{event.description}" if event.description.to_s != ""
     input_text(p_("Calendar", "Event details"), flags: EditBox::Flags::MultiLine | EditBox::Flags::ReadOnly, text: text, escapable: true)
@@ -68,6 +76,7 @@ module CalendarSceneHelpers
     custom_frequency = frequency_index == 4 ? event.frequency.to_s : "2"
     time_types = [p_("Calendar", "All-day event"), p_("Calendar", "Timed event")]
     time_type_index = event == nil || event.all_day_series? ? 0 : 1
+    timezone = event == nil ? EltenLink::TimeZones.system : event.timezone
     name = event == nil ? "" : event.name.to_s
     description = event == nil ? "" : event.description.to_s
 
@@ -80,6 +89,7 @@ module CalendarSceneHelpers
       btn_start = DateButton.new(p_("Calendar", "Start date"), (min_year..max_year), include_hour: false),
       btn_end = DateButton.new(p_("Calendar", "End date"), (min_year..max_year), include_hour: false),
       lst_time_type = ListBox.new(time_types, header: p_("Calendar", "Event time"), index: time_type_index),
+      btn_timezone = Button.new(""),
       lst_start_hour = ListBox.new(hours, header: p_("Calendar", "Start hour"), index: starttime.hour),
       lst_start_minute = ListBox.new(minutes, header: p_("Calendar", "Start minute"), index: starttime.min),
       lst_end_hour = ListBox.new(hours, header: p_("Calendar", "End hour"), index: endtime.hour),
@@ -90,6 +100,22 @@ module CalendarSceneHelpers
     btn_start.setdate(starttime.year, starttime.month, starttime.day, 0, 0, 0)
     btn_end.setdate(endtime.year, endtime.month, endtime.day, 0, 0, 0)
     form = Form.new(fields)
+    timezone_label = proc { btn_timezone.label = "#{p_("Calendar", "Time zone")}: #{timezone || p_("Calendar", "Not specified")}" }
+    timezone_label.call
+    btn_timezone.on(:press) do
+      timezone_date = btn_start.year.to_i > 0 ? Date.new(btn_start.year, btn_start.month, btn_start.day) : date
+      zones = EltenLink::TimeZones.identifiers.dup
+      zones << timezone if timezone != nil && !zones.include?(timezone)
+      choices = zones.map { |zone| [zone, EltenLink::TimeZones.label(zone, timezone_date)] }.sort_by { |_, label| label.downcase }
+      choices.unshift([nil, p_("Calendar", "Not specified")])
+      zones, labels = choices.transpose
+      selected = selector(labels, header: p_("Calendar", "Time zone"), start_index: zones.index(timezone) || 0, cancel_index: -1)
+      if selected >= 0
+        timezone = zones[selected]
+        timezone_label.call
+      end
+      btn_timezone.focus
+    end
     time_fields = [lst_start_hour, lst_start_minute, lst_end_hour, lst_end_minute]
     lst_frequency.on(:move) do
       lst_frequency.index == 4 ? form.show(edt_frequency) : form.hide(edt_frequency)
@@ -106,7 +132,7 @@ module CalendarSceneHelpers
       [edt_name.text.to_s, edt_description.text.to_s, lst_calendar.index, lst_frequency.index,
        edt_frequency.text.to_s, btn_start.year, btn_start.month, btn_start.day,
        btn_end.year, btn_end.month, btn_end.day, lst_time_type.index,
-       lst_start_hour.index, lst_start_minute.index, lst_end_hour.index, lst_end_minute.index]
+       lst_start_hour.index, lst_start_minute.index, lst_end_hour.index, lst_end_minute.index, timezone]
     end
     initial_state = current_state.call
     dialog_open
@@ -137,17 +163,27 @@ module CalendarSceneHelpers
           end
         end
         begin
+          start_date = Date.new(btn_start.year, btn_start.month, btn_start.day)
+          end_date = Date.new(btn_end.year, btn_end.month, btn_end.day)
           times = if lst_time_type.index == 0
                     [
-                      Time.local(btn_start.year, btn_start.month, btn_start.day, 0, 0, 0),
-                      Time.local(btn_end.year, btn_end.month, btn_end.day, 23, 59, 59)
+                      EltenLink::TimeZones.local_times(timezone, start_date, resolve: true).first,
+                      EltenLink::TimeZones.local_times(timezone, end_date, 23, 59, 59, resolve: true).last
                     ]
                   else
                     [
-                      Time.local(btn_start.year, btn_start.month, btn_start.day, lst_start_hour.index, lst_start_minute.index, 0),
-                      Time.local(btn_end.year, btn_end.month, btn_end.day, lst_end_hour.index, lst_end_minute.index, 0)
+                      calendar_event_time(timezone, start_date, lst_start_hour.index, lst_start_minute.index, event&.starttime),
+                      calendar_event_time(timezone, end_date, lst_end_hour.index, lst_end_minute.index, event&.endtime)
                     ]
                   end
+          next if times.any?(&:nil?)
+          if times[0].to_date != start_date || times[1].to_date != end_date
+            alert(p_("Calendar", "This date does not exist in the selected time zone. Choose another date."))
+            next
+          end
+        rescue TZInfo::PeriodNotFound
+          alert(p_("Calendar", "This time does not exist in the selected time zone because the clocks move forwards. Choose another time."))
+          next
         rescue ArgumentError
           alert(p_("Calendar", "Select a valid date and time range"))
           next
@@ -170,8 +206,267 @@ module CalendarSceneHelpers
       description: edt_description.text.to_s,
       starttime: times[0],
       endtime: times[1],
-      frequency: frequency
+      frequency: frequency,
+      timezone: timezone
     }
+  end
+
+  def calendar_event_time(timezone, date, hour, minute, previous=nil)
+    times = EltenLink::TimeZones.local_times(timezone, date, hour, minute)
+    return times.first if times.size == 1
+    return times.find { |time| time == previous } if times.include?(previous)
+
+    labels = times.map { |time| "#{time.strftime("%H:%M %Z")} (#{EltenLink::TimeZones.offset_label(time.utc_offset)})" }
+    selected = selector(
+      labels,
+      header: p_("Calendar", "%{time} occurs twice in this time zone. Choose which occurrence to use.") % {
+        time: "#{date} #{format("%02d:%02d", hour, minute)}"
+      },
+      cancel_index: -1,
+      flags: ListBox::Flags::AnyDir
+    )
+    times[selected] if selected >= 0
+  end
+
+  def calendar_reminders(calendar=nil)
+    data = EltenLink::Calendars.reminder_settings(elten_link, calendar)
+    profile = data["preferences"]
+    profile["timezone"] ||= EltenLink::TimeZones.system
+    saved_profile = JSON.generate(profile)
+    calendars = calendar ? [calendar] : [nil] + EltenLink::Calendars.list(elten_link)
+    overrides, saved_overrides, pages = {}, {}, {}
+    if calendar
+      overrides[calendar.id] = data["override"]
+      saved_overrides[calendar.id] = JSON.generate(data["override"])
+    else
+      saved_delivery = EltenLink::Accounts.config(elten_link)["wn_calendar"].to_i
+      delivery = ListBox.new([p_("Account", "Show in what's new"), p_("Account", "Alert on PC"), p_("Account", "Notify on mobile devices")],
+        header: p_("Calendar", "Delivery channels"), flags: ListBox::Flags::MultiSelection)
+      3.times { |index| delivery.selected[index] = (saved_delivery & (1 << index)) == 0 }
+      category = ListBox.new([p_("Calendar", "Global")] + calendars.drop(1).map { |item| calendar_label(item) },
+        header: p_("Calendar", "Notification settings"))
+    end
+    page = proc do |item|
+      key = item && item.id
+      unless pages.key?(key)
+        if item && !overrides.key?(key)
+          override = EltenLink::Calendars.reminder_settings(elten_link, item)["override"]
+          overrides[key] = override
+          saved_overrides[key] = JSON.generate(override)
+        end
+        fields = calendar_reminder_fields(profile, item, overrides[key])
+        fields.unshift(delivery) unless item
+        fields << calendar_reminder_timezone(profile) if !item || calendar && !data["configured"]
+        pages[key] = fields
+      end
+      pages[key]
+    end
+    save = Button.new(_("Save"))
+    cancel = Button.new(_("Cancel"))
+    form = Form.new([category].compact + page.call(calendars.first) + [save, cancel])
+    form.cancel_button = cancel
+    if category
+      current = 0
+      category.on(:move) do
+        begin
+          fields = page.call(calendars[category.index])
+          form.replace_fields([category] + fields + [save, cancel])
+          current = category.index
+        rescue EltenLink::Error => error
+          category.index = current
+          Log.warning("Calendar reminder settings failed: #{error.message}")
+          alert(_("Error"))
+          category.focus
+        end
+      end
+    end
+    cancel.on(:press) { form.resume }
+    save.on(:press) do
+      if profile["timezone"] == nil
+        alert(p_("Calendar", "Select a time zone for reminders"))
+        next
+      end
+      begin
+        if delivery
+          flags = (0...3).sum { |index| delivery.selected[index] ? 0 : 1 << index }
+          if flags != saved_delivery
+            EltenLink::Accounts.update_config(elten_link, { "wn_calendar" => flags })
+            saved_delivery = flags
+          end
+        end
+        if !calendar && (!data["configured"] || JSON.generate(profile) != saved_profile)
+          EltenLink::Calendars.update_reminder_settings(elten_link, profile)
+          saved_profile = JSON.generate(profile)
+          data["configured"] = true
+        end
+        overrides.each do |id, override|
+          next if !calendar && JSON.generate(override) == saved_overrides[id]
+          EltenLink::Calendars.update_reminder_settings(elten_link, override.merge("timezone" => profile["timezone"]), id)
+          saved_overrides[id] = JSON.generate(override)
+        end
+        form.resume
+      rescue EltenLink::Error => error
+        Log.warning("Calendar reminder settings failed: #{error.message}")
+        alert(_("Error"))
+      end
+    end
+    form.wait
+  rescue EltenLink::Error => error
+    Log.warning("Calendar reminder settings failed: #{error.message}")
+    alert(_("Error"))
+  end
+
+  def calendar_reminder_fields(profile, calendar, override)
+    if calendar
+      modes = %w[inherit custom off]
+      mode = ListBox.new([p_("Calendar", "Use default reminders"), p_("Calendar", "Custom reminders"), p_("Calendar", "Reminders disabled")],
+        header: p_("Calendar", "Reminders"), index: modes.index(override["mode"]) || 0)
+      kind = calendar.personal? || calendar.owned_by?(Session.name) ? "owned" : calendar.public ? "subscribed" : "shared"
+      mode.on(:move) do
+        if modes[mode.index] == "custom" && override["mode"] == "inherit" && override["rules"].empty?
+          override["rules"] = JSON.parse(JSON.generate(profile["defaults"][kind]))
+        end
+        override["mode"] = modes[mode.index]
+      end
+      edit = Button.new(p_("Calendar", "Edit reminders"))
+      edit.on(:press) do
+        rules = override["mode"] == "inherit" ? profile["defaults"][kind] : override["rules"]
+        updated = calendar_reminder_rules(rules)
+        if updated
+          override["rules"] = updated
+          override["mode"] = "custom"
+          mode.index = 1
+        end
+      end
+      [mode, edit]
+    else
+      labels = [p_("Calendar", "Personal and owned calendars"), p_("Calendar", "Shared private calendars"), p_("Calendar", "Subscribed public calendars")]
+      %w[owned shared subscribed].each_with_index.map do |kind, index|
+        button = Button.new(labels[index])
+        button.on(:press) do
+          updated = calendar_reminder_rules(profile["defaults"][kind])
+          profile["defaults"][kind] = updated if updated
+        end
+        button
+      end
+    end
+  end
+
+  def calendar_reminder_timezone(profile)
+    button = Button.new("")
+    update = proc { button.label = "#{p_("Calendar", "Reminder time zone")}: #{profile["timezone"] || p_("Calendar", "Not specified")}" }
+    update.call
+    button.on(:press) do
+      zones = EltenLink::TimeZones.identifiers.dup
+      timezone = profile["timezone"]
+      zones << timezone if timezone && !zones.include?(timezone)
+      choices = zones.map { |zone| [zone, EltenLink::TimeZones.label(zone, Date.today)] }.sort_by { |_, label| label.downcase }
+      zones, labels = choices.transpose
+      selected = selector(labels, header: p_("Calendar", "Reminder time zone"), start_index: zones.index(timezone) || 0, cancel_index: -1)
+      profile["timezone"] = zones[selected] if selected >= 0
+      update.call
+      button.focus
+    end
+    button
+  end
+
+  def calendar_reminder_rules(values)
+    rules = values.map { |rule| rule.merge("targets" => rule["targets"].dup) }
+    target_labels = [p_("Account", "Notifications list"), p_("Account", "Computer"), p_("Account", "Mobile devices")]
+    rows = proc do
+      rules.map do |rule|
+        if rule["kind"] == "timed"
+          label = p_("Calendar", "%{count} minutes before the event") % { count: rule["minutes"] }
+        else
+          time = format("%02d:%02d", rule["minute_of_day"] / 60, rule["minute_of_day"] % 60)
+          label = p_("Calendar", "%{count} days before the event at %{time}") % { count: rule["days"], time: time }
+        end
+        [rule["kind"] == "timed" ? p_("Calendar", "Timed event") : p_("Calendar", "All-day event"),
+          label, rule["targets"].map { |target| target_labels[%w[list pc mobile].index(target)] }.join(", ")]
+      end
+    end
+    table = TableBox.new([p_("Calendar", "Event time"), p_("Calendar", "Reminder"), p_("Calendar", "Deliver to")], rows.call,
+      header: p_("Calendar", "Reminders"))
+    add = Button.new(p_("Calendar", "Add reminder"))
+    edit = Button.new(_("Edit"))
+    remove = Button.new(_("Delete"))
+    done = Button.new(_("Done"))
+    cancel = Button.new(_("Cancel"))
+    form = Form.new([table, add, edit, remove, done, cancel])
+    accepted = false
+    refresh = proc do
+      index = table.index
+      table.rows = rows.call
+      table.reload
+      table.index = [[index, rules.size - 1].min, 0].max
+    end
+    add.on(:press) do
+      rule = calendar_reminder_rule
+      rules << rule if rule
+      refresh.call
+    end
+    edit.on(:press) do
+      next if rules.empty?
+      rule = calendar_reminder_rule(rules[table.index])
+      rules[table.index] = rule if rule
+      refresh.call
+    end
+    remove.on(:press) do
+      next if rules.empty?
+      rules.delete_at(table.index)
+      refresh.call
+    end
+    table.bind_context do |menu|
+      menu.option(p_("Calendar", "Add reminder"), nil, "n") { add.press }
+      unless rules.empty?
+        menu.option(_("Edit")) { edit.press }
+        menu.option(_("Delete"), nil, :del) { remove.press }
+      end
+    end
+    table.sel.on(:select) { edit.press }
+    done.on(:press) { accepted = true; form.resume }
+    cancel.on(:press) { form.resume }
+    form.cancel_button = cancel
+    form.wait
+    accepted ? rules.uniq : nil
+  end
+
+  def calendar_reminder_rule(rule=nil)
+    rule ||= { "kind" => "timed", "minutes" => 15, "targets" => %w[list pc mobile] }
+    kind = ListBox.new([p_("Calendar", "Timed event"), p_("Calendar", "All-day event")],
+      header: p_("Calendar", "Event time"), index: rule["kind"] == "timed" ? 0 : 1)
+    minutes = EditBox.new(p_("Calendar", "Minutes before the event"), type: EditBox::Flags::Numbers, text: (rule["minutes"] || 15).to_s)
+    days = EditBox.new(p_("Calendar", "Days before the event"), type: EditBox::Flags::Numbers, text: (rule["days"] || 0).to_s)
+    hour = ListBox.new((0..23).map { |value| format("%02d", value) }, header: p_("Calendar", "Hour"), index: (rule["minute_of_day"] || 540) / 60)
+    minute = ListBox.new((0..59).map { |value| format("%02d", value) }, header: p_("Calendar", "Minute"), index: (rule["minute_of_day"] || 540) % 60)
+    targets = ListBox.new([p_("Account", "Notifications list"), p_("Account", "Computer"), p_("Account", "Mobile devices")],
+      header: p_("Calendar", "Deliver to"), flags: ListBox::Flags::MultiSelection)
+    %w[list pc mobile].each_with_index { |target, index| targets.selected[index] = rule["targets"].include?(target) }
+    save = Button.new(_("Save"))
+    cancel = Button.new(_("Cancel"))
+    form = Form.new([kind, minutes, days, hour, minute, targets, save, cancel])
+    kind.on(:move) do
+      kind.index == 0 ? form.show(minutes) : form.hide(minutes)
+      [days, hour, minute].each { |field| kind.index == 1 ? form.show(field) : form.hide(field) }
+    end
+    kind.trigger(:move)
+    result = nil
+    save.on(:press) do
+      text = kind.index == 0 ? minutes.text : days.text
+      maximum = kind.index == 0 ? 525600 : 365
+      if !text.match?(/\A\d+\z/) || text.to_i > maximum || targets.multiselections.empty?
+        alert(p_("Calendar", "Enter a valid advance time and select at least one delivery target"))
+        next
+      end
+      result = kind.index == 0 ? { "kind" => "timed", "minutes" => minutes.text.to_i } :
+        { "kind" => "all_day", "days" => days.text.to_i, "minute_of_day" => hour.index * 60 + minute.index }
+      result["targets"] = targets.multiselections.map { |index| %w[list pc mobile][index] }
+      form.resume
+    end
+    cancel.on(:press) { form.resume }
+    form.cancel_button = cancel
+    form.wait
+    result
   end
 
   def can_manage_calendar_events?(calendar)
@@ -198,7 +493,8 @@ module CalendarSceneHelpers
         description: values[:description],
         starttime: values[:starttime],
         endtime: values[:endtime],
-        frequency: values[:frequency]
+        frequency: values[:frequency],
+        timezone: values[:timezone]
       )
       alert(p_("Calendar", "The event has been added"))
     else
@@ -210,7 +506,8 @@ module CalendarSceneHelpers
         description: values[:description],
         starttime: values[:starttime],
         endtime: values[:endtime],
-        frequency: values[:frequency]
+        frequency: values[:frequency],
+        timezone: values[:timezone]
       )
       alert(p_("Calendar", "The event has been updated"))
     end
@@ -267,7 +564,8 @@ end
 class Scene_Calendar
   include CalendarSceneHelpers
 
-  def initialize(calendar_id=nil, date=nil, preview_calendar: nil, return_scene: nil)
+  def initialize(calendar_id=nil, date=nil, preview_calendar: nil, return_scene: nil, event_id: nil, occurrence_start: nil)
+    @notification_event_id, @notification_occurrence_start = event_id, occurrence_start
     @preview_calendar = preview_calendar
     @return_scene = return_scene
     @filter_calendar_id = @preview_calendar == nil ? (calendar_id == nil ? nil : calendar_id.to_i) : @preview_calendar.id
@@ -295,6 +593,16 @@ class Scene_Calendar
     @grid.on(:select) { |params| show_day_events(params[0]) }
     @grid.bind_context { |menu| context(menu) }
     @grid.focus
+    if @notification_event_id
+      event = @all_events.find { |item| item.id == @notification_event_id }
+      if event && event.recurring?
+        time = EltenLink::TimeZones.local(event.timezone, Time.at(@notification_occurrence_start.to_i))
+        event = event.occurrence_on(time.to_date)
+      end
+      event ? show_event_details(event, calendar_for_event(event)) : alert(p_("Calendar", "The event is no longer available"))
+      @notification_event_id = nil
+      @grid.focus
+    end
 
     loop do
       loop_update
@@ -343,6 +651,7 @@ class Scene_Calendar
       end
     end
     if !preview_mode?
+      menu.option(p_("Calendar", "Notification settings")) { calendar_reminders }
       menu.option(p_("Calendar", "Calendar management"), nil, "m") do
         $scene = Scene_Calendar_Management.new(@filter_calendar_id, @grid.date)
       end
@@ -627,6 +936,7 @@ class Scene_Calendar_Management
       elsif !calendar.personal?
         menu.option(p_("Calendar", "Leave calendar"), nil, "l") { leave_calendar(calendar) }
       end
+      menu.option(p_("Calendar", "Notification settings")) { calendar_reminders(calendar) }
     end
     menu.option(p_("Calendar", "New calendar"), nil, "n") { create_calendar }
     menu.option(p_("Calendar", "Public calendars"), nil, "p") do
@@ -720,6 +1030,7 @@ class Scene_Calendar_Management
     return if !accepted
 
     id = EltenLink::Calendars.create(elten_link, name: edt_name.text, public_state: chk_public.checked, lang: language_codes[lst_lang.index])
+    calendar_reminders(EltenLink::Calendar.new(id: id, author: Session.name, name: edt_name.text, public_state: chk_public.checked))
     request_reload(id)
   rescue EltenLink::Error => error
     Log.warning("Calendar create failed: #{error.message}")
@@ -964,6 +1275,7 @@ class Scene_Calendar_Public
     @subscribed_ids.uniq!
     calendar.subscribers_count += 1
     alert(p_("Calendar", "The calendar has been subscribed"))
+    calendar_reminders(calendar)
     build_list(calendar.id)
   rescue EltenLink::Error => error
     Log.warning("Public calendar subscription failed: #{error.message}")

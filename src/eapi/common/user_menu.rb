@@ -98,7 +98,7 @@ module EltenAPI
       end
 
       actions << user_menu_action(p_("EAPI_Common", "Show feed")) do
-        insert_scene(Scene_FeedViewer.new(user))
+        insert_scene(Scene_FeedViewer.new(user), true)
       end
 
       unless guest

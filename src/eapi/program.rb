@@ -14,7 +14,7 @@ require "stringio"
 
 module Programs
   MAGIC = "Elten3AppPackage".b
-  ELTEN_API_VERSION = "3.0.3".freeze
+  ELTEN_API_VERSION = "3.0.5".freeze
   ELTENLINK_CONTRACT_VERSION = "3.0".freeze
   MANIFEST_BEGIN = /^\=begin[ \t]+Elten3AppInfo[ \t]*\r?\n/.freeze
   MANIFEST_END = /^\=end[ \t]+Elten3AppInfo[ \t]*$/m.freeze
@@ -28,7 +28,11 @@ module Programs
   @@runtimes = {}
   @@runtime_by_prefix = {}
   @@runtime_by_root = {}
+  @@runtime_path_cache = {}
   @@apps_registry_cache = nil
+  @@client_apps_revision = 0
+  @@client_apps_snapshot = nil
+  @@client_apps_retry_at = 0.0
 
   class ProgramError < StandardError
   end
@@ -356,9 +360,9 @@ module Programs
   end
 
   class ServerAppDefinition
-    attr_reader :uuid, :tables
+    attr_reader :uuid, :tables, :max_public_resources_bytes, :max_private_resources_bytes_per_user
 
-    def initialize(uuid:, tables:, protected:, notifications: false)
+    def initialize(uuid:, tables:, protected:, notifications: false, max_public_resources_bytes: nil, max_private_resources_bytes_per_user: nil)
       value = uuid == nil ? nil : uuid.to_s.strip
       value = nil if value == ""
       raise ProgramError, "Invalid server application UUID #{uuid.inspect}" if value != nil && value !~ UUID_PATTERN
@@ -366,6 +370,11 @@ module Programs
       raise ProgramError, "Server application protection must be a boolean" if protected != true && protected != false
       raise ProgramError, "Server application notification support must be a boolean" if notifications != true && notifications != false
 
+      [max_public_resources_bytes, max_private_resources_bytes_per_user].each do |limit|
+        raise ProgramError, "Resource storage limits must be non-negative integers" unless limit.nil? || limit.is_a?(Integer) && limit >= 0
+      end
+      @max_public_resources_bytes = max_public_resources_bytes
+      @max_private_resources_bytes_per_user = max_private_resources_bytes_per_user
       @uuid = value
       @tables = immutable_copy(tables)
       @protected = protected
@@ -382,7 +391,8 @@ module Programs
     end
 
     def with_uuid(uuid)
-      self.class.new(uuid: uuid, tables: @tables, protected: @protected, notifications: @notifications)
+      self.class.new(uuid: uuid, tables: @tables, protected: @protected, notifications: @notifications,
+        max_public_resources_bytes: @max_public_resources_bytes, max_private_resources_bytes_per_user: @max_private_resources_bytes_per_user)
     end
 
     private
@@ -444,6 +454,14 @@ module Programs
       freeze
     end
 
+    def local?
+      false
+    end
+
+    def lifecycle(interval: 900, expires_after_receipt: nil, &block)
+      NotificationLifecycle.new(interval: interval, expires_after_receipt: expires_after_receipt, &block)
+    end
+
     def presentation(title: "", body: "", sound: "notification", action: nil, metadata: {})
       NotificationPresentation.new(title: title, body: body, sound: sound, action: action, metadata: metadata)
     end
@@ -457,10 +475,23 @@ module Programs
     end
 
     def main
+      if @notification.local? && !Programs::LocalNotifications.include?(@notification)
+        $scene = Scene_Main.new
+        return
+      end
+
       program = @program_class.new
-      runtime = Programs.runtime_for(@program_class)
-      result = Programs.with_runtime(runtime) { program.notification_action(@action, @notification) }
-      program.finalize(result, reason: :notification)
+      with_scene_context(program) do
+        runtime = Programs.runtime_for(@program_class)
+        result = Programs.with_runtime(runtime) do
+          if @notification.local? && @action.respond_to?(:call)
+            @action.call(@notification)
+          else
+            program.notification_action(@action, @notification)
+          end
+        end
+        program.finalize(result, reason: :notification)
+      end
     rescue Exception => error
       if program != nil
         Programs.handle_execution_error(error, program)
@@ -572,7 +603,7 @@ module Programs
 
   class Manifest
     attr_reader :id, :raw_name, :raw_description, :version, :build_id, :elten_api_version, :eltenlink_contract_version, :author, :main, :main_class, :platforms, :menu, :gems, :required_assets, :execution, :raw,
-      :localized_names, :localized_descriptions, :name_languages, :description_languages, :main_language, :supported_languages
+      :localized_names, :localized_descriptions, :name_languages, :description_languages, :main_language, :supported_languages, :sources_default_encoding
 
     def initialize(raw, source)
       @raw = raw.is_a?(Hash) ? raw : {}
@@ -592,6 +623,7 @@ module Programs
       @gems = Array(@raw["gems"]).map { |gem| gem.is_a?(Hash) ? gem["name"].to_s : gem.to_s }.reject { |gem| gem == "" }
       @required_assets = normalize_required_assets(@raw["required_assets"])
       @execution = Execution::Spec.new(@raw["execution"], @source)
+      @sources_default_encoding = Programs::ProgramPackageMetadata.normalize_sources_default_encoding(@raw["sources_default_encoding"])
       @main_language = normalize_main_language(@raw["main_language"])
       @supported_languages_declared = @raw.key?("supported_languages")
       @supported_languages = normalize_supported_languages(@raw["supported_languages"])
@@ -998,16 +1030,25 @@ module Programs
           sound = ::Sound.new(**options)
         end
       end
-      return sound if sound.opened?
-      sound.close rescue nil
-      nil
+      if !sound.opened?
+        sound.close rescue nil
+        return nil
+      end
     rescue Exception => e
       Log.warning("Program sound asset #{@name} failed: #{e.class}: #{e.message}")
       sound.close rescue nil
       nil
+    else
+      begin
+        yield sound if block_given?
+      rescue Exception
+        sound.close rescue nil
+        raise
+      end
+      sound
     end
 
-    def create_spatial_sound(position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil)
+    def create_spatial_sound(position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, hrtf: nil, spatial_blend: 1.0)
       options = { :sample => sample, :loop => loop }
       if effect_buffer == nil && effect_buffer_seconds == nil
         options[:effect_buffer] = :interactive
@@ -1017,12 +1058,19 @@ module Programs
       end
       sound = create_sound(**options)
       return nil if sound == nil
-      sound.spatialize(position: position, interpolation: interpolation)
-      sound
+      sound.spatialize(position: position, interpolation: interpolation, hrtf: hrtf, spatial_blend: spatial_blend)
     rescue Exception => e
       Log.warning("Program spatial sound asset #{@name} failed: #{e.class}: #{e.message}")
       sound.close rescue nil
       nil
+    else
+      begin
+        yield sound if block_given?
+      rescue Exception
+        sound.close rescue nil
+        raise
+      end
+      sound
     end
 
     def play(volume: 100, pitch: 100, pan: 50, ignore_elten_volume: false)
@@ -1133,6 +1181,8 @@ module Programs
       return false if @loaded[logical]
       code = code_for(logical)
       raise ProgramError, "Cannot load missing program file #{logical}" if code == nil
+      encoding = @manifest.sources_default_encoding
+      code = code.dup.force_encoding(encoding) if encoding != nil
       @loaded[logical] = true
       Programs.with_runtime(self) { @execution.evaluate(code, virtual_path(logical), 1) }
       true
@@ -1241,20 +1291,20 @@ module Programs
 
     def read_json(path, default: nil)
       file = data_path(path)
-      json_file_monitor(file).synchronize { read_json_file(file) { default } }
+      with_json_file_monitor(file) { read_json_file(file) { default } }
     rescue Exception
       default
     end
 
     def write_json(path, data)
       file = data_path(path)
-      json_file_monitor(file).synchronize { write_json_file(file, data) }
+      with_json_file_monitor(file) { write_json_file(file, data) }
     end
 
     def update_json(path, default: nil)
       raise ArgumentError, "update_json requires a block" if !block_given?
       file = data_path(path)
-      json_file_monitor(file).synchronize do
+      with_json_file_monitor(file) do
         value = read_json_file(file) { duplicate_json_value(default) }
         yield value
         write_json_file(file, value)
@@ -1332,17 +1382,17 @@ module Programs
       asset == nil ? nil : asset.data
     end
 
-    def create_sound_from_asset(name, sample: false, loop: false, effect_buffer: nil, effect_buffer_seconds: nil)
+    def create_sound_from_asset(name, sample: false, loop: false, effect_buffer: nil, effect_buffer_seconds: nil, &block)
       asset = sound_asset(name)
       return nil if asset == nil
-      return asset.create_sound(sample: sample, loop: loop) if effect_buffer == nil && effect_buffer_seconds == nil
+      return asset.create_sound(sample: sample, loop: loop, &block) if effect_buffer == nil && effect_buffer_seconds == nil
       options = { :sample => sample, :loop => loop }
       options[:effect_buffer] = effect_buffer if effect_buffer != nil
       options[:effect_buffer_seconds] = effect_buffer_seconds if effect_buffer_seconds != nil
-      asset.create_sound(**options)
+      asset.create_sound(**options, &block)
     end
 
-    def create_spatial_sound_from_asset(name, position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil)
+    def create_spatial_sound_from_asset(name, position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, &block)
       asset = sound_asset(name)
       return nil if asset == nil
       asset.create_spatial_sound(
@@ -1351,7 +1401,8 @@ module Programs
         loop: loop,
         interpolation: interpolation,
         effect_buffer: effect_buffer,
-        effect_buffer_seconds: effect_buffer_seconds
+        effect_buffer_seconds: effect_buffer_seconds,
+        &block
       )
     end
 
@@ -1386,11 +1437,24 @@ module Programs
       end
       return nil if sound == nil
       sound.volume = volume.to_f
-      sound_pool(max_voices: max_voices).play(sound)
     rescue Exception => e
       Log.warning("Managed program sound #{name} failed: #{e.class}: #{e.message}")
       sound.close rescue nil
       nil
+    else
+      begin
+        yield sound if block_given?
+      rescue Exception
+        sound.close rescue nil
+        raise
+      end
+      begin
+        sound_pool(max_voices: max_voices).play(sound)
+      rescue Exception => e
+        Log.warning("Managed program sound #{name} failed: #{e.class}: #{e.message}")
+        sound.close rescue nil
+        nil
+      end
     end
 
     def close_sound_pool
@@ -1459,9 +1523,22 @@ module Programs
 
     private
 
-    def json_file_monitor(file)
-      @json_file_monitors_guard.synchronize do
-        @json_file_monitors[file] ||= Monitor.new
+    def with_json_file_monitor(file)
+      monitor = @json_file_monitors_guard.synchronize do
+        entry = (@json_file_monitors[file] ||= [Monitor.new, 0])
+        entry[1] += 1
+        entry[0]
+      end
+      monitor.synchronize { yield }
+    ensure
+      if monitor != nil
+        @json_file_monitors_guard.synchronize do
+          entry = @json_file_monitors[file]
+          if entry != nil && entry[0].equal?(monitor)
+            entry[1] -= 1
+            @json_file_monitors.delete(file) if entry[1] == 0
+          end
+        end
       end
     end
 
@@ -1700,6 +1777,8 @@ module Programs
         root = File.expand_path(runtime.root).tr("\\", "/").downcase rescue nil
         @@runtime_by_root[root] = runtime if root != nil
       end
+    ensure
+      @@runtime_path_cache = {}
     end
 
     def namespace_for(manifest)
@@ -1722,12 +1801,15 @@ module Programs
       end
       runtime.close_managed_resources if runtime.respond_to?(:close_managed_resources)
       runtime.close_sound_pool if runtime.respond_to?(:close_sound_pool)
+      MediaFinders.unregister_owner(runtime) if defined?(MediaFinders) && MediaFinders.respond_to?(:unregister_owner)
       MediaEncoders.unregister_owner(runtime) if defined?(MediaEncoders) && MediaEncoders.respond_to?(:unregister_owner)
       Extensions.unregister_runtime(runtime, reason) if defined?(Extensions)
+      remove_program_locale(runtime) if respond_to?(:remove_program_locale, true)
       @@runtimes.delete(runtime.entry_id) if @@runtimes[runtime.entry_id].equal?(runtime)
       @@runtime_by_prefix.delete(runtime.virtual_prefix)
       root = File.expand_path(runtime.root).tr("\\", "/").downcase rescue nil
       @@runtime_by_root.delete(root) if root != nil
+      @@runtime_path_cache = {}
       if runtime.respond_to?(:dispose_execution)
         runtime.dispose_execution(reason)
       else
@@ -1913,8 +1995,12 @@ module Programs
     end
 
     def runtime_from_caller
+      return nil if @@runtime_by_prefix.empty? && @@runtime_by_root.empty?
+      previous_path = nil
       caller_locations(2, 12).each do |location|
         path = location.absolute_path || location.path
+        next if path == previous_path
+        previous_path = path
         runtime = runtime_from_path(path)
         return runtime if runtime != nil
       end
@@ -1923,16 +2009,35 @@ module Programs
 
     def runtime_from_path(path)
       return nil if path == nil
-      normalized = path.to_s.tr("\\", "/")
-      @@runtime_by_prefix.each do |prefix, runtime|
-        return runtime if normalized.start_with?(prefix)
+      path = path.to_s
+      cache = @@runtime_path_cache
+      return cache[path] if cache.key?(path)
+      if path.start_with?("eltenapp:")
+        prefix = path.tr("\\", "/")[%r{\Aeltenapp://[^/]+/}]
+        runtime = @@runtime_by_prefix[prefix]
+        return runtime if runtime != nil
       end
-      physical = File.expand_path(path).tr("\\", "/").downcase rescue nil
-      return nil if physical == nil
-      @@runtime_by_root.each do |root, runtime|
-        return runtime if physical == root || physical.start_with?(root + "/")
+      return nil if @@runtime_by_root.empty?
+      if path.start_with?("~") || path.match?(%r{\A[A-Za-z]:(?![/\\])})
+        path = File.expand_path(path) rescue nil
+        return nil if path == nil
       end
-      nil
+      directory = (File.absolute_path?(path) ? nil : Dir.pwd) rescue nil
+      key = directory == nil ? path : [directory, path.dup.freeze]
+      cache.fetch(key) do
+        physical = File.expand_path(path, directory).tr("\\", "/").downcase rescue nil
+        runtime = nil
+        if physical != nil
+          @@runtime_by_root.each do |root, candidate|
+            if physical == root || (physical.start_with?(root) && physical.getbyte(root.bytesize) == 47)
+              runtime = candidate
+              break
+            end
+          end
+        end
+        cache.shift if cache.size >= 4096
+        cache[key] = runtime
+      end
     end
 
     def runtime_for(target)
@@ -2127,14 +2232,17 @@ module Programs
 
     def initialize_program_class(cls)
       return if !cls.is_a?(Class)
+      runtime = runtime_for(cls)
       Thread.new do
         begin
-          cls.init
-          user_menu = cls.respond_to?(:user_menu_options) ? cls.user_menu_options : {}
-          if user_menu.is_a?(Hash) && !user_menu.empty?
-            $usermenuextra = {} if $usermenuextra == nil
-            user_menu.each do |key, value|
-              $usermenuextra[key] = [cls] + Array(value)
+          with_runtime(runtime) do
+            cls.init
+            user_menu = cls.respond_to?(:user_menu_options) ? cls.user_menu_options : {}
+            if user_menu.is_a?(Hash) && !user_menu.empty?
+              $usermenuextra = {} if $usermenuextra == nil
+              user_menu.each do |key, value|
+                $usermenuextra[key] = [cls] + Array(value)
+              end
             end
           end
         rescue Exception => e
@@ -2186,9 +2294,11 @@ module Programs
       count = @@programs.size
       unregister(@@programs[0]) while @@programs.size > 0
       @@configs.clear
+      @@runtimes.each_value { |runtime| remove_program_locale(runtime) } if respond_to?(:remove_program_locale, true)
       @@runtimes.clear
       @@runtime_by_prefix.clear
       @@runtime_by_root.clear
+      @@runtime_path_cache = {}
       remove_all_program_namespaces
       count
     end
@@ -2255,6 +2365,7 @@ module Programs
       File.binwrite(tmp, JSON.pretty_generate({ "apps" => apps }))
       FileUtils.mv(tmp, file)
       @@apps_registry_cache = { "apps" => apps }
+      @@client_apps_revision += 1
       true
     rescue Exception => e
       Log.warning("Cannot save apps registry #{file}: #{e.class}: #{e.message}")
@@ -2326,6 +2437,7 @@ module Programs
         remove_app_storage_path(apps_cache_root, storage_id)
         remove_registry_storage(storage_id)
       end
+      @@client_apps_revision += 1
       true
     end
 
@@ -2501,6 +2613,25 @@ module Programs
       entries.size == 1 ? entries[0].to_s : ""
     rescue Exception
       ""
+    end
+
+    def client_app_uuids(refresh: false)
+      @@client_apps_revision += 1 if refresh
+      revision = @@client_apps_revision
+      return @@client_apps_snapshot.last if @@client_apps_snapshot&.first == revision
+      return nil if !refresh && Process.clock_gettime(Process::CLOCK_MONOTONIC) < @@client_apps_retry_at
+      ids = Dir.children(Dirs.apps).reject { |entry| ignored_program_entry?(entry) }.filter_map do |entry|
+        source = discover_source(entry)
+        source[:manifest].id.to_s.downcase if source && source[:manifest]
+      end
+      return nil unless revision == @@client_apps_revision
+      value = ids.select { |id| id.match?(UUID_PATTERN) }.uniq.sort.join(";").freeze
+      @@client_apps_snapshot = [revision, value]
+      value
+    rescue StandardError => error
+      @@client_apps_retry_at = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 60
+      Log.warning("Cannot read client application UUIDs: #{error.class}: #{error.message}")
+      nil
     end
 
     def installed_entries
@@ -3053,11 +3184,9 @@ module Programs
     end
 
     def load_runtime_locale(runtime)
-      return if Configuration.language == nil
-      data = runtime.language_data(Configuration.language)
-      loadmo(data, false) if data != nil && respond_to?(:loadmo, true)
-    rescue Exception => e
-      Log.warning("Cannot load program locale #{runtime.entry_id}: #{e.class}: #{e.message}")
+      load_program_locale(runtime, Configuration.language) if respond_to?(:load_program_locale, true)
+    rescue StandardError => e
+      Log.warning("Cannot load program locale #{runtime.entry_id}: #{e.class}: #{e.message}") if defined?(Log)
     end
   end
 end
@@ -3122,6 +3251,10 @@ class Program
     end
 
     def map_notification(_notification)
+      nil
+    end
+
+    def notification_lifecycle(_notification)
       nil
     end
 
@@ -3281,16 +3414,16 @@ class Program
       @app_runtime == nil ? nil : @app_runtime.sound_asset_data(name)
     end
 
-    def create_sound_from_asset(name, sample: false, loop: false, effect_buffer: nil, effect_buffer_seconds: nil)
+    def create_sound_from_asset(name, sample: false, loop: false, effect_buffer: nil, effect_buffer_seconds: nil, &block)
       return nil if @app_runtime == nil
-      return @app_runtime.create_sound_from_asset(name, sample: sample, loop: loop) if effect_buffer == nil && effect_buffer_seconds == nil
+      return @app_runtime.create_sound_from_asset(name, sample: sample, loop: loop, &block) if effect_buffer == nil && effect_buffer_seconds == nil
       options = { :sample => sample, :loop => loop }
       options[:effect_buffer] = effect_buffer if effect_buffer != nil
       options[:effect_buffer_seconds] = effect_buffer_seconds if effect_buffer_seconds != nil
-      @app_runtime.create_sound_from_asset(name, **options)
+      @app_runtime.create_sound_from_asset(name, **options, &block)
     end
 
-    def create_spatial_sound_from_asset(name, position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil)
+    def create_spatial_sound_from_asset(name, position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, &block)
       return nil if @app_runtime == nil
       @app_runtime.create_spatial_sound_from_asset(
         name,
@@ -3299,7 +3432,8 @@ class Program
         loop: loop,
         interpolation: interpolation,
         effect_buffer: effect_buffer,
-        effect_buffer_seconds: effect_buffer_seconds
+        effect_buffer_seconds: effect_buffer_seconds,
+        &block
       )
     end
 
@@ -3307,7 +3441,7 @@ class Program
       @app_runtime == nil ? nil : @app_runtime.sound_pool(max_voices: max_voices)
     end
 
-    def play_sound_from_asset(name, volume: 1.0, sample: false, loop: false, spatial: nil, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, max_voices: SoundPool::DEFAULT_MAX_VOICES)
+    def play_sound_from_asset(name, volume: 1.0, sample: false, loop: false, spatial: nil, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, max_voices: SoundPool::DEFAULT_MAX_VOICES, &block)
       return nil if @app_runtime == nil
       @app_runtime.play_sound_from_asset(
         name,
@@ -3318,7 +3452,8 @@ class Program
         interpolation: interpolation,
         effect_buffer: effect_buffer,
         effect_buffer_seconds: effect_buffer_seconds,
-        max_voices: max_voices
+        max_voices: max_voices,
+        &block
       )
     end
 
@@ -3351,12 +3486,14 @@ class Program
       @app_info == nil ? const_get(:AppID).to_s : @app_info.id.to_s
     end
 
-    def server_app(uuid: nil, tables: {}, protected: false, notifications: false)
+    def server_app(uuid: nil, tables: {}, protected: false, notifications: false, max_public_resources_bytes: nil, max_private_resources_bytes_per_user: nil)
       @server_app_definition = Programs::ServerAppDefinition.new(
         uuid: uuid,
         tables: tables,
         protected: protected,
-        notifications: notifications
+        notifications: notifications,
+        max_public_resources_bytes: max_public_resources_bytes,
+        max_private_resources_bytes_per_user: max_private_resources_bytes_per_user
       )
     end
 
@@ -3369,14 +3506,16 @@ class Program
       definition == nil ? app_uuid : definition.uuid.to_s
     end
 
-    def register_server_app(name: nil, data: nil, tables: nil, tables_protected: false, notifications: false)
+    def register_server_app(name: nil, data: nil, tables: nil, tables_protected: false, notifications: false, max_public_resources_bytes: nil, max_private_resources_bytes_per_user: nil)
       EltenLink::Apps.register(
         EltenLink.client(self),
         :name => (name || self.name),
         :data => data,
         :tables => tables,
         :tables_protected => tables_protected,
-        :notifications => notifications
+        :notifications => notifications,
+        max_public_resources_bytes: max_public_resources_bytes,
+        max_private_resources_bytes_per_user: max_private_resources_bytes_per_user
       )
     end
 
@@ -3387,7 +3526,9 @@ class Program
       uuid = register_server_app(
         tables: definition.tables,
         tables_protected: definition.protected?,
-        notifications: definition.notifications?
+        notifications: definition.notifications?,
+        max_public_resources_bytes: definition.max_public_resources_bytes,
+        max_private_resources_bytes_per_user: definition.max_private_resources_bytes_per_user
       )
       raise Programs::ProgramError, "Server application registration returned an invalid UUID" if uuid.to_s !~ Programs::UUID_PATTERN
 
@@ -3395,7 +3536,7 @@ class Program
       uuid
     end
 
-    def update_server_app(uuid = nil, name: nil, data: nil, tables: nil, tables_protected: nil, notifications: nil)
+    def update_server_app(uuid = nil, name: nil, data: nil, tables: nil, tables_protected: nil, notifications: nil, max_public_resources_bytes: nil, max_private_resources_bytes_per_user: nil, expected_schema_revision: nil)
       EltenLink::Apps.update(
         EltenLink.client(self),
         uuid || app_uuid,
@@ -3403,11 +3544,42 @@ class Program
         :data => data,
         :tables => tables,
         :tables_protected => tables_protected,
-        :notifications => notifications
+        :notifications => notifications,
+        max_public_resources_bytes: max_public_resources_bytes,
+        max_private_resources_bytes_per_user: max_private_resources_bytes_per_user,
+        expected_schema_revision: expected_schema_revision
       )
     end
 
-    def update_server_schema!
+    def preview_server_app_update(uuid = nil, name: nil, data: nil, tables: nil, tables_protected: nil, notifications: nil, max_public_resources_bytes: nil, max_private_resources_bytes_per_user: nil)
+      EltenLink::Apps.preview_update(
+        EltenLink.client(self),
+        uuid || app_uuid,
+        name: name || self.name,
+        data: data,
+        tables: tables,
+        tables_protected: tables_protected,
+        notifications: notifications,
+        max_public_resources_bytes: max_public_resources_bytes,
+        max_private_resources_bytes_per_user: max_private_resources_bytes_per_user
+      )
+    end
+
+    def preview_server_schema
+      definition = required_server_app_definition
+      raise Programs::ProgramError, "Server application UUID is not set" if definition.uuid == nil
+
+      preview_server_app_update(
+        definition.uuid,
+        tables: definition.tables,
+        tables_protected: definition.protected?,
+        notifications: definition.notifications?,
+        max_public_resources_bytes: definition.max_public_resources_bytes,
+        max_private_resources_bytes_per_user: definition.max_private_resources_bytes_per_user
+      )
+    end
+
+    def update_server_schema!(expected_schema_revision: nil)
       definition = required_server_app_definition
       raise Programs::ProgramError, "Server application UUID is not set" if definition.uuid == nil
 
@@ -3415,11 +3587,20 @@ class Program
         definition.uuid,
         tables: definition.tables,
         tables_protected: definition.protected?,
-        notifications: definition.notifications?
+        notifications: definition.notifications?,
+        max_public_resources_bytes: definition.max_public_resources_bytes,
+        max_private_resources_bytes_per_user: definition.max_private_resources_bytes_per_user,
+        expected_schema_revision: expected_schema_revision
       )
     end
 
-    def send_notification(user, type:, metadata: {}, expires_in: 0)
+    def notify_local(body, title: nil, sound: "notification", action: nil, metadata: {},
+      type: "", expires_in: 0, lifecycle: nil, &block)
+      Programs::LocalNotifications.create(self, body, title: title, sound: sound, action: action,
+        metadata: metadata, type: type, expires_in: expires_in, lifecycle: lifecycle, &block)
+    end
+
+    def send_notification(user, type:, metadata: {}, expires_in: 0, key: nil)
       definition = required_server_app_definition
       raise Programs::ProgramError, "Server application UUID is not set" if definition.uuid == nil
       raise Programs::ProgramError, "Server application does not declare notification support" if !definition.notifications?
@@ -3430,8 +3611,17 @@ class Program
         user: user,
         type: type,
         metadata: metadata,
-        expires_in: expires_in
+        expires_in: expires_in,
+        key: key
       )
+    end
+
+    def revoke_sent_notification(user, key:)
+      definition = required_server_app_definition
+      raise Programs::ProgramError, "Server application UUID is not set" if definition.uuid == nil
+      raise Programs::ProgramError, "Server application does not declare notification support" if !definition.notifications?
+
+      EltenLink::Apps.revoke_notification(EltenLink.client(self), appid: definition.uuid, user: user, key: key)
     end
 
     def server_table(name, uuid = nil)
@@ -3444,6 +3634,17 @@ class Program
 
     def server_resources(uuid = nil)
       EltenLink::Apps.resources(EltenLink.client(self), server_app_identifier(uuid))
+    end
+
+    def user_state(collection: "")
+      definition = required_server_app_definition
+      raise Programs::ProgramError, "Server application UUID is not set" if definition.uuid == nil
+
+      EltenLink::UserState.new(EltenLink.client(self), app_uuid: definition.uuid, collection: collection, owner: self)
+    end
+
+    def server_private_resources(uuid = nil)
+      EltenLink::Apps.private_resources(EltenLink.client(self), server_app_identifier(uuid))
     end
 
     def delete_server_app(uuid = nil)
@@ -3613,8 +3814,18 @@ class Program
     self.class.server_app_uuid
   end
 
-  def send_notification(user, type:, metadata: {}, expires_in: 0)
-    self.class.send_notification(user, type: type, metadata: metadata, expires_in: expires_in)
+  def notify_local(body, title: nil, sound: "notification", action: nil, metadata: {},
+    type: "", expires_in: 0, lifecycle: nil, &block)
+    self.class.notify_local(body, title: title, sound: sound, action: action,
+      metadata: metadata, type: type, expires_in: expires_in, lifecycle: lifecycle, &block)
+  end
+
+  def send_notification(user, type:, metadata: {}, expires_in: 0, key: nil)
+    self.class.send_notification(user, type: type, metadata: metadata, expires_in: expires_in, key: key)
+  end
+
+  def revoke_sent_notification(user, key:)
+    self.class.revoke_sent_notification(user, key: key)
   end
 
   def notification_action(_action, _notification)
@@ -3631,6 +3842,19 @@ class Program
 
   def server_resources(uuid = nil)
     self.class.server_resources(uuid)
+  end
+
+  def server_private_resources(uuid = nil)
+    self.class.server_private_resources(uuid)
+  end
+
+  def user_state(collection: "")
+    definition = self.class.server_app_definition
+    if definition == nil || definition.uuid == nil
+      raise Programs::ProgramError, "Server application UUID is not set"
+    end
+
+    EltenLink::UserState.new(EltenLink.client(self), app_uuid: definition.uuid, collection: collection, owner: self)
   end
 
   def delete_server_app(uuid = nil)
@@ -3665,15 +3889,15 @@ class Program
     self.class.sound_asset_data(name)
   end
 
-  def create_sound_from_asset(name, sample: false, loop: false, effect_buffer: nil, effect_buffer_seconds: nil)
-    return self.class.create_sound_from_asset(name, sample: sample, loop: loop) if effect_buffer == nil && effect_buffer_seconds == nil
+  def create_sound_from_asset(name, sample: false, loop: false, effect_buffer: nil, effect_buffer_seconds: nil, &block)
+    return self.class.create_sound_from_asset(name, sample: sample, loop: loop, &block) if effect_buffer == nil && effect_buffer_seconds == nil
     options = { :sample => sample, :loop => loop }
     options[:effect_buffer] = effect_buffer if effect_buffer != nil
     options[:effect_buffer_seconds] = effect_buffer_seconds if effect_buffer_seconds != nil
-    self.class.create_sound_from_asset(name, **options)
+    self.class.create_sound_from_asset(name, **options, &block)
   end
 
-  def create_spatial_sound_from_asset(name, position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil)
+  def create_spatial_sound_from_asset(name, position:, sample: false, loop: false, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, &block)
     self.class.create_spatial_sound_from_asset(
       name,
       position: position,
@@ -3681,7 +3905,8 @@ class Program
       loop: loop,
       interpolation: interpolation,
       effect_buffer: effect_buffer,
-      effect_buffer_seconds: effect_buffer_seconds
+      effect_buffer_seconds: effect_buffer_seconds,
+      &block
     )
   end
 
@@ -3689,7 +3914,7 @@ class Program
     self.class.sound_pool(max_voices: max_voices)
   end
 
-  def play_sound_from_asset(name, volume: 1.0, sample: false, loop: false, spatial: nil, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, max_voices: SoundPool::DEFAULT_MAX_VOICES)
+  def play_sound_from_asset(name, volume: 1.0, sample: false, loop: false, spatial: nil, interpolation: :bilinear, effect_buffer: nil, effect_buffer_seconds: nil, max_voices: SoundPool::DEFAULT_MAX_VOICES, &block)
     self.class.play_sound_from_asset(
       name,
       volume: volume,
@@ -3699,7 +3924,8 @@ class Program
       interpolation: interpolation,
       effect_buffer: effect_buffer,
       effect_buffer_seconds: effect_buffer_seconds,
-      max_voices: max_voices
+      max_voices: max_voices,
+      &block
     )
   end
 

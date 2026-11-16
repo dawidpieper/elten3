@@ -123,13 +123,17 @@ module EltenLink
         true
       end
 
-      def upload_audio(client, blog:, data:)
+      def upload_audio(client, blog:, data:, timeout: nil, cancellation_token: nil)
+        body = data.respond_to?(:read) ? data : data.to_s.b
+        datasize = body.respond_to?(:size) ? body.size : body.bytesize
         payload = client.api_binary_data(
           "POST",
           "/api/v1/blogs/#{blog.to_s.urlenc}/posts/audio",
-          data.to_s.b,
+          body,
           { "Content-Type" => "application/octet-stream" },
-          { "datasize" => data.to_s.b.bytesize }
+          { "datasize" => datasize },
+          timeout: timeout,
+          cancellation_token: cancellation_token
         )
         audio = payload["audio"]
         return "" unless audio.is_a?(Hash)
@@ -197,6 +201,7 @@ module EltenLink
 
       def delete_blog(client, blog:)
         client.api_data("DELETE", "/api/v1/blogs/#{blog.to_s.urlenc}")
+        clear_owners_cache
         true
       end
 
@@ -367,6 +372,11 @@ module EltenLink
         result = $blogowners[blog]
         result = [blog] if result == nil && Users.exists?(client, blog)
         result || []
+      end
+
+      def clear_owners_cache
+        $blogownerstime = 0
+        $blogowners = nil
       end
 
       private

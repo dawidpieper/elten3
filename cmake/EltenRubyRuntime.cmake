@@ -1,4 +1,4 @@
-set(ELTEN_RUBY_VERSION "4.0.6" CACHE STRING "Ruby version used by launcher builds")
+set(ELTEN_RUBY_VERSION "4.0.7" CACHE STRING "Ruby version used by launcher builds")
 if(WIN32 AND CMAKE_CACHEFILE_DIR)
   set(ELTEN_RUBY_DEFAULT_BUILD_ROOT "${CMAKE_CACHEFILE_DIR}/ruby")
 else()
@@ -23,7 +23,7 @@ set(ELTEN_RUBY_SOURCE_BASE_URL "https://cache.ruby-lang.org/pub/ruby" CACHE STRI
 # runtime that only breaks on the user's machine.
 set(ELTEN_LINUX_RUBY_CONFIGURE_OPTIONS "--enable-yjit" CACHE STRING "Extra configure options for Linux Ruby builds (--enable-shared is always used)")
 set(ELTEN_WINDOWS_X64_RUBY_VERSION "${ELTEN_RUBY_VERSION}" CACHE STRING "Ruby version used by Windows x64 launcher builds")
-set(ELTEN_WINDOWS_X86_RUBY_VERSION "3.4.10" CACHE STRING "Ruby version used by Windows x86 launcher builds")
+set(ELTEN_WINDOWS_X86_RUBY_VERSION "3.4.11" CACHE STRING "Ruby version used by Windows x86 launcher builds")
 set(ELTEN_WINDOWS_ARM64_RUBY_VERSION "${ELTEN_RUBY_VERSION}" CACHE STRING "Ruby version used by Windows arm64 launcher builds")
 set(ELTEN_OSX_ARM64_RUBY_VERSION "${ELTEN_RUBY_VERSION}" CACHE STRING "Ruby version used by macOS arm64 launcher builds")
 set(ELTEN_LINUX_X64_RUBY_VERSION "${ELTEN_RUBY_VERSION}" CACHE STRING "Ruby version used by Linux x64 launcher builds")

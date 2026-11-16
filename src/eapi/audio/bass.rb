@@ -76,6 +76,8 @@ module Bass
   BASS_SAMPLE_FLOAT = 0x100
   BASS_STREAM_DECODE = 0x200000
   BASS_STREAM_AUTOFREE = 0x40000
+  BASS_ENCODE_PAUSE = 0x20
+  BASS_SPLIT_DSP = 0x4000
   STREAMPROC_PUSH = -1
   BASS_STREAMPROC_END = 0x80000000
   BASS_MIXER_CHAN_PAUSE = 0x20000
@@ -209,6 +211,7 @@ module Bass
   BASS_Mixer_ChannelFlags = Fiddle::Function.new(BASSMIX["BASS_Mixer_ChannelFlags"], [F_UINT, F_UINT, F_UINT], F_UINT, BASS_ABI)
   BASS_Mixer_ChannelGetData = Fiddle::Function.new(BASSMIX["BASS_Mixer_ChannelGetData"], [F_UINT, F_PTR, F_UINT], F_INT, BASS_ABI)
   BASS_Split_StreamCreate = Fiddle::Function.new(BASSMIX["BASS_Split_StreamCreate"], [F_UINT, F_UINT, F_PTR], F_UINT, BASS_ABI)
+  BASS_Split_StreamGetAvailable = Fiddle::Function.new(BASSMIX["BASS_Split_StreamGetAvailable"], [F_UINT], F_UINT, BASS_ABI)
   BASS_VST_ChannelSetDSP = optional_fiddle(BASSVST, "BASS_VST_ChannelSetDSP", [F_UINT, F_PTR, F_UINT, F_INT], F_UINT)
   BASS_VST_ChannelSetDSPEx = optional_fiddle(BASSVST, "BASS_VST_ChannelSetDSPEx", [F_UINT, F_PTR, F_UINT, F_INT, F_UINT, F_PTR, F_UINT], F_UINT)
   BASS_VST_ChannelRemoveDSP = optional_fiddle(BASSVST, "BASS_VST_ChannelRemoveDSP", [F_UINT, F_UINT], F_INT)
@@ -387,6 +390,9 @@ module Bass
       def default?
         (@flags&2)!=0
       end
+      def default_alias?
+        default? && @driver==""
+      end
       def initialized?
         (@flags&4)!=0
       end
@@ -478,7 +484,7 @@ module Bass
                   index+=1
                   next
                 end
-                driver=""
+                driver=c_string(a[1])
                 flags=a[2]
                 cds[sc]||=0
                                 cds[sc]+=1
@@ -537,11 +543,15 @@ module Bass
       false
     end
     
-    def self.setdevice(d,hWnd=nil, samplerate=48000)
+    def self.setdevice(d,hWnd=nil, samplerate=48000, force: true)
+      @@device=d
+      if force==false && @init==true
+        card=soundcards.find{|dev| d==-1 ? dev.enabled? && dev.default? : dev.id==d}
+        return BASS_SetDevice.call(@output_device_id) if card!=nil && card.enabled? && card.initialized? && card.id==@output_device_id
+      end
       $soundthemesounds.values.each {|g| g.close if g!=nil and !g.closed?} if $soundthemesounds!=nil
       $soundthemesounds={}
             hWnd||=$wnd||0
-            @@device=d
             if @init==true
             BASS_SetDevice.call(@output_device_id) if @output_device_id != nil
             BASS_Free.call
@@ -577,7 +587,8 @@ module Bass
     
     @@recorddevice=-1
     @@recordinit=false
-    def self.setrecorddevice(i)
+    def self.setrecorddevice(i, force: true)
+      return if force==false && i==@@recorddevice
       @@recorddevice=i
       BASS_RecordFree.call if @@recordinit
       @@recordinit=false
@@ -646,38 +657,36 @@ module Bass
               end
     
   def self.init(hWnd, samplerate = 48000)
-return if @init==true
-    @init=true
+    return if @init == true
     BASS_SetConfig.call(36, 1)
     BASS_SetConfig.call(42, 1)
-      devs=[]
-     card=-1
-     card=@setdeviceoninit if @setdeviceoninit!=nil
-    @@device=card
-        if BASS_Init.call(card, samplerate, 4, hWnd, nil) == 0
-      raise(error_name)
+    card = @setdeviceoninit || -1
+    @@device = card
+    device = ensure_output_device(card, hWnd, samplerate)
+    if BASS_SetDevice.call(device) == 0
+      raise RuntimeError, "Cannot select audio output device #{device}: #{error_name}"
     end
-    @output_device_id = BASS_GetDevice.call
+    @output_device_id = device
     plugins = ["bassopus", "bassflac", "bassmidi", "basswebm", "basswma", "bass_aac", "bass_ac3", "bass_spx", "basshls", "bassalac"]
-        plugins.each do |pl|
-              Log.debug("Loading Bass plugin #{pl}")
-          plugin_path = EltenRuntimePaths.absolute_library_file(pl)
-          if BASS_PluginLoad.call(plugin_path, 0) == 0
-            error=BASS_ErrorGetCode.call
-            Log.warning("Failed to load Bass plugin #{pl}: #{error_name(error)} (#{plugin_path})") if error!=14
-          end
+    plugins.each do |pl|
+      Log.debug("Loading Bass plugin #{pl}")
+      plugin_path = EltenRuntimePaths.absolute_library_file(pl)
+      if BASS_PluginLoad.call(plugin_path, 0) == 0
+        error = BASS_ErrorGetCode.call
+        Log.warning("Failed to load Bass plugin #{pl}: #{error_name(error)} (#{plugin_path})") if error != 14
+      end
     end
-        BASS_SetConfig.call(0, 1000)
-BASS_SetConfig.call(1, 100)
-BASS_SetConfig.call(11, 3000)
-BASS_SetConfig.call(12, 10000)
-BASS_SetConfig.call(15, 25)
-BASS_SetConfigPtr.call(16, "Elten")
-BASS_SetConfig.call(21, 1)
-BASS_SetConfig.call(0x20000, 0)    
-BASS_SetDevice.call(card) if card>0
-prewarm_url_loader
-        end
+    BASS_SetConfig.call(0, 1000)
+    BASS_SetConfig.call(1, 100)
+    BASS_SetConfig.call(11, 3000)
+    BASS_SetConfig.call(12, 10000)
+    BASS_SetConfig.call(15, 25)
+    BASS_SetConfigPtr.call(16, "Elten")
+    BASS_SetConfig.call(21, 1)
+    BASS_SetConfig.call(0x20000, 0)
+    @init = true
+    prewarm_url_loader
+  end
 
   def self.free
     devices = [output_device_id, *(@additional_output_devices || [])].uniq

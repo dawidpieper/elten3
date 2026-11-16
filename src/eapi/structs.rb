@@ -1,4 +1,4 @@
-﻿# A part of Elten - EltenLink / Elten Network desktop client.
+# A part of Elten - EltenLink / Elten Network desktop client.
 # Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
@@ -18,6 +18,10 @@ module EltenAPI
       def languages=(l)
         @@languages=l
       end
+      def user_state(collection: "")
+        EltenLink::UserState.new(EltenLink::Client.new(self), collection: collection)
+      end
+
       def logged?
         return @name!="" && @name!=nil && @token!="" && @token!=nil
       end
@@ -37,7 +41,9 @@ module EltenAPI
         @@feeds_updated=false
         return u
       end
+      attr_reader :notifications_changed_at
       def notifications_update
+        @notifications_changed_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         @@notifications_updated=true
       end
       def notifications_updated?
@@ -49,7 +55,8 @@ module EltenAPI
   end
     module Configuration
       class <<self
-        attr_accessor :listtype, :usepan, :soundcard, :microphone, :controlspresentation, :contextmenubar, :soundthemeactivation, :typingecho, :linewrapping, :hidewindow, :synctime, :registeractivity, :voice, :language, :voicerate, :voicevolume, :soundtheme, :volume, :usefx, :bgsounds, :voicepitch, :usedenoising, :autologin, :autostart, :roundupforms, :checkupdates, :enablebraille, :useechocancellation, :usevoicedictionary, :disablefeednotifications, :maintabs, :showemptynotifications, :mainnotificationfocus, :mainnotificationsort, :mainnotificationtypeorder, :iimodifiers, :iicards, :usebilinearhrtf, :disablehttp2, :tcpconferences, :udppacketsize, :conferencesaudiobuffer , :conferencesaudiobuffercutoff, :disableconferencemiconrecord, :enableaudiobuffering, :saytimeperiod, :saytimetype, :autoplay, :branch, :keyboardscheme, :macoscharacternavigation, :requestresponsecachemode
+        attr_accessor :iireadmessagesubjects
+        attr_accessor :listtype, :usepan, :soundcard, :microphone, :controlspresentation, :contextmenubar, :soundthemeactivation, :typingecho, :linewrapping, :hidewindow, :synctime, :registeractivity, :voice, :language, :voicerate, :voicevolume, :soundtheme, :volume, :usefx, :bgsounds, :voicepitch, :usedenoising, :autologin, :autostart, :roundupforms, :checkupdates, :enablebraille, :useechocancellation, :usevoicedictionary, :disablefeednotifications, :maintabs, :showemptynotifications, :mainnotificationfocus, :mainnotificationsort, :mainnotificationtypeorder, :iimodifiers, :iicards, :usebilinearhrtf, :disablehttp2, :tcpconferences, :udppacketsize, :conferencesaudiobuffer , :conferencesaudiobuffercutoff, :disableconferencemiconrecord, :enableaudiobuffering, :saytimeperiod, :saytimetype, :autoplay, :branch, :keyboardscheme, :macoscharacternavigation, :requestresponsecachemode, :allowp2p
         def to_h
           h={}
           instance_variables.each do |v|
@@ -61,7 +68,7 @@ module EltenAPI
       end
     module Lists
       class <<self
-        attr_accessor :locations, :langs
+        attr_accessor :locations, :location_subdivisions, :langs
         end
       end
       module Dirs

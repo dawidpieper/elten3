@@ -56,8 +56,26 @@ module EltenLink
     end
   end
 
+  class ServerDataSnapshot
+    attr_reader :revision, :values
+
+    def initialize(data)
+      unless data.is_a?(Hash) && data["revision"].is_a?(String) && data["revision"].match?(/\A[0-9a-f]{64}\z/) && data["values"].is_a?(Hash)
+        raise Error.new("Invalid server data", code: "system.invalid_client_data")
+      end
+
+      @revision = data["revision"].dup.freeze
+      @values = JSON.parse(JSON.generate(data["values"], max_nesting: false), max_nesting: false, freeze: true)
+      freeze
+    end
+  end
+
   module System
     class << self
+      def server_data(client)
+        ServerDataSnapshot.new(client.api_data("GET", "/api/v1/system/client-data"))
+      end
+
       def connected?(client)
         ["/api/v1/system/time", "/api/v1/system/build-id"].any? do |path|
           payload = client.api_payload("GET", path)
@@ -173,8 +191,7 @@ module EltenLink
       end
 
       def server_time(client, timeout: Client::DEFAULT_TIMEOUT)
-        value = client.api_data("GET", "/api/v1/system/time", nil, timeout: timeout)["time"].to_i
-        value < 0 ? Time.now : Time.at(value)
+        server_time_from_data(client.api_data("GET", "/api/v1/system/time", nil, timeout: timeout))
       end
 
       def measure_realtime_state(client)
@@ -247,6 +264,14 @@ module EltenLink
       end
 
       private
+
+      def server_time_from_data(data)
+        value = data["time"] if data.is_a?(Hash)
+        unless (value.is_a?(Integer) || value.is_a?(Float)) && value.to_f.finite? && value > 0
+          raise Error.new("Invalid server time", code: "system.invalid_server_time", module_name: "/api/v1/system/time")
+        end
+        Time.at(value)
+      end
 
       def measure_request(client, path, params = {})
         started = Time.now.to_f

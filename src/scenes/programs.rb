@@ -1,4 +1,4 @@
-﻿# A part of Elten - EltenLink / Elten Network desktop client.
+# A part of Elten - EltenLink / Elten Network desktop client.
 # Copyright (C) 2014-2026 Dawid Pieper
 # Elten is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3. 
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
@@ -13,110 +13,296 @@ class Scene_Programs
   PROGRAM_LANGUAGE_FILTER_KNOWN = "known"
   PROGRAM_LANGUAGE_FILTER_ALL = "all"
 
-  def initialize(initial_action=nil)
-    @initial_action=initial_action
+  def initialize(initial_action=nil, close_after_updates: false)
+    @category=initial_action==:updates ? :updates : nil
+    @close_after_updates=close_after_updates
+    @update_installed=false
+    @author=nil
+    @positions={}
+    @programs=[]
+    @catalogue_available=false
   end
 
   def main
+    refresh_programs
+    build_view(announce_header: true)
+    loop do
+      loop_update
+      if @refresh
+        remember_selection
+        @installed=Programs.local_entries
+        break if @close_after_updates && @update_installed && available_updates.empty?
+        @update_installed=false
+        build_view
+      end
+      @sel.update
+      break if $scene!=self
+      next if @refresh
+      if key_pressed?(:key_escape) || (@sel.collapsed? && @category!=nil)
+        break if @category==nil
+        @category==:authors && @author!=nil ? change_view(:authors) : change_view(nil)
+      elsif @sel.selected? || @sel.expanded?
+        program=@sel.index>=0 ? @items[@sel.index] : nil
+        next if program==nil
+        if @category==nil
+          change_view(program, reset_selection: true)
+        elsif @category==:authors && @author==nil
+          change_view(:authors, program, reset_selection: true)
+        else
+          activate_program(program)
+        end
+      end
+    end
+    $scene=Scene_Main.new if $scene==self
+  end
+
+  def category_labels
+    {
+      updates: p_("Programs", "Available updates"),
+      installed: p_("Programs", "Installed programs"),
+      featured: p_("Programs", "Featured programs"),
+      popular: p_("Programs", "Most installed programs"),
+      recent: p_("Programs", "Recently updated programs"),
+      authors: p_("Programs", "Programs by author")
+    }
+  end
+
+  def program_list?
+    @category!=nil && (@category!=:authors || @author!=nil)
+  end
+
+  def remember_selection
+    return if @sel==nil
+    item=@items[@sel.index] if @sel.index>=0
+    @positions[[@category, @author]]={
+      key: selection_key(item), index: @sel.index,
+      column: @sel.is_a?(TableBox) ? @sel.column : 0
+    }
+  end
+
+  def selection_key(program)
+    return program if program==nil || program.is_a?(String) || program.is_a?(Symbol)
+    uuid=program_uuid(program)
+    uuid=="" ? program.path.to_s : uuid
+  end
+
+  def change_view(category, author=nil, reset_selection: false)
+    remember_selection
+    @category, @author=category, author
+    @positions[[@category, @author]]&.merge!(key: nil, index: 0) if reset_selection
+    build_view
+  end
+
+  def build_view(announce_header: false)
+    labels=category_labels
+    if @category==nil
+      labels.delete(:updates) if available_updates.empty?
+      @items=labels.keys
+      options=labels.values
+      header=p_("Programs", "Program centre")
+    elsif @category==:authors && @author==nil
+      @items=visible_server_programs.map{|program|server_program_author(program)}.reject(&:empty?).uniq.polsort
+      options=@items
+      header=labels[:authors]
+    else
+      @items=category_programs
+      header=@author==nil ? labels[@category] : p_("Programs", "Programs by %{author}")%{author: @author}
+    end
+    position=@positions[[@category, @author]]||{}
+    index=@items.find_index{|item|selection_key(item)==position[:key]}
+    index||=[[position[:index].to_i, @items.size-1].min, 0].max
+    empty=if @category==:installed
+      p_("Programs", "No programs installed.")
+    elsif !@catalogue_available && @programs.empty?
+      p_("Programs", "The program catalogue is unavailable.")
+    elsif @category==:updates
+      p_("Programs", "No updates available.")
+    else
+      p_("Programs", "No programs available.")
+    end
+    if program_list?
+      @sel=TableBox.new(
+        [p_("Programs", "Name"), p_("Programs", "Description"), p_("Programs", "Installed version"),
+          p_("Programs", "Latest version"), p_("Programs", "Active installations"), p_("Programs", "Author"),
+          p_("Programs", "Status")],
+        @items.map{|program|program_row(program)}, index: index, header: header, empty_label: empty, quiet: true
+      )
+      @items.each_with_index do |program, row|
+        installed=installed_program_for(program)
+        if installed==nil
+          @sel.set_row_status(row, "listbox_itemfuture", p_("Programs", "not installed")+":", p_("Programs", "not installed"))
+        elsif update_available?(installed, remote_program_for(program))
+          @sel.set_row_status(row, "listbox_itemnew", p_("Programs", "Update available")+":", p_("Programs", "Update available"))
+        end
+      end
+      @sel.column=position[:column].to_i
+    else
+      @sel=ListBox.new(options, index: index, header: header, empty_label: empty, quiet: true)
+    end
+    @sel.bind_context{|menu|context(menu)}
+    @refresh=false
+    if announce_header
+      @sel.focus
+    elsif @items.empty?
+      alert(empty, false)
+    else
+      @sel.sayoption
+    end
+  end
+
+  def refresh_programs
     @installed=Programs.local_entries
-    @programs=[]
-    @all=@installed
-    rows=@all.map{|program| installed_row(program)}
-     @sel=TableBox.new([p_("Programs", "Name"), p_("Programs", "Version"), p_("Programs", "Installation"), p_("Programs", "Status")], rows, index: 0, header: p_("Programs", "Installed programs"), quiet: false)
-     @sel.bind_context{|menu|context(menu)}
-     @refresh=false
-     if @initial_action==:updates
-       @initial_action=nil
-       check_updates
-       return main if @refresh
-     end
-     loop do
-       loop_update
-       @sel.update
-         if @sel.selected? && @all.size>0
-       program=@all[@sel.index]
-         show_program_details(program)
-loop_update
-end
-       return main if @refresh
-       break if key_pressed?(:key_escape) or $scene!=self
-     end
-         $scene=Scene_Main.new if $scene==self
-     end
-     def context(menu)
-       menu.option(p_("Programs", "Check for updates")) {
-         check_updates
-       }
-       program=@all[@sel.index]
-       if program==nil
-         add_install_options(menu)
-         return
-       end
-       menu.option(p_("Programs", "Details")) {
-         show_program_details(program)
-       }
-       if program_loaded?(program)
-         menu.option(p_("Programs", "Unload")) {
-case           selector([p_("Programs", "Unload for this session only"), p_("Programs", "Unload and do not load automatically"), _("Cancel")], header: p_("Programs", "Unload program %{name}")%{:name=>program.name}, cancel_index: 2)
-when 0
-             unload_program_entry(program)
-when 1
-             unload_program_always(program)
-           end
-         }
-       elsif program_loadable?(program)
-         menu.option(p_("Programs", "Load")) {
-           load_program_entry(program)
-         }
-         if program.respond_to?(:registered) && program.registered
-           menu.option(p_("Programs", "Unload always")) {
-             confirm(p_("Programs", "Keep program %{name} disabled?")%{:name=>program.name}) {
-               unload_program_always(program)
-             }
-           }
-         end
-       end
-       menu.option(p_("Programs", "Uninstall"), nil, :del) {
-         case selector([p_("Programs", "Uninstall program"), p_("Programs", "Remove program and data"), _("Cancel")], header: p_("Programs", "What do you want to do with %{name}?")%{:name=>program.name}, cancel_index: 2, flags: 1)
-         when 0
-           confirm(p_("Programs", "Uninstall the program %{name}? The program data will be kept.")%{:name=>program.name}) {
-             remove_program_entry(program, remove_data: false)
-             alert(p_("Programs", "Program uninstalled."))
-             @refresh=true
-           }
-         when 1
-           confirm(p_("Programs", "Remove the program %{name} and all its data?")%{:name=>program.name}) {
-             remove_program_entry(program, remove_data: true)
-             alert(p_("Programs", "Program and data removed."))
-             @refresh=true
-           }
-         end
-       }
-       program_class=program_scene_class(program)
-       if program_class!=nil && !program_class.hidden?
-         menu.option(p_("Programs", "Add this program to quick actions"), nil, "q") {
-           if QuickActions.create(program_class, program.name.to_s+" (#{p_("Programs", "Program")})")
-             alert(p_("Programs", "Program added to quick actions"), false)
-           else
-             alert(_("Error"))
-           end
-         }
-       end
-       add_install_options(menu)
-     end
+    programs=fetch_server_programs
+    @catalogue_available=programs!=nil
+    @programs=programs if programs!=nil
+    @refresh=true
+    @catalogue_available
+  end
 
-     def add_install_options(menu)
-       menu.option(p_("Programs", "Install new program from server"), nil, "i") {
-         install_from_server
-       }
-       menu.option(p_("Programs", "Install new program from file"), nil, "I") {
-         install_from_file
-       }
-     end
+  def visible_server_programs
+    compatible=@programs.select{|program|remote_program_platform_compatible?(program) || installed_program_for(program)!=nil}
+    filter_server_programs(compatible)
+  end
 
-     def installed_row(program)
-       [program.name.to_s, program.version.to_s, installation_label(program), status_label(program)]
-     end
+  def category_programs
+    programs=case @category
+    when :installed
+      @installed
+    when :updates
+      available_updates.map(&:first)
+    when :featured
+      visible_server_programs.select(&:recommended)
+    when :authors
+      visible_server_programs.select{|program|server_program_author(program)==@author}
+    else
+      visible_server_programs
+    end
+    programs=programs.sort_by do |program|
+      name=EltenSystemHelpers.locale_sort_key(program.name.to_s)
+      case @category
+      when :popular
+        count=program.active_installations
+        [count==nil ? 1 : 0, -count.to_i, name, program_uuid(program)]
+      when :recent
+        [-program.update_time.to_i, name, program_uuid(program)]
+      else
+        [name, program_uuid(program)]
+      end
+    end
+    programs.map{|program|installed_program_for(program)||program}
+  end
+
+  def program_row(program)
+    installed=installed_program_for(program)
+    remote=remote_program_for(program)
+    latest=if remote!=nil
+      remote.version.to_s if installed==nil || update_available?(installed, remote)
+    elsif @catalogue_available
+      p_("Programs", "Local program")
+    else
+      p_("Programs", "Catalogue unavailable")
+    end
+    [program.name.to_s, (remote||program).description.to_s, installed&.version&.to_s, latest,
+      remote&.active_installations, server_program_author(remote||program),
+      installed!=nil ? status_label(installed) : p_("Programs", "not installed")]
+  end
+
+  def activate_program(program)
+    installed=installed_program_for(program)
+    remote=remote_program_for(program)
+    if remote!=nil && (installed==nil || update_available?(installed, remote))
+      @refresh=true if install_remote_program(remote)
+    elsif openable_program?(installed)
+      open_program(installed)
+    else
+      show_program_details(program)
+    end
+  end
+
+  def openable_program?(program)
+    program_class=program_scene_class(program)
+    program_class!=nil && !program_class.hidden?
+  end
+
+  def open_program(program)
+    program_class=program_scene_class(program)
+    return if program_class==nil || program_class.hidden?
+    insert_scene(program_class.new, true)
+    @refresh=true
+  end
+
+  def context(menu)
+    program=@items[@sel.index] if program_list? && @sel.index>=0
+    if program!=nil
+      installed=installed_program_for(program)
+      remote=remote_program_for(program)
+      menu.option(p_("Programs", "Open")) { open_program(installed) } if openable_program?(installed)
+      if remote!=nil
+        action=if installed==nil
+          p_("Programs", "Install")
+        elsif update_available?(installed, remote)
+          p_("Programs", "Update")
+        else
+          p_("Programs", "Reinstall")
+        end
+        menu.option(action) { @refresh=true if install_remote_program(remote) }
+      end
+      menu.option(p_("Programs", "Details")) { show_program_details(program) }
+      if installed!=nil
+        installed_context(menu, installed)
+      end
+    end
+    menu.option(p_("Programs", "Install from file"), nil, "I") { install_from_file }
+    menu.option(p_("Programs", "Check for updates")) { check_updates }
+    server_program_language_filter_menu(menu) { @refresh=true }
+    menu.option(p_("Programs", "Refresh"), nil, "r") { refresh_programs }
+  end
+
+  def installed_context(menu, program)
+    if program_loaded?(program)
+      menu.option(p_("Programs", "Unload")) {
+        case selector([p_("Programs", "Unload for this session only"), p_("Programs", "Unload and do not load automatically"), _("Cancel")], header: p_("Programs", "Unload program %{name}")%{name: program.name}, cancel_index: 2)
+        when 0
+          unload_program_entry(program)
+        when 1
+          unload_program_always(program)
+        end
+      }
+    elsif program_loadable?(program)
+      menu.option(p_("Programs", "Load")) { load_program_entry(program) }
+      if program.registered
+        menu.option(p_("Programs", "Unload always")) {
+          confirm(p_("Programs", "Keep program %{name} disabled?")%{name: program.name}) { unload_program_always(program) }
+        }
+      end
+    end
+    menu.option(p_("Programs", "Uninstall"), nil, :del) {
+      case selector([p_("Programs", "Uninstall program"), p_("Programs", "Remove program and data"), _("Cancel")], header: p_("Programs", "What do you want to do with %{name}?")%{name: program.name}, cancel_index: 2, flags: 1)
+      when 0
+        confirm(p_("Programs", "Uninstall the program %{name}? The program data will be kept.")%{name: program.name}) {
+          remove_program_entry(program, remove_data: false)
+          alert(p_("Programs", "Program uninstalled."))
+          @refresh=true
+        }
+      when 1
+        confirm(p_("Programs", "Remove the program %{name} and all its data?")%{name: program.name}) {
+          remove_program_entry(program, remove_data: true)
+          alert(p_("Programs", "Program and data removed."))
+          @refresh=true
+        }
+      end
+    }
+    program_class=program_scene_class(program)
+    if program_class!=nil && !program_class.hidden?
+      menu.option(p_("Programs", "Add this program to quick actions"), nil, "q") {
+        if QuickActions.create(program_class, program.name.to_s+" (#{p_("Programs", "Program")})")
+          alert(p_("Programs", "Program added to quick actions"), false)
+        else
+          alert(_("Error"))
+        end
+      }
+    end
+  end
 
      def program_loaded?(program)
        program!=nil && program.respond_to?(:status) && program.status==:loaded
@@ -175,36 +361,56 @@ when 1
        true
      end
 
-     def show_program_details(program)
-       lines=[
-         p_("Programs", "Name: %{name}")%{:name=>program.name.to_s},
-         p_("Programs", "Version: %{version}")%{:version=>program.version.to_s},
-         p_("Programs", "Build ID: %{build}")%{:build=>program.build_id.to_s},
-         p_("Programs", "Author: %{author}")%{:author=>program.author.to_s},
-         p_("Programs", "UUID: %{uuid}")%{:uuid=>program.respond_to?(:id) ? program.id.to_s : ""},
-         p_("Programs", "Elten API: %{version}")%{:version=>program.respond_to?(:elten_api_version) ? program.elten_api_version.to_s : ""},
-         p_("Programs", "Platforms: %{platforms}")%{:platforms=>program.respond_to?(:platforms) ? Array(program.platforms).join(", ") : ""},
-         p_("Programs", "Installation: %{type}")%{:type=>installation_label(program)},
-         p_("Programs", "Installed from: %{source}")%{:source=>installation_source_label(program)},
-         p_("Programs", "Status: %{status}")%{:status=>status_label(program)},
-         p_("Programs", "Size: %{size}")%{:size=>format_size(program.respond_to?(:size) ? program.size : 0)}
-       ]
-       lines.push(p_("Programs", "Installation time: %{time}")%{:time=>format_registry_time(program.installation_time)}) if program.respond_to?(:installation_time) && program.installation_time.to_i>0
-       lines.push(p_("Programs", "Update time: %{time}")%{:time=>format_registry_time(program.update_time)}) if program.respond_to?(:update_time) && program.update_time.to_i>0
-       lines.push(p_("Programs", "Folder ID: %{id}")%{:id=>program_storage_id(program)})
-       lines.push(p_("Programs", "Loaded at startup: %{loaded}")%{:loaded=>program.respond_to?(:registry_loaded) && program.registry_loaded ? p_("Programs", "yes") : p_("Programs", "no")})
-       lines.push(p_("Programs", "Entry: %{path}")%{:path=>program.respond_to?(:realpath) ? program.realpath.to_s : ""})
-       lines.push(p_("Programs", "Path: %{path}")%{:path=>program_file_path(program)})
-       lines.push(p_("Programs", "Source: %{path}")%{:path=>program_source_path(program)})
-       lines.push(p_("Programs", "Data path: %{path}")%{:path=>program_data_path(program)})
-       lines.push(p_("Programs", "Cache path: %{path}")%{:path=>program_cache_path(program)})
-       if program.respond_to?(:signature_info) && program.signature_info.is_a?(Hash)
-         lines.push(p_("Programs", "Signed by: %{subject}")%{:subject=>program.signature_info[:subject].to_s})
-         lines.push(p_("Programs", "Signature fingerprint: %{fingerprint}")%{:fingerprint=>program.signature_info[:fingerprint].to_s})
-       end
-       lines.push(p_("Programs", "Error: %{error}")%{:error=>program.error.to_s}) if program.respond_to?(:error) && program.error.to_s!=""
-       input_text(p_("Programs", "Program details"), flags: EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly, text: lines.join("\n"), escapable: true)
-     end
+  def show_program_details(program)
+    installed=installed_program_for(program)
+    remote=remote_program_for(program)
+    lines=[
+      p_("Programs", "Name: %{name}")%{name: program.name.to_s},
+      p_("Programs", "Author: %{author}")%{author: server_program_author(remote||program)},
+      p_("Programs", "UUID: %{uuid}")%{uuid: program_uuid(program)},
+      p_("Programs", "Build ID: %{build}")%{build: program.build_id.to_s},
+      p_("Programs", "Elten API: %{version}")%{version: program.elten_api_version.to_s},
+      p_("Programs", "Platforms: %{platforms}")%{platforms: Array(program.platforms).join(", ")},
+      p_("Programs", "Size: %{size}")%{size: format_size(program.size)}
+    ]
+    description=(remote||program).description.to_s
+    lines.push(p_("Programs", "Description: %{description}")%{description: description}) unless description.empty?
+    if remote!=nil
+      lines.push(p_("Programs", "Latest version: %{version}")%{version: remote.version.to_s})
+      lines.push(p_("Programs", "Creation time: %{time}")%{time: format_registry_time(remote.creation_time)})
+      lines.push(p_("Programs", "Last update: %{time}")%{time: format_registry_time(remote.update_time)})
+      count=remote.active_installations
+      lines.push(p_("Programs", "Active installations (last 7 days): %{count}")%{count: count==nil ? p_("Programs", "Unknown") : count})
+    elsif @catalogue_available
+      lines.push(p_("Programs", "Local program"))
+    else
+      lines.push(p_("Programs", "The program catalogue is unavailable."))
+    end
+    if installed!=nil
+      program=installed
+      lines.push(
+        p_("Programs", "Installed version: %{version}")%{version: program.version.to_s},
+        p_("Programs", "Installation: %{type}")%{type: installation_label(program)},
+        p_("Programs", "Installed from: %{source}")%{source: installation_source_label(program)},
+        p_("Programs", "Status: %{status}")%{status: status_label(program)}
+      )
+      lines.push(p_("Programs", "Installation time: %{time}")%{time: format_registry_time(program.installation_time)}) if program.installation_time.to_i>0
+      lines.push(p_("Programs", "Local update time: %{time}")%{time: format_registry_time(program.update_time)}) if program.update_time.to_i>0
+      lines.push(p_("Programs", "Folder ID: %{id}")%{id: program_storage_id(program)})
+      lines.push(p_("Programs", "Loaded at startup: %{loaded}")%{loaded: program.registry_loaded ? p_("Programs", "yes") : p_("Programs", "no")})
+      lines.push(p_("Programs", "Entry: %{path}")%{path: program.realpath.to_s})
+      lines.push(p_("Programs", "Path: %{path}")%{path: program_file_path(program)})
+      lines.push(p_("Programs", "Source: %{path}")%{path: program_source_path(program)})
+      lines.push(p_("Programs", "Data path: %{path}")%{path: program_data_path(program)})
+      lines.push(p_("Programs", "Cache path: %{path}")%{path: program_cache_path(program)})
+      if program.signature_info.is_a?(Hash)
+        lines.push(p_("Programs", "Signed by: %{subject}")%{subject: program.signature_info[:subject].to_s})
+        lines.push(p_("Programs", "Signature fingerprint: %{fingerprint}")%{fingerprint: program.signature_info[:fingerprint].to_s})
+      end
+      lines.push(p_("Programs", "Error: %{error}")%{error: program.error.to_s}) if program.error.to_s!=""
+    end
+    input_text(p_("Programs", "Program details"), flags: EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly, text: lines.join("\n"), escapable: true)
+  end
 
      def program_realpath(program)
        entry=program.respond_to?(:realpath) ? program.realpath.to_s : ""
@@ -312,99 +518,6 @@ when 1
        end
      end
 
-     def install_from_server
-       @installed=Programs.local_entries
-       server_programs=fetch_server_programs
-       if server_programs.empty?
-         alert(p_("Programs", "No programs available."))
-         return
-       end
-       @programs=filter_server_programs(server_programs)
-       authors=@programs.map{|program|server_program_author(program)}.reject{|author|author==""}.uniq.polsort
-       categories=[p_("Programs", "Featured")]+authors
-       sel=ListBox.new(categories, header: p_("Programs", "Programs available on server"), index: 0, flags: 0, quiet: false)
-       sel.disable_item(0) if !@programs.any?{|program|program.respond_to?(:recommended) && program.recommended}
-       refresh_filter=proc do
-         @programs=filter_server_programs(server_programs)
-         authors=@programs.map{|program|server_program_author(program)}.reject{|author|author==""}.uniq.polsort
-         sel.options=[p_("Programs", "Featured")]+authors
-         sel.disable_item(0) if !@programs.any?{|program|program.respond_to?(:recommended) && program.recommended}
-         sel.index=0
-         sel.focus
-       end
-       sel.bind_context do |menu|
-         server_program_language_filter_menu(menu) { refresh_filter.call }
-       end
-       loop do
-         loop_update
-         sel.update
-         if sel.selected? || sel.expanded?
-           category=sel.index==0 ? :featured : authors[sel.index-1]
-           if install_server_category(category)
-             @refresh=true
-             return
-           end
-           sel.focus
-           loop_update
-         end
-         break if key_pressed?(:key_escape)
-       end
-     end
-
-     def server_row(program)
-       [
-         program.name.to_s,
-         program.version.to_s,
-         program.description.to_s,
-         server_program_author(program),
-         server_status_label(program),
-         format_size(program.size)
-       ]
-     end
-
-     def install_server_category(category)
-       programs=if category==:featured
-         @programs.select{|program|program.respond_to?(:recommended) && program.recommended}
-       else
-         @programs.select{|program|server_program_author(program)==category.to_s}
-       end
-       programs=programs.sort_by{|program|program.name.to_s.downcase}
-       return false if programs.empty?
-       header=category==:featured ? p_("Programs", "Featured programs") : p_("Programs", "Programs by %{author}")%{:author=>category.to_s}
-       rows=programs.map{|program|server_row(program)}
-       sel=TableBox.new(
-         [p_("Programs", "Name"), p_("Programs", "Version"), p_("Programs", "Description"), p_("Programs", "Author"), p_("Programs", "Status"), p_("Programs", "Size")],
-         rows,
-         index: 0,
-         header: header,
-         quiet: false
-       )
-       sel.focus
-       loop do
-         loop_update
-         sel.update
-         if sel.selected?
-           program=programs[sel.index]
-           return true if program!=nil && install_remote_program(program, ask: true)
-         end
-         break if key_pressed?(:key_escape) || sel.collapsed?
-       end
-       false
-     end
-
-     def server_status_label(program)
-       installed=installed_program_for(program)
-       if !remote_program_api_compatible?(program)
-         p_("Programs", "requires Elten API %{version}")%{:version=>program.elten_api_version.to_s}
-       elsif installed==nil
-         p_("Programs", "not installed")
-       elsif update_available?(installed, program)
-         p_("Programs", "update available")
-       else
-         p_("Programs", "installed")
-       end
-     end
-
      def server_program_author(program)
        if program.respond_to?(:owner)
          uploader=program.owner.to_s
@@ -424,7 +537,7 @@ when 1
        known=Session.languages.to_s.split(",").filter_map{|language|normalize_server_program_language(language)}.uniq
        known.push("en") if mode==PROGRAM_LANGUAGE_FILTER_KNOWN_OR_ENGLISH && !known.include?("en")
        Array(programs).select do |program|
-         !(server_program_languages(program)&known).empty?
+         installed_program_for(program)!=nil || !(server_program_languages(program)&known).empty?
        end
      end
 
@@ -458,8 +571,7 @@ when 1
      end
 
      def check_updates
-       @installed=Programs.local_entries
-       @programs=fetch_server_programs
+       return unless refresh_programs
        updates=available_updates
        if updates.empty?
          alert(p_("Programs", "All installed programs are up to date."))
@@ -490,11 +602,11 @@ when 1
      end
 
      def fetch_server_programs
-       EltenLink::Apps.list(elten_link, os: platform_target)
+       EltenLink::Apps.list(elten_link)
      rescue EltenLink::Error => e
        Log.warning("Apps list failed: #{e.message}")
        alert(p_("Programs", "The list of programs could not be loaded."))
-       []
+       nil
      end
 
      def available_updates
@@ -509,7 +621,7 @@ when 1
 
      def update_available?(installed, remote)
        return false if installed==nil || remote==nil
-       return false if !remote_program_api_compatible?(remote)
+       return false if !remote_program_api_compatible?(remote) || !remote_program_platform_compatible?(remote)
        if installed.respond_to?(:build_id) && remote.respond_to?(:build_id) && build_id_present?(installed.build_id) && build_id_present?(remote.build_id)
          normalize_build_id(installed.build_id)!=normalize_build_id(remote.build_id)
        else
@@ -530,6 +642,11 @@ when 1
        normalize_build_id(value)!=nil
      end
 
+     def remote_program_platform_compatible?(program)
+       platforms=Array(program.platforms)
+       !(platforms & ["all", "universal", "*", Programs.platform_family, platform_target]).empty?
+     end
+
      def remote_program_api_compatible?(program)
        program!=nil && program.respond_to?(:elten_api_version) && Programs.api_version_compatible?(program.elten_api_version)
      end
@@ -543,9 +660,16 @@ when 1
          }) if ask
          return false
        end
+       if !remote_program_platform_compatible?(program)
+         alert(p_("Programs", "This program does not support the current platform %{current}. Supported platforms: %{required}.")%{
+           current: platform_target, required: Array(program.platforms).join(", ")
+         }) if ask
+         return false
+       end
+       updating=update_available?(installed_program_for(program), program)
        if ask
          confirmed=false
-         confirm(install_details(program, format_size(program.size), nil)) { confirmed=true }
+         confirm(install_details(program, format_size(program.size), nil, updating: updating)) { confirmed=true }
          return false if !confirmed
        end
        return false if !confirm_unverified_program_install(program)
@@ -555,15 +679,13 @@ when 1
        install_error=nil
        cancelled=false
        begin
-         waiting
          tempdir=Dir.mktmpdir(["elten-program-", ""], Dirs.temp)
          tempfile=EltenPath.join(tempdir, Programs.remote_package_filename(program))
          package_url=EltenLink::Apps.package_url(program)
-         download_file(package_url, tempfile, use_waiting: false, can_cancel: true, override: true)
-         if !FileTest.exists?(tempfile)
+         downloaded=download_file(package_url, tempfile, can_cancel: true, override: true)
+         if !downloaded || !FileTest.exists?(tempfile)
            cancelled=true
          else
-           waiting_end
            installed_entry=Programs.install_package(tempfile,
              preferred_program: program, installation_source: "server")
          end
@@ -585,9 +707,10 @@ when 1
        if installed_entry!=nil
          alert(p_("Programs", "Installation completed.")) if ask
          setlocale(Configuration.language)
+         @update_installed=true if updating
          true
        elsif install_error!=nil
-         alert(program_install_error_message(install_error)) if ask
+         show_program_install_error(install_error) if ask
          false
        else
          alert(p_("Programs", "Installation cancelled.")) if ask && cancelled
@@ -621,7 +744,7 @@ when 1
          info=Programs.setup_package_info(file)
        rescue Exception => e
          Log.warning("Program package read failed: #{e.class}: #{e.message}")
-         alert(program_install_error_message(e))
+         show_program_install_error(e)
          return
        end
        confirm(install_details(info[:manifest], format_size(info[:size]), File.basename(file))) {
@@ -647,14 +770,15 @@ when 1
          setlocale(Configuration.language)
          @refresh=true
        elsif install_error!=nil
-         alert(program_install_error_message(install_error))
+         show_program_install_error(install_error)
        else
          alert(p_("Programs", "Installation cancelled."))
        end
      end
 
-     def install_details(program, size, package_file=nil)
-       lines=[p_("Programs", "Do you want to install this program?"), ""]
+     def install_details(program, size, package_file=nil, updating: false)
+       question=updating ? p_("Programs", "Do you want to update this program?") : p_("Programs", "Do you want to install this program?")
+       lines=[question, ""]
        lines.push(p_("Programs", "Name: %{name}")%{:name=>program.name.to_s}) if program.respond_to?(:name)
        lines.push(p_("Programs", "Description: %{description}")%{:description=>program.description.to_s}) if program.respond_to?(:description) && program.description.to_s!=""
        lines.push(p_("Programs", "Version: %{version}")%{:version=>program.version.to_s}) if program.respond_to?(:version)
@@ -668,6 +792,39 @@ when 1
        lines.push(p_("Programs", "Package: %{file}")%{:file=>package_file.to_s}) if package_file!=nil && package_file.to_s!=""
        lines.push(p_("Programs", "Size: %{size}")%{:size=>size.to_s})
        lines.join("\n")
+     end
+
+     def show_program_install_error(error)
+       message = program_install_error_message(error)
+       if simple_program_install_error?(error)
+         alert(message)
+       else
+         details = message.to_s.dup
+         trace = if Programs.respond_to?(:clean_program_backtrace)
+           Programs.clean_program_backtrace(error)
+         else
+           Array(error.respond_to?(:backtrace) ? error.backtrace : nil)
+         end
+         if trace.empty? && error.respond_to?(:cause) && error.cause
+           trace = if Programs.respond_to?(:clean_program_backtrace)
+             Programs.clean_program_backtrace(error.cause)
+           else
+             Array(error.cause.respond_to?(:backtrace) ? error.cause.backtrace : nil)
+           end
+         end
+         if trace.size > 0
+           details += "\n\n#{p_("Program", "Backtrace:")}\n#{trace.join("\n")}"
+         end
+         display_text(details, header: _("Error"))
+       end
+     end
+
+     def simple_program_install_error?(error)
+       program_install_error_cause(error, Programs::UnsupportedAPIVersionError) != nil ||
+         program_install_error_cause(error, Programs::UnsupportedEltenLinkContractError) != nil ||
+         program_install_error_cause(error, Programs::UnsupportedPlatformError) != nil ||
+         program_install_error_cause(error, Programs::ProgramSigning::VerificationUnavailableError) != nil ||
+         program_install_error_cause(error, Programs::ProgramSigning::MissingSignatureError) != nil
      end
 
      def program_install_error_message(error)
@@ -760,7 +917,7 @@ when 1
      end
 
      def remote_program_for(program)
-       @programs.find{|entry| same_program?(entry,program)}
+       (@programs||[]).find{|entry| same_program?(entry,program)}
      end
 
      def remove_program_entry(program, remove_data: false)

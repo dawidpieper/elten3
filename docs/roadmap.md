@@ -3,25 +3,29 @@
 [Back to the project README](../readme.md). See also [Elten 3 architecture](architecture.md), [Building Elten 3](building.md), [Elten applications](eltenapps.md) and [Contributing to Elten 3](contributing.md).
 
 > [!IMPORTANT]
-> This is deliberately not a feature wish list, release checklist or substitute for the project forums. Smaller product decisions, new features and individual ideas are discussed in the EltenLink beta-testing groups. Anyone trying to understand or influence the practical shape of a coming release should follow the [Polish beta-testing group](https://elten.link/forum/group/110) or the [English beta-testing group](https://elten.link/forum/group/111).
+> This is deliberately not a feature wish list, release checklist or substitute for the project forums. Smaller product decisions, new features and individual ideas are discussed in the [EltenLink beta-testing group](https://elten.link/forum/group/112). Follow that group to understand or influence the practical shape of a coming release.
 >
 > This document records only architectural directions and development constraints which are important across multiple changes. An item absent from this file is not rejected or unimportant. Unless a section states that a target is committed, its design, timing and even final implementation remain open to discussion.
 
 ## Elten 3.1 application contract (committed for Elten 3.1)
 
-Hosted applications are treated as experimental in Elten 3.0. Elten 3.1 is the committed target for publishing their complete, stable contract. The contract is expected to define the supported package and manifest format, loading and lifecycle rules, public extension points, application-facing client interfaces, compatibility expectations, and the signing and verification model. Signing work includes concrete rules for publisher identity, trust, certificate use, revocation and package verification rather than merely preserving the experimental Elten 3.0 mechanism.
+The hosted application API remains experimental in Elten 3.0. Elten 3.1 is the committed target for publishing its complete, stable contract. The contract is expected to define the supported package and manifest format, loading and lifecycle rules, public extension points, application-facing client interfaces, compatibility expectations, and the signing and verification model. Signing work includes concrete rules for publisher identity, trust, certificate use, revocation and package verification rather than merely preserving the experimental Elten 3.0 mechanism.
 
 The objective is to let an application depend on documented interfaces instead of incidental client internals. Experiments and real applications written against Elten 3.0 remain welcome because they expose missing capabilities before the contract is fixed. They must, however, continue to assume that current manifests, hooks, helper APIs and trust details may change. The current runtime and packaging model is described in [Elten applications](eltenapps.md).
 
 Best-effort compatibility with applications written for Elten 3.0 is planned wherever it is practical and does not compromise the stable contract. This is a compatibility goal, not a guarantee, though. Applications may still require changes when manifests, lifecycle hooks, trust rules or APIs must be corrected or formalised.
 
-## Audio backend and BASS (under consideration; no backend selected)
+## Audio backend: LINDAR (planned for Elten 3.1; may be postponed)
 
 BASS is currently the only proprietary library deliberately retained as a core dependency of the GPL-licensed client. BASS remains under its own licence; its presence is not being treated as a permanent architectural guarantee.
 
 Substantial parts of the audio path are already project-controlled, including recording and media-encoder interfaces, container writers, and encoder and decoder paths using open libraries for formats such as Opus, Ogg and Vorbis. BASS still supplies much of the common playback, device, recording, streaming, mixing and effects backend, and legacy code sometimes calls it directly.
 
-A fully project-controlled audio layer is under consideration. PortAudio is one possible foundation for device input and output, but neither PortAudio nor any other replacement has been selected. The work would need to account for normal playback, short interface sounds, recording, remote streams, format decoding, mixing, effects, conferencing, device selection and consistent behaviour on every supported system. No release has been assigned to this investigation.
+The planned replacement is LINDAR (Library for Integrated Native Digital Audio Runtime), an audio library currently being developed by Elten's maintainer, Dawid Pieper. It is written in pure C with support for Windows, Linux, macOS, Android and iOS, and is planned as an open-source, modular audio solution, probably under the LGPL.
+
+LINDAR is still in development and will be published on GitHub once it is stable. More details will be available after publication. Its integration is currently planned for Elten 3.1, but may be postponed if problems arise.
+
+The migration needs to account for normal playback, short interface sounds, recording, remote streams, format decoding, mixing, effects, conferencing, device selection and consistent behaviour on every supported Elten system.
 
 Contributors should therefore depend on Elten-owned abstractions wherever possible. Classes and interfaces such as `Sound`, `Recorder`, `Player`, `MediaEncoders` and the normal sound helpers exist in part to keep feature code independent of the backend. New feature code should not expose BASS handles, constants or calls unless it is specifically implementing the audio backend. If an abstraction lacks a required operation, extending its contract is preferable to making another feature depend directly on BASS. Existing direct use will be reduced gradually as the surrounding audio code is redesigned.
 

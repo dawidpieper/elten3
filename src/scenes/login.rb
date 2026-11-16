@@ -60,10 +60,11 @@ else
        return
         end
       t=decrypt(token,pin) if tokenenc>0
-      if t=="" and pin==nil
+      if (t==nil || t=="") && tokenenc==1
+        Log.warning("Failed to decrypt the system-protected auto-login key, switching to manual login")
         @skipauto=true
-        return main
-      elsif t!=""
+        return
+      elsif t!=nil && t!=""
         token=t
         break
       end
@@ -85,6 +86,7 @@ else
     write_logindata(autologin, name, token, tokenenc)
   end
   end
+  client_info = EltenAPI::NotificationService.client_login_params(refresh_apps: true)
   version_string = login_version_string
   version_islauncher = login_version_islauncher
   version_isdevelopment = login_version_isdevelopment(version_islauncher)
@@ -99,9 +101,9 @@ end
   while suc==false
   begin
   if token!="" && @skipauto!=true
-    logintemp = EltenLink::Authentication.login(elten_link, name: name, token: token, version_string: version_string, version_isdevelopment: version_isdevelopment, version_islauncher: version_islauncher, appid: $appid, language: Configuration.language, os: platform_os, authmethod: "list", stamp: stamp)
+    logintemp = EltenLink::Authentication.login(elten_link, name: name, token: token, version_string: version_string, version_isdevelopment: version_isdevelopment, version_islauncher: version_islauncher, appid: $appid, language: Configuration.language, os: platform_os, authmethod: "list", stamp: stamp, soundtheme: client_info["soundtheme"], apps_uuids: client_info["apps_uuids"])
 else
-  logintemp = EltenLink::Authentication.login(elten_link, name: name, password: password, version_string: version_string, version_isdevelopment: version_isdevelopment, version_islauncher: version_islauncher, appid: $appid, language: Configuration.language, os: platform_os, authmethod: "list", stamp: stamp)
+  logintemp = EltenLink::Authentication.login(elten_link, name: name, password: password, version_string: version_string, version_isdevelopment: version_isdevelopment, version_islauncher: version_islauncher, appid: $appid, language: Configuration.language, os: platform_os, authmethod: "list", stamp: stamp, soundtheme: client_info["soundtheme"], apps_uuids: client_info["apps_uuids"])
 end
 suc=true
 rescue EltenLink::Error => e
@@ -111,9 +113,9 @@ if meth==0
   phone_error=nil
   begin
   if token!=""
-    logintemp = EltenLink::Authentication.login(elten_link, name: name, token: token, version_string: version_string, version_isdevelopment: version_isdevelopment, version_islauncher: version_islauncher, appid: $appid, language: Configuration.language, os: platform_os, authmethod: "phone", stamp: stamp)
+    logintemp = EltenLink::Authentication.login(elten_link, name: name, token: token, version_string: version_string, version_isdevelopment: version_isdevelopment, version_islauncher: version_islauncher, appid: $appid, language: Configuration.language, os: platform_os, authmethod: "phone", stamp: stamp, soundtheme: client_info["soundtheme"], apps_uuids: client_info["apps_uuids"])
 else
-  logintemp = EltenLink::Authentication.login(elten_link, name: name, password: password, version_string: version_string, version_isdevelopment: version_isdevelopment, version_islauncher: version_islauncher, appid: $appid, language: Configuration.language, os: platform_os, authmethod: "phone", stamp: stamp)
+  logintemp = EltenLink::Authentication.login(elten_link, name: name, password: password, version_string: version_string, version_isdevelopment: version_isdevelopment, version_islauncher: version_islauncher, appid: $appid, language: Configuration.language, os: platform_os, authmethod: "phone", stamp: stamp, soundtheme: client_info["soundtheme"], apps_uuids: client_info["apps_uuids"])
 end
   rescue EltenLink::Error => phone_error
   end
@@ -142,6 +144,7 @@ while tries<3
     break
   end
   code=code.delete("\r\n")
+  next if code==""
   begin
     EltenLink::Authentication.authenticate(elten_link, appid: $appid, name: name, code: code)
   rescue EltenLink::Error
@@ -173,6 +176,7 @@ end
   end
 end
     if logintemp != nil
+  EltenAPI::NotificationService.client_logged_in(logintemp, client_info)
   name=logintemp.name
   Session.name=name
       Session.token=logintemp.token
@@ -181,6 +185,7 @@ end
       Session.gender=logintemp.gender.to_i
       Session.languages = logintemp.languages
       Session.greeting = logintemp.greeting
+      EltenAPI::ServerData.__send__(:receive, logintemp.server_data) if logintemp.server_data != nil
       update_premiumpackages(logintemp.premium_packages) if logintemp.premium_packages.is_a?(Array)
   end
 if logintemp != nil
@@ -253,37 +258,37 @@ else
     Session.token = nil
     speech_wait
     @skipauto=true
-    return main
+    return
   when "session.account_not_activated"
     alert(p_("Login", "This account has not been activated yet."))
     Session.token = nil
     speech_wait
     @skipauto=true
-    return main
+    return
   when "authentication.sms_cooldown"
     alert(p_("Login", "A text message with a verification code can be requested only once per minute. Please try again later."))
     Session.token = nil
     speech_wait
     @skipauto=true
-    return main
+    return
   when "authentication.sms_daily_limit"
     alert(p_("Login", "The daily limit for text messages with verification codes has been reached. Please try again later."))
     Session.token = nil
     speech_wait
     @skipauto=true
-    return main
+    return
   when "authentication.sms_limiter_unavailable"
     alert(p_("Login", "Text message verification is temporarily unavailable. Please try again later."))
     Session.token = nil
     speech_wait
     @skipauto=true
-    return main
+    return
   else
     alert(p_("Login", "Login failure."))
     Session.token = nil
     speech_wait
     @skipauto=true
-    return main
+    return
   end
 end
                 $speech_wait = true
@@ -317,6 +322,7 @@ end
             code=input_text(label, flags: 0, text: "", escapable: true)
             return false if code==nil
             code=code.delete("\r\n ")
+            next if code==""
             begin
               EltenLink::Accounts.activate(elten_link, code: code)
               alert(p_("Login", "Account activated. You can now log in."))
@@ -347,6 +353,10 @@ end
           else
             p1=input_text(p_("Login", "Enter PIN"),flags: EditBox::Flags::Password,text: "",escapable: true)
             next if p1==nil
+            if p1==""
+              alert(p_("Login", "The PIN cannot be empty. Please try again."))
+              next
+            end
             p2=input_text(p_("Login", "Enter PIN again"),flags: EditBox::Flags::Password,text: "",escapable: true)
             next if p2==nil
             if p1==p2

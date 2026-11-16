@@ -237,6 +237,8 @@ def make_window
   langsmapping=langsmapping.find_all{|l|Lists.langs[l[0..1].downcase].is_a?(Hash)}
         langs=langsmapping.map{|l|Lists.langs[l[0..1].downcase]['name']+" ("+Lists.langs[l[0..1].downcase]['nativeName']+")"}  
       make_setting(p_("Settings", "Language"), langs, "Interface", "Language", langsmapping)
+      translation_langs=translation_languages
+      make_setting(p_("Settings", "Translation languages (all if none selected)"), translation_langs.values, "Interface", "TranslationLanguages", translation_langs.keys, true)
                             make_setting(p_("Settings", "Automatically minimize Elten Window to system tray"), :bool, "Interface", "HideWindow") if tray_supported?
                                         make_setting(p_("Settings", "Enable auto-login"), :bool, "Login", "EnableAutoLogin")
         make_setting(
@@ -439,7 +441,7 @@ def make_window
             @microphones=Bass.microphones
     @soundcards[0]=Bass::Device.new(p_("Settings", "Use Default"), "", 1|2)
     @soundcards.delete_at(1)
-    @microphones=[Bass::Device.new(p_("Settings", "Use Default"), "", 1|2)]+@microphones
+    @microphones=[Bass::Device.new(p_("Settings", "Use Default"), "", 1|2)]+@microphones.reject{|m|m.default_alias?}
     @soundcardsmapping=@soundcards.map{|c|c.name}
     @soundcardsmapping[0]=""
     @microphonesmapping=@microphones.map{|m|m.name}
@@ -467,10 +469,14 @@ def make_window
       @soundsettings=true
     end
     make_setting(p_("Settings", "Output device"), @soundcards, "SoundCard", "SoundCard", @soundcardsmapping)
+    ringtone_devices = [p_("Settings", "Use Elten output device")] + @soundcards.drop(1)
+    make_setting(p_("Settings", "Incoming call ringtone output device"), ringtone_devices, "SoundCard", "RingtoneDevice", @soundcardsmapping)
     make_setting(p_("Settings", "Input device"), @microphones, "SoundCard", "Microphone", @microphonesmapping)
     make_setting(p_("Settings", "Mute the microphone in conferences while recording other content"), :bool, "Advanced", "DisableConferenceMicOnRecord")
     make_setting(p_("Settings", "Use noise reduction"), [p_("Settings", "Never"), p_("Settings", "In audio conferences only"), p_("Settings", "In audio conferences and when recording")], "Advanced", "UseDenoising", ["never", "conferences", "conferences_and_recording"])
     make_setting(p_("Settings", "Enable echo cancellation"), :bool, "Advanced", "UseEchoCancellation")
+    levels = 100.step(0, -5).to_a
+    make_setting(p_("Settings", "Incoming call ringtone volume"), levels.map{|level| "#{level}%"}, "SoundCard", "RingtoneVolume", levels)
       end
   def load_ii
     return if !defined?(EltenAPI::InvisibleInterface) || (EltenAPI::InvisibleInterface.respond_to?(:available?) && !EltenAPI::InvisibleInterface.available?)
@@ -487,11 +493,13 @@ def make_window
             ii.each{|k|iimodifiers.push(k[0]);iimodifiersmapping.push(k[1])}
             make_setting(p_("Settings", "Modifier keys"), iimodifiers, "InvisibleInterface", "IIModifiers", iimodifiersmapping)
             make_setting(p_("Settings", "Cards to show"), [p_("Settings","Messages"), p_("Settings","Feed"), p_("Settings", "Conference options")], "InvisibleInterface", "Cards", ["messages", "feed", "conference"], true)
+            make_setting(p_("Settings", "Read message subjects"), :bool, "InvisibleInterface", "ReadMessageSubjects")
     end
     def load_advanced
           setting_category(p_("Settings", "Advanced"))
     make_setting(p_("Settings", "Enable FX effects"), :bool, "Advanced", "UseFX")
     make_setting(p_("Settings", "Use bilinear HRTF interpolation"), :bool, "Advanced", "UseBilinearHRTF")
+    make_setting(p_("Settings", "Allow peer-to-peer connections"), :bool, "Advanced", "AllowP2P")
     make_setting(p_("Settings", "Disable concurrent requests (HTTP/2)"), :bool, "Advanced", "DisableHTTP2")
     make_setting(p_("Settings", "Recover responses after request timeout"), [p_("Settings", "Disabled"), p_("Settings", "Mutating requests"), p_("Settings", "All requests")], "Advanced", "RequestResponseCacheMode", ["disabled", "mutating", "all"])
     make_setting(p_("Settings", "Use only TCP packets in conferences"), :bool, "Advanced", "ConferencesTCPOnly")

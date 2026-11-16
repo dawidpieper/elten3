@@ -91,11 +91,11 @@ module GlobalMenu
     }
     end
     @menu.submenu(p_("MainMenu", "&Programs")) {|m|
-    list=Programs.list
+    list=Programs.list.reject{|program|program.hidden?}.sort_by {|program| EltenSystemHelpers.locale_sort_key((program.menu_label||program.name||program.to_s).to_s.delete("&"))}
     for prg in list
-      m.scene(prg.menu_label||prg.name||prg.to_s, prg) if !prg.hidden?
+      m.scene(prg.menu_label||prg.name||prg.to_s, prg)
       end
-    m.scene(p_("MainMenu", "Programs management"), Scene_Programs)
+    m.scene(p_("MainMenu", "Program centre"), Scene_Programs)
     }
     @menu.submenu(p_("MainMenu", "&Tools")) {|m|
     m.scene(p_("MainMenu", "Program &settings"), Scene_Settings)
@@ -169,7 +169,6 @@ module GlobalMenu
     }
     if !developer_mode?
     m.option(p_("MainMenu", "Restart in de&veloper mode")) {
-                                  play_sound("logout")
               if !restart_to_developer_mode
                 alert(p_("MainMenu", "Cannot restart in developer mode."))
               end
@@ -183,7 +182,6 @@ module GlobalMenu
               $scene=Scene_Loading.new
     }
     m.option(p_("MainMenu", "Restart in &normal mode")) {
-                                  play_sound("logout")
               if !restart_to_normal_mode
                 alert(p_("MainMenu", "Cannot restart in normal mode."))
               end

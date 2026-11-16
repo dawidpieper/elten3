@@ -17,7 +17,7 @@ module EltenLink
   class AppPackage
     attr_accessor :id, :size, :version, :build_id, :elten_api_version, :eltenlink_contract_version,
       :author, :owner, :path, :url, :original_filename, :recommended, :creation_time, :update_time,
-      :verified, :platforms, :metadata
+      :verified, :platforms, :metadata, :active_installations
     attr_reader :realpath, :raw_name, :raw_description, :localized_names, :localized_descriptions,
       :name_languages, :description_languages, :main_language, :supported_languages
 
@@ -26,7 +26,7 @@ module EltenLink
       raw_name: nil, raw_description: nil, localized_names: {}, localized_descriptions: {},
       main_language: "unknown", supported_languages: [], owner: "", original_filename: "",
       supported_languages_declared: nil, recommended: false, creation_time: 0, update_time: 0,
-      verified: false, platforms: [], metadata: {})
+      verified: false, platforms: [], metadata: {}, active_installations: nil)
       @id = id.to_s
       @path = path
       @raw_name = (raw_name.nil? ? name : raw_name).to_s
@@ -60,6 +60,7 @@ module EltenLink
       @verified = verified == true || verified.to_s == "1" || verified.to_s.casecmp?("true")
       @creation_time = creation_time.to_i
       @update_time = update_time.to_i
+      @active_installations = active_installations.nil? ? nil : active_installations.to_i
       @platforms = Array(platforms).map(&:to_s)
     end
 
@@ -144,7 +145,7 @@ module EltenLink
 
       def list(timeout: nil, cancellation_token: nil)
         data = @client.api_data("GET", path, **request_options(timeout, cancellation_token))
-        @maxsize = data["maxsize"].to_i
+        @maxsize = data.fetch(limit_field, data["maxsize"]).to_i
         @used_size = data["used_size"].to_i
         data["resources"].to_a.map { |row| Apps.resource_from(row, @app_uuid) }
       end
@@ -177,6 +178,14 @@ module EltenLink
         true
       end
 
+      def download(resource, timeout: nil, cancellation_token: nil)
+        @client.api_download("#{path}/#{resource_id(resource)}/download", **request_options(timeout, cancellation_token))
+      end
+
+      def max_public_resources_bytes
+        @maxsize
+      end
+
       def download_url(resource)
         return resource.url.to_s if resource.respond_to?(:url) && resource.url.to_s != ""
 
@@ -184,6 +193,10 @@ module EltenLink
       end
 
       private
+
+      def limit_field
+        "max_public_resources_bytes"
+      end
 
       def request_options(timeout, cancellation_token)
         options = {}
@@ -204,6 +217,24 @@ module EltenLink
         id
       rescue ArgumentError, TypeError
         raise ArgumentError, "Invalid app resource ID"
+      end
+    end
+
+    class AppPrivateResources < AppResources
+      undef_method :maxsize, :max_public_resources_bytes
+
+      def max_private_resources_bytes_per_user
+        @maxsize
+      end
+
+      private
+
+      def limit_field
+        "max_private_resources_bytes_per_user"
+      end
+
+      def path
+        "/api/v1/apps/#{Apps.query_escape(@app_uuid)}/private-resources"
       end
     end
 
@@ -407,6 +438,7 @@ module EltenLink
           verified: row["verified"],
           creation_time: row["creation_time"],
           update_time: row["update_time"],
+          active_installations: row["active_installations"],
           platforms: row["platforms"] || metadata["platforms"] || [],
           metadata: metadata
         )
@@ -417,7 +449,14 @@ module EltenLink
         true
       end
 
-      def create_live_session(client, appid:, instance_id:, metadata: {}, participant_metadata: {}, capacity: 2)
+      def create_live_session(client, appid:, instance_id:, metadata: {}, participant_metadata: {}, capacity: 2, visibility: :private, join_code: nil, discovery_metadata: {}, hide_participants: false, stack_entry_bytes: 256, stack_entries: 0, pool_count: 0, private_messages: false)
+        raise ArgumentError, "hide_participants must be boolean" unless hide_participants == true || hide_participants == false
+        if hide_participants
+          discovery = client.api_data("GET", "/api/v1/apps/live-sessions/discover", { "appid" => appid, "instance_id" => instance_id, "sources" => "created", "limit" => 1 })
+          unless discovery.dig("limits", "hide_participants") == true
+            raise Error.new("Server does not support hiding live session participants", code: "apps.live_sessions.discovery_unsupported")
+          end
+        end
         client.api_data(
           "POST",
           "/api/v1/apps/live-sessions",
@@ -426,7 +465,10 @@ module EltenLink
             "instance_id" => instance_id,
             "metadata" => metadata,
             "participant_metadata" => participant_metadata,
-            "capacity" => capacity
+            "capacity" => capacity,
+            "stack_entry_bytes" => stack_entry_bytes,
+            "stack_entries" => stack_entries, "pool_count" => pool_count, "private_messages" => private_messages,
+            "visibility" => visibility.to_s, "join_code" => join_code, "discovery_metadata" => discovery_metadata, "hide_participants" => hide_participants
           }
         )
       end
@@ -439,20 +481,20 @@ module EltenLink
         )
       end
 
-      def accept_live_session(client, session_id:, appid:, instance_id:, participant_metadata: {})
+      def accept_live_session(client, session_id:, appid:, instance_id:, participant_metadata: {}, invitation_id: nil)
         client.api_data(
           "POST",
           "#{live_session_path(session_id)}/accept",
           {
             "appid" => appid,
             "instance_id" => instance_id,
-            "participant_metadata" => participant_metadata
+            "participant_metadata" => participant_metadata, "invitation_id" => invitation_id
           }
         )
       end
 
-      def reject_live_session(client, session_id:, appid:)
-        client.api_data("POST", "#{live_session_path(session_id)}/reject", { "appid" => appid })
+      def reject_live_session(client, session_id:, appid:, invitation_id: nil)
+        client.api_data("POST", "#{live_session_path(session_id)}/reject", { "appid" => appid, "invitation_id" => invitation_id })
         true
       end
 
@@ -469,13 +511,75 @@ module EltenLink
         )
       end
 
-      def leave_live_session(client, session_id:, participant_id:)
-        client.api_data("POST", "#{live_session_path(session_id)}/leave", { "participant_id" => participant_id })
+      def live_session_discovery_request(operation, params, session_id: nil)
+        path = "/api/v1/apps/live-sessions"
+        case operation
+        when :create
+          ["POST", path, params]
+        when :discover_sessions
+          ["GET", "#{path}/discover", params]
+        when :find_by_code
+          ["POST", "#{path}/resolve-code", params]
+        when :refresh
+          ["GET", "#{live_session_path(session_id)}/discovery", params]
+        when :update_metadata
+          ["PUT", "#{live_session_path(session_id)}/discovery-metadata", params]
+        when :join, :accept, :reject
+          ["POST", "#{live_session_path(session_id)}/#{operation}", params]
+        else
+          raise ArgumentError, "Invalid live session discovery operation"
+        end
+      end
+
+      def live_session_transfer_ownership_request(session_id, participant_id, new_owner_id)
+        ["POST", "#{live_session_path(session_id)}/transfer-ownership", { "participant_id" => participant_id, "new_owner_id" => new_owner_id }]
+      end
+
+      def live_session_private_request(session_id, participant_id, params)
+        ["POST", "#{live_session_path(session_id)}/private-messages", params.merge("participant_id" => participant_id)]
+      end
+
+      def live_session_pool_request(session_id, participant_id, operation, params = {}, pool_id: nil, draw_id: nil)
+        path = "#{live_session_path(session_id)}/pools"
+        [pool_id, draw_id].compact.each do |id|
+          raise ArgumentError, "Invalid pool identifier" unless id.is_a?(String) && id.match?(/\A[A-Za-z0-9_-]{16,64}\z/)
+        end
+        path += "/#{pool_id}" if pool_id
+        method = case operation
+        when :create then "POST"
+        when :list, :state then "GET"
+        when :delete then "DELETE"
+        when :take
+          path += "/take"
+          "POST"
+        when :draws, :draw, :reveal
+          path += "/draws"
+          path += "/#{draw_id}" if draw_id
+          path += "/reveal" if operation == :reveal
+          operation == :reveal ? "POST" : "GET"
+        else
+          raise ArgumentError, "Invalid pool operation"
+        end
+        [method, path, params.merge("participant_id" => participant_id)]
+      end
+
+      def live_session_random_request(session_id, participant_id, operation, params = {})
+        suffix = { random: "random", stack_random: "stack/random" }.fetch(operation)
+        ["POST", "#{live_session_path(session_id)}/#{suffix}", params.merge("participant_id" => participant_id)]
+      end
+
+      def live_session_stack_request(session_id, participant_id, operation, params = {})
+        method = { push: "POST", read: "GET", trim: "DELETE" }.fetch(operation)
+        [method, "#{live_session_path(session_id)}/stack", params.merge("participant_id" => participant_id)]
+      end
+
+      def leave_live_session(client, session_id:, participant_id:, timeout: Client::DEFAULT_TIMEOUT)
+        client.api_data("POST", "#{live_session_path(session_id)}/leave", { "participant_id" => participant_id }, timeout: timeout)
         true
       end
 
-      def close_live_session(client, session_id:, participant_id:)
-        client.api_data("POST", "#{live_session_path(session_id)}/close", { "participant_id" => participant_id })
+      def close_live_session(client, session_id:, participant_id:, timeout: Client::DEFAULT_TIMEOUT)
+        client.api_data("POST", "#{live_session_path(session_id)}/close", { "participant_id" => participant_id }, timeout: timeout)
         true
       end
 
@@ -483,41 +587,70 @@ module EltenLink
         "/api/v1/apps/live-sessions/#{query_escape(session_id.to_s)}"
       end
 
-      def notify(client, appid:, user:, type:, metadata: {}, expires_in: 0)
-        client.api_data(
-          "POST",
-          "/api/v1/apps/notifications",
-          {
-            "appid" => appid.to_s,
-            "user" => user.to_s,
-            "type" => type.to_s,
-            "metadata" => metadata,
-            "expires_in" => expires_in.to_i
-          }
-        )
+      def notify(client, appid:, user:, type:, metadata: {}, expires_in: 0, key: nil)
+        params = {
+          "appid" => appid.to_s,
+          "user" => user.to_s,
+          "type" => type.to_s,
+          "metadata" => metadata,
+          "expires_in" => expires_in.to_i
+        }
+        params["key"] = key if key != nil
+        client.api_data("POST", "/api/v1/apps/notifications", params)
         true
       end
 
-      def register(client, name:, data: nil, tables: nil, tables_protected: false, notifications: false)
+      def revoke_notification(client, appid:, user:, key:)
+        client.api_data("PATCH", "/api/v1/apps/notifications/revoke",
+          { "appid" => appid.to_s, "user" => user.to_s, "key" => key })
+        true
+      end
+
+      def notification_lifecycle(client, appid:, id:, expires_after_receipt:, headers: nil, cancellation_token: nil)
+        data = client.api_data("PATCH", "/api/v1/apps/notifications/#{id.to_i}/lifecycle",
+          { "appid" => appid.to_s, "expires_after_receipt" => expires_after_receipt },
+          headers: headers, cancellation_token: cancellation_token)
+        Notifications.from_data(data["notification"])
+      end
+
+      def register(client, name:, data: nil, tables: nil, tables_protected: false, notifications: false, max_public_resources_bytes: nil, max_private_resources_bytes_per_user: nil)
         params = { "name" => name.to_s }
         params["data"] = data if data != nil
         params["tables"] = tables if tables != nil
         params["tables_protected"] = tables_protected == true || tables_protected.to_s == "1" || tables_protected.to_s.downcase == "true"
         params["notifications"] = notifications == true || notifications.to_s == "1" || notifications.to_s.downcase == "true"
+        params["max_public_resources_bytes"] = max_public_resources_bytes unless max_public_resources_bytes.nil?
+        params["max_private_resources_bytes_per_user"] = max_private_resources_bytes_per_user unless max_private_resources_bytes_per_user.nil?
         data = client.api_data("POST", "/api/v1/apps", params)
         data.dig("app", "uuid").to_s
       end
 
-      def update(client, uuid, name: nil, data: nil, tables: nil, tables_protected: nil, notifications: nil)
+      def update(client, uuid, name: nil, data: nil, tables: nil, tables_protected: nil, notifications: nil, max_public_resources_bytes: nil, max_private_resources_bytes_per_user: nil, expected_schema_revision: nil)
+        params = app_update_params(name: name, data: data, tables: tables, tables_protected: tables_protected,
+          notifications: notifications, max_public_resources_bytes: max_public_resources_bytes,
+          max_private_resources_bytes_per_user: max_private_resources_bytes_per_user, expected_schema_revision: expected_schema_revision)
+        data = client.api_data("PUT", "/api/v1/apps/#{query_escape(uuid)}", params)
+        data["app"]
+      end
+
+      def preview_update(client, uuid, **options)
+        data = client.api_data("POST", "/api/v1/apps/#{query_escape(uuid)}/schema/preview", app_update_params(**options))
+        data.fetch("preview")
+      end
+
+      def app_update_params(name: nil, data: nil, tables: nil, tables_protected: nil, notifications: nil, max_public_resources_bytes: nil, max_private_resources_bytes_per_user: nil, expected_schema_revision: nil)
         params = {}
         params["name"] = name.to_s if name != nil
         params["data"] = data if data != nil
         params["tables"] = tables if tables != nil
         params["tables_protected"] = tables_protected == true || tables_protected.to_s == "1" || tables_protected.to_s.downcase == "true" if tables_protected != nil
         params["notifications"] = notifications == true || notifications.to_s == "1" || notifications.to_s.downcase == "true" if notifications != nil
-        data = client.api_data("PUT", "/api/v1/apps/#{query_escape(uuid)}", params)
-        data["app"]
+        params["max_public_resources_bytes"] = max_public_resources_bytes unless max_public_resources_bytes.nil?
+        params["max_private_resources_bytes_per_user"] = max_private_resources_bytes_per_user unless max_private_resources_bytes_per_user.nil?
+        params["expected_schema_revision"] = expected_schema_revision unless expected_schema_revision.nil?
+        params
       end
+      private :app_update_params
 
       def info(client, uuid)
         data = client.api_data("GET", "/api/v1/apps/#{query_escape(uuid)}")
@@ -535,6 +668,10 @@ module EltenLink
 
       def resources(client, uuid)
         AppResources.new(client, uuid)
+      end
+
+      def private_resources(client, uuid)
+        AppPrivateResources.new(client, uuid)
       end
 
       def delete(client, uuid)

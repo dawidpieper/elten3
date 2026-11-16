@@ -4,7 +4,7 @@
 
 This guide covers running Elten directly from a source checkout and producing packaged launcher builds. For the runtime and source layout, see [Elten 3 architecture](architecture.md); for localisation and pull request guidance, see [Contributing to Elten 3](contributing.md).
 
-Elten 3.0 is currently a release candidate. Build requirements, runtime versions, packaging details and CMake options may still change.
+Elten 3.0 is a stable release. The [hosted application API](eltenapps.md) remains experimental, with stabilisation planned for Elten 3.1.
 
 ## Quick start from source
 

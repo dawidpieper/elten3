@@ -5,7 +5,7 @@
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>.
 
 class Audio3DEffect < SoundEffect
-  attr_reader :x, :y, :z, :bilinear, :frequency
+  attr_reader :x, :y, :z, :bilinear, :frequency, :hrtf_profile
 
   DEFAULT_FREQUENCY = 48_000
   DEFAULT_FRAMESIZE = 20
@@ -44,7 +44,6 @@ class Audio3DEffect < SoundEffect
       key = [frequency, framesize]
       @@engine_mutex.synchronize do
         return @@engines[key] if @@engines[key] != nil
-        require_relative "../steamaudio" unless defined?(::SteamAudio)
         SteamAudio.load
         @@engines[key] = SteamAudio.new(frequency, framesize)
       end
@@ -67,9 +66,12 @@ class Audio3DEffect < SoundEffect
     end
   end
 
-  def initialize(frequency = DEFAULT_FREQUENCY, framesize = DEFAULT_FRAMESIZE, position: nil, interpolation: :nearest)
+  def initialize(frequency = DEFAULT_FREQUENCY, framesize = DEFAULT_FRAMESIZE, position: nil, interpolation: :nearest, hrtf: nil, spatial_blend: 1.0)
     @frequency = frequency.to_i <= 0 ? DEFAULT_FREQUENCY : frequency.to_i
     @framesize = framesize.to_i <= 0 ? DEFAULT_FRAMESIZE : framesize.to_i
+    raise ArgumentError, "Expected an Audio::HRTF profile" if hrtf != nil && !hrtf.is_a?(Audio::HRTF)
+    @hrtf_profile = hrtf
+    @pending = "".b
     @mutex = Mutex.new
     @x = 0.0
     @y = 0.0
@@ -78,6 +80,7 @@ class Audio3DEffect < SoundEffect
     @effect = nil
     @hrtf = nil
     @channels = nil
+    self.spatial_blend = spatial_blend
     self.position = position if position != nil
     self.interpolation = interpolation
     load_engine(@frequency)
@@ -107,17 +110,57 @@ class Audio3DEffect < SoundEffect
     return "".b if samples <= 0
     expected_samples = frame_samples(frequency)
     expected_bytes = expected_samples * channels * 4
-    frame = audio.bytesize < expected_bytes ? audio + ("\0".b * (expected_bytes - audio.bytesize)) : audio.byteslice(0, expected_bytes)
-    x, y, z = @mutex.synchronize { [@x, @y, @z] }
+    x, y, z, blend = @mutex.synchronize { [@x, @y, @z, @spatial_blend] }
     z = 0.001 if x == 0 && y == 0 && z == 0
-    out = @hrtf.process(@effect, frame, x, y, z)
-    out.byteslice(0, samples * OUTPUT_CHANNELS * 4).to_s.b
+    @pending = "".b
+    output = "".b
+    offset = 0
+    while offset < audio.bytesize
+      frame = audio.byteslice(offset, expected_bytes)
+      count = frame.bytesize / channels / 4
+      frame = frame.ljust(expected_bytes, "\0") if frame.bytesize < expected_bytes
+      out = @hrtf.process(@effect, frame, x, y, z, spatial_blend: blend)
+      output << out.byteslice(0, count * OUTPUT_CHANNELS * 4)
+      @pending = out.byteslice(count * OUTPUT_CHANNELS * 4..-1).to_s.b
+      offset += expected_bytes
+    end
+    output
   rescue Exception => e
     Log.error("Audio3DEffect error: #{e.class}: #{e.message}")
     stereo_silence(audio, channels)
   end
 
+  def process_final(audio, frequency, channels)
+    output = process(audio, frequency, channels)
+    output << @pending
+    @pending = "".b
+    output
+  end
+
   def reset
+    @pending = "".b
+    @hrtf.reset_effect(@effect) if @hrtf != nil && @effect != nil
+  end
+
+  def tail_duration
+    nil
+  end
+
+  def tail
+    unless @pending.empty?
+      result, @pending = @pending, "".b
+      return result
+    end
+    @hrtf != nil && @effect != nil ? @hrtf.tail(@effect) : "".b
+  end
+
+  def spatial_blend
+    @mutex.synchronize { @spatial_blend }
+  end
+
+  def spatial_blend=(value)
+    blend = Audio::SpatialMath.scalar(value, "Spatial blend", min: 0, max: 1)
+    @mutex.synchronize { @spatial_blend = blend }
   end
 
   def audio_clone
@@ -125,17 +168,18 @@ class Audio3DEffect < SoundEffect
       @frequency,
       @framesize,
       :position => position,
-      :interpolation => interpolation
+      :interpolation => interpolation,
+      :hrtf => @hrtf_profile,
+      :spatial_blend => spatial_blend
     )
   end
 
   def close
-    @hrtf.remove_effect(@effect) if @hrtf != nil && @effect != nil
-    @effect = nil
-    @channels = nil
-  rescue Exception
-    @effect = nil
-    @channels = nil
+    release_effect
+    if @hrtf_profile != nil
+      @hrtf&.free
+      @hrtf = nil
+    end
   end
 
   def x=(value)
@@ -185,10 +229,15 @@ class Audio3DEffect < SoundEffect
   private
 
   def load_engine(frequency)
+    if @hrtf_profile != nil
+      raise SteamAudio::Error, "Steam Audio is unavailable" if !SteamAudio.load
+      @hrtf ||= SteamAudio.new(frequency, @framesize, hrtf: @hrtf_profile)
+      return true
+    end
     engine = self.class.engine(frequency, @framesize)
     return false if engine == nil
     if @hrtf != engine
-      close
+      release_effect
       @hrtf = engine
     end
     true
@@ -196,12 +245,19 @@ class Audio3DEffect < SoundEffect
 
   def ensure_effect(channels)
     return if @effect != nil && @channels == channels
-    close
+    release_effect
     return if @hrtf == nil
     @effect = @hrtf.add_effect(channels)
     @effect = nil if @effect.to_i < 0
     @channels = channels
     @hrtf.set_bilinear(@effect, @bilinear) if @effect != nil
+  end
+
+  def release_effect
+    @hrtf.remove_effect(@effect) if @hrtf != nil && @effect != nil
+    @effect = nil
+    @channels = nil
+    @pending = "".b
   end
 
   def frame_samples(frequency)

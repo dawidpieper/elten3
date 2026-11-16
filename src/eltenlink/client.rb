@@ -150,7 +150,27 @@ module EltenLink
       payload.is_a?(Hash) && self.class.truthy?(payload["success"])
     end
 
+    def api_download(path, timeout: DEFAULT_TIMEOUT, cancellation_token: nil)
+      raise ArgumentError, "Expected an API path" unless path.to_s.start_with?("/api/v1/")
+
+      response = api_binary_response("GET", path, nil, timeout: timeout, cancellation_token: cancellation_token)
+      raise @last_error if response.nil? && @last_error != nil
+
+      response.to_s.b
+    end
+
     def api_binary_payload(method, path, body, headers = {}, params = nil, timeout: DEFAULT_TIMEOUT, cancellation_token: nil)
+      response = api_binary_response(method, path, body, headers, params, timeout: timeout, cancellation_token: cancellation_token)
+      return nil if response.nil?
+
+      JSON.parse(response.to_s)
+    rescue JSON::ParserError
+      safe_path = self.class.redacted_path(path)
+      @last_error = Error.new("Invalid JSON response (#{safe_path})", code: "invalid_json", module_name: safe_path, response: response)
+      nil
+    end
+
+    def api_binary_response(method, path, body, headers = {}, params = nil, timeout: DEFAULT_TIMEOUT, cancellation_token: nil)
       raise_if_cancelled!(cancellation_token)
       params = params.is_a?(Hash) ? params.dup : {}
       self.class.session_auth_params.each { |key, value| params[key] = value if params[key] == nil }
@@ -158,30 +178,39 @@ module EltenLink
       safe_request_path = self.class.redacted_path(request_path)
       response = nil
       done = false
+      accept_response = true
+      state_mutex = Mutex.new
       @last_error = nil
       request_body = body.respond_to?(:read) ? body : body.to_s.b
       e_read_url(self.class.absolute_api_url(request_path), method.to_s.upcase, request_body, headers, nil, cancellation_token: cancellation_token) do |resp, _data|
-        response = resp == :error ? nil : resp
-        @last_error = Error.network(module_name: safe_request_path) if resp == :error
-        done = true
+        state_mutex.synchronize do
+          next unless accept_response
+
+          response = resp == :error ? nil : resp
+          @last_error = Error.network(module_name: safe_request_path) if resp == :error || resp.nil?
+          done = true
+        end
       end
 
       started = Time.now.to_f
-      while done == false
+      while state_mutex.synchronize { done == false }
         raise_if_cancelled!(cancellation_token)
         wait_for_response_iteration
         if timeout != nil && Time.now.to_f - started > timeout.to_f
-          @last_error = Error.timeout(module_name: safe_request_path)
+          state_mutex.synchronize do
+            unless done
+              accept_response = false
+              @last_error = Error.timeout(module_name: safe_request_path)
+            end
+          end
           break
         end
       end
       raise_if_cancelled!(cancellation_token)
       return nil if response == nil
-      JSON.parse(response.to_s)
-    rescue JSON::ParserError
-      safe_path = self.class.redacted_path(path)
-      @last_error = Error.new("Invalid JSON response (#{safe_path})", code: "invalid_json", module_name: safe_path, response: response)
-      nil
+      response
+    ensure
+      state_mutex.synchronize { accept_response = false } if state_mutex
     end
 
     def api_binary_data(method, path, body, headers = {}, params = nil, timeout: DEFAULT_TIMEOUT, cancellation_token: nil)

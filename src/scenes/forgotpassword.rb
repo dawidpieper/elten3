@@ -10,7 +10,9 @@ class Scene_ForgotPassword
     loop do    
     @user=input_text(p_("ForgotPassword", "If you forget your password, you can reset it using the email address you provided when registering. You can request a password reset code to verify your identity. The code will be sent to your email address. Warning: two-factor authentication will be disabled on your account. To continue, enter your username."),flags: 0,text: "",escapable: true)
     return $scene=Scene_Loading.new if @user==nil
-    @user=finduser(@user) if finduser(@user).downcase==@user.downcase
+    next if @user==""
+    resolved_user=finduser(@user)
+    @user=resolved_user if resolved_user.downcase==@user.downcase
           break
       end
 @mail=""
@@ -68,6 +70,8 @@ loop do
     loop do
     key=input_text(p_("ForgotPassword", "Enter the generated password reset code"),flags: 0,text: "",escapable: true)
     return if key==nil
+    key=key.delete("\r\n ")
+    next if key==""
 begin
   EltenLink::Accounts.verify_password_reset(elten_link, user: @user, mail: @mail, key: key)
   ok=true

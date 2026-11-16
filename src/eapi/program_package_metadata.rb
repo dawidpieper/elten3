@@ -17,6 +17,8 @@ module Programs
         raise_metadata_error("Package metadata must be an object") if !metadata.is_a?(Hash)
         root = File.expand_path(source_dir)
         prepared = metadata.dup
+        encoding = normalize_sources_default_encoding(prepared["sources_default_encoding"])
+        prepared["sources_default_encoding"] = encoding.name if encoding != nil
         files, detected_languages = scan_locale(root)
 
         LOCALIZED_FIELDS.each do |manifest_key, file_kind|
@@ -44,6 +46,15 @@ module Programs
           emit_warning(warning, "Program locale files declare languages missing from supported_languages: #{unsupported_files.join(", ")}")
         end
         prepared
+      end
+
+      def normalize_sources_default_encoding(value)
+        return nil if value == nil
+        encoding = Encoding.find(value) if value.is_a?(String) && !%w[external internal locale filesystem].include?(value.downcase)
+        raise ArgumentError if encoding == nil || !encoding.ascii_compatible? || encoding.dummy?
+        encoding
+      rescue ArgumentError
+        raise_metadata_error("Invalid sources_default_encoding #{value.inspect}; expected an ASCII-compatible Ruby encoding")
       end
 
       def normalize_language(value, allow_unknown: false)

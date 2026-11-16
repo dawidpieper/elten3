@@ -43,15 +43,20 @@ text=text[0..5000]
   end
   end
 
+    def translation_languages
+      Lists.langs.map do |code, language|
+        [code, language['nativeName']+" ("+language['name']+")"]
+      end.sort_by { |code, name| [name.downcase, code] }.to_h
+    end
+
 # Opens a translator dialog
 #
 # @param text [String] a text to translate
      def translator(text)
-  langs={}
-  for lk in Lists.langs.keys
-    lname=Lists.langs[lk]['nativeName']+" ("+Lists.langs[lk]['name']+")"
-    langs[lk]=lname
-    end
+  langs=translation_languages
+  selected=readconfig("Interface", "TranslationLanguages", "").split(",")
+  filtered=langs.select { |code, _name| selected.include?(code) }
+  langs=filtered unless filtered.empty?
        dialog_open
   from=ListBox.new([p_("EAPI_External", "recognize automatically")]+langs.values,header: p_("EAPI_External", "source language"))
  ind=0

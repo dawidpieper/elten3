@@ -637,6 +637,41 @@ class SoundEffect
     audio
   end
 
+  def process_final(audio, frequency, channels)
+    process(audio, frequency, channels)
+  end
+
+  def self.process_frame(effect, audio, frequency, channels)
+    method = audio.bytesize < frequency * channels * 4 / 50 && effect.respond_to?(:process_final) ? :process_final : :process
+    effect.public_send(method, audio, frequency, channels).to_s.b
+  end
+
+  def tail
+    "".b
+  end
+
+  def tail_duration
+    0.0
+  end
+
+  def self.each_tail(effects, frequency, channels)
+    return enum_for(__method__, effects, frequency, channels) if !block_given?
+    effects.each_with_index do |effect, index|
+      channels = effect.output_channels(channels, frequency) if effect.respond_to?(:output_channels)
+      next if !effect.respond_to?(:tail)
+      loop do
+        audio = effect.tail.to_s.b
+        break if audio.empty?
+        output_channels = channels
+        effects.drop(index + 1).each do |following|
+          audio = process_frame(following, audio, frequency, output_channels)
+          output_channels = following.output_channels(output_channels, frequency) if following.respond_to?(:output_channels)
+        end
+        yield audio if !audio.empty?
+      end
+    end
+  end
+
   def reset
   end
 
@@ -664,6 +699,8 @@ class Sound
   FLOAT_SAMPLE_BYTES = 4
   EFFECT_QUEUE_POLL_SECONDS = FRAME_MILLISECONDS / 2000.0
   INTERACTIVE_EFFECT_BUFFER_SECONDS = FRAME_MILLISECONDS / 1000.0
+  LOW_LATENCY_EFFECT_BUFFER_SECONDS = FRAME_MILLISECONDS * 2 / 1000.0
+  LOW_LATENCY_EFFECT_QUEUE_POLL_SECONDS = 0.005
   PCM_FORMATS = {
     s16le: [0, 2],
     float: [Bass::BASS_SAMPLE_FLOAT, 4],
@@ -742,6 +779,7 @@ class Sound
     @processing_channels = 0
     @kind = :none
     @effects = []
+    @recordings = []
     @effects_mutex = Mutex.new
     @pipeline_mutex = Mutex.new
     @sound_attributes = {}
@@ -847,7 +885,12 @@ class Sound
 
   def effect_buffer=(value)
     @effect_buffer = normalize_effect_buffer(value)
-    @effect_buffer_seconds = @effect_buffer == :interactive ? INTERACTIVE_EFFECT_BUFFER_SECONDS : nil
+    @effect_buffer_seconds = case @effect_buffer
+    when :interactive
+      INTERACTIVE_EFFECT_BUFFER_SECONDS
+    when :low_latency
+      LOW_LATENCY_EFFECT_BUFFER_SECONDS
+    end
   end
 
   def output_device=(device)
@@ -1041,6 +1084,8 @@ class Sound
     else
       Bass::BASS_ChannelStop.call(@channel)
     end
+  ensure
+    stop_recordings
   end
 
   def pause
@@ -1100,9 +1145,13 @@ class Sound
   end
 
   def effects_latency_ms
-    update_period = [Bass::BASS_GetConfig.call(BASS_CONFIG_UPDATE_PERIOD).to_f, 0.0].max
+    buffer_ms = if @effect_buffer == :low_latency
+      LOW_LATENCY_EFFECT_BUFFER_SECONDS * 1000.0
+    else
+      [Bass::BASS_GetConfig.call(BASS_CONFIG_UPDATE_PERIOD).to_f, 0.0].max
+    end
     effects = @effects_mutex.synchronize { @effects.dup }
-    update_period + effects.sum { |effect| declared_effect_latency_ms(effect) }
+    buffer_ms + effects.sum { |effect| declared_effect_latency_ms(effect) }
   end
 
   def effect_playback_seconds
@@ -1126,15 +1175,20 @@ class Sound
     effect_playback_seconds
   end
 
-  def spatialize(position: nil, interpolation: :bilinear)
+  def spatialize(position: nil, interpolation: :bilinear, hrtf: nil, spatial_blend: 1.0)
     fail(RuntimeError, "Audio3DEffect is unavailable") if !defined?(::Audio3DEffect)
+    if defined?(Audio::SpatialEmitter) && @effects.any? { |effect| effect.is_a?(Audio::SpatialEmitter) }
+      raise ArgumentError, "Sound already belongs to a spatial scene"
+    end
     position = Audio3DEffect::ORIGIN if position == nil
-    if @spatial_effect == nil || !@effects.include?(@spatial_effect)
-      effect = Audio3DEffect.new(position: position, interpolation: interpolation)
+    if @spatial_effect == nil || !@effects.include?(@spatial_effect) || @spatial_effect.hrtf_profile != hrtf
+      effect = Audio3DEffect.new(position: position, interpolation: interpolation, hrtf: hrtf, spatial_blend: spatial_blend)
+      effect_remove(@spatial_effect) if spatial?
       effect_add(effect)
       @spatial_effect = effect
     else
       @spatial_effect.position = position
+      @spatial_effect.spatial_blend = spatial_blend
       @spatial_effect.interpolation = interpolation
     end
     self
@@ -1204,8 +1258,25 @@ class Sound
     self
   end
 
+  def record(path, encoder:)
+    @pipeline_mutex.synchronize do
+      raise Audio::EncodingError, "Sound is not open" if !opened?
+      raise Audio::UnsupportedOperation, "Sample sounds cannot be recorded" if @kind == :sample
+      recording = SoundRecording.new(self, path, :encoder => encoder, :channel => native_effect_channel)
+      @recordings.reject!(&:closed?)
+      @recordings << recording
+      recording
+    end
+  end
+
   def close
-    @pipeline_mutex.synchronize { close_sound }
+    @pipeline_mutex.synchronize do
+      begin
+        stop_recordings
+      ensure
+        close_sound
+      end
+    end
   end
 
   def close_sound
@@ -1740,7 +1811,20 @@ class Sound
     (seconds * [frequency, 1].max * ch * bitrate / 8).to_i
   end
 
+  def stop_recordings
+    recordings = @recordings
+    @recordings = []
+    error = nil
+    recordings.each do |recording|
+      recording.close
+    rescue StandardError => failure
+      error ||= failure
+    end
+    raise error if error
+  end
+
   def close_native_handles
+    stop_recordings
     cancel_all_tracked_slides
     unbind_native_effects
     if @kind == :sample
@@ -1880,28 +1964,40 @@ class Sound
       end
       if effect_queue_full?(output_frame_bytes, freq, output_channels)
         start_effect_output if @effect_buffer_seconds != nil
-        sleep(EFFECT_QUEUE_POLL_SECONDS)
+        sleep(@effect_buffer == :low_latency ? LOW_LATENCY_EFFECT_QUEUE_POLL_SECONDS : EFFECT_QUEUE_POLL_SECONDS)
         next
       end
       read = Bass::BASS_ChannelGetData.call(read_channel, buffer, frame_bytes)
       if read.to_i <= 0
-        if Bass::BASS_ChannelIsActive.call(read_channel).to_i == BASS_ACTIVE_STOPPED
+        if Bass::BASS_ChannelIsActive.call(read_channel).to_i != BASS_ACTIVE_STOPPED
+          sleep(FRAME_MILLISECONDS / 1000.0)
+          next
+        end
+        audio = @effects_mutex.synchronize do
+          @effect_tail ||= SoundEffect.each_tail(@effects.reject { |effect| native_effect?(effect) }, freq, source_channels)
+          begin
+            @effect_tail.next
+          rescue StopIteration
+            nil
+          end
+        end
+        if audio == nil
           start_effect_output if @effect_buffer_seconds != nil
           end_effect_output
           @processing_playing = false
+          next
         end
-        sleep(FRAME_MILLISECONDS / 1000.0)
-        next
-      end
-      audio = buffer.byteslice(0, read).to_s.b
-      frame_duration = read.to_f / ([freq, 1].max * [source_channels, 1].max * FLOAT_SAMPLE_BYTES)
-      apply_spatial_automation(effect_output_written_seconds, frame_duration)
-      channels_now = source_channels
-      @effects_mutex.synchronize do
-        @effects.each do |effect|
-          next if native_effect?(effect)
-          audio = effect.process(audio, freq, channels_now).to_s.b
-          channels_now = effect.output_channels(channels_now, freq) if effect.respond_to?(:output_channels)
+      else
+        audio = buffer.byteslice(0, read).to_s.b
+        frame_duration = read.to_f / ([freq, 1].max * [source_channels, 1].max * FLOAT_SAMPLE_BYTES)
+        apply_spatial_automation(effect_output_written_seconds, frame_duration)
+        channels_now = source_channels
+        @effects_mutex.synchronize do
+          @effects.each do |effect|
+            next if native_effect?(effect)
+            audio = SoundEffect.process_frame(effect, audio, freq, channels_now)
+            channels_now = effect.output_channels(channels_now, freq) if effect.respond_to?(:output_channels)
+          end
         end
       end
       if audio.bytesize > 0
@@ -1919,7 +2015,10 @@ class Sound
   end
 
   def reset_effects
-    @effects_mutex.synchronize { @effects.each { |effect| effect.reset if effect.respond_to?(:reset) } }
+    @effects_mutex.synchronize do
+      @effect_tail = nil
+      @effects.each { |effect| effect.reset if effect.respond_to?(:reset) }
+    end
   end
 
   def native_effect?(effect)
@@ -2092,10 +2191,12 @@ class Sound
 
     pending_bytes = effect_pending_bytes
     bytes_per_second = [frequency.to_i, 1].max * [channels.to_i, 1].max * FLOAT_SAMPLE_BYTES
-    update_milliseconds = Bass::BASS_GetConfig.call(BASS_CONFIG_UPDATE_PERIOD).to_i
-    minimum_seconds = ([update_milliseconds, 0].max + FRAME_MILLISECONDS) / 1000.0
-    limit_seconds = [seconds, minimum_seconds].max
-    limit_bytes = [(limit_seconds * bytes_per_second).round, next_frame_bytes.to_i].max
+    if @effect_buffer != :low_latency
+      update_milliseconds = Bass::BASS_GetConfig.call(BASS_CONFIG_UPDATE_PERIOD).to_i
+      minimum_seconds = ([update_milliseconds, 0].max + FRAME_MILLISECONDS) / 1000.0
+      seconds = [seconds, minimum_seconds].max
+    end
+    limit_bytes = [(seconds * bytes_per_second).round, next_frame_bytes.to_i].max
     pending_bytes + next_frame_bytes.to_i > limit_bytes
   rescue Exception
     false
@@ -2147,8 +2248,8 @@ class Sound
     return nil if value == nil
 
     preset = value.respond_to?(:to_sym) ? value.to_sym : nil
-    return preset if [:eager, :interactive].include?(preset)
-    raise ArgumentError, "effect_buffer must be nil, :eager, or :interactive"
+    return preset if [:eager, :interactive, :low_latency].include?(preset)
+    raise ArgumentError, "effect_buffer must be nil, :eager, :interactive, or :low_latency"
   end
 
   def configure_effect_buffer(preset, seconds)
@@ -2156,5 +2257,138 @@ class Sound
       raise ArgumentError, "effect_buffer and effect_buffer_seconds cannot be used together"
     end
     preset == nil ? self.effect_buffer_seconds = seconds : self.effect_buffer = preset
+  end
+end
+
+class SoundRecording
+  attr_reader :path, :error
+
+  def initialize(sound, path, encoder:, channel:)
+    encoder = encoder.new if encoder.is_a?(Class) && encoder <= MediaEncoder
+    unless encoder.is_a?(MediaEncoder) && encoder.class.audio_supported?
+      raise Audio::EncodingError, "Audio encoder is unavailable"
+    end
+    @path = path.to_s
+    extensions = encoder.output_descriptor[:extensions]
+    raise Audio::EncodingError, "Invalid recording extension" if !extensions.include?(File.extname(@path).downcase)
+    @source = SoundRecordingSource.new(sound, channel)
+    format = encoder.input_constraints.negotiate(@source.format)
+    @output = FileRecorderOutput.new(@path)
+    @session = encoder.start(:output => @output, :input_format => format)
+    @finished = false
+    @thread = Thread.new do
+      begin
+        @source.convert(:format => format).each_buffer { |buffer| @session.process_pcm(buffer.data) }
+        @session.finish
+        @session = nil
+      rescue StandardError => error
+        @error = error
+      ensure
+        release
+        @finished = true
+      end
+    end
+  rescue Exception
+    release
+    raise
+  end
+
+  def recording?
+    !@finished
+  end
+
+  def closed?
+    @finished == true
+  end
+
+  def stop
+    @source.stop
+    @thread.join
+    raise @error if @error
+    @path
+  end
+
+  alias close stop
+
+  private
+
+  def release
+    [@session, @output, @source].compact.each do |resource|
+      resource.close
+    rescue StandardError => error
+      @error ||= error
+    end
+    @session = @output = nil
+  end
+end
+
+class SoundRecordingSource < Audio::Source
+  attr_reader :format
+
+  def initialize(sound, channel)
+    @sound = sound
+    @mutex = Mutex.new
+    @channel = Bass::BASS_Split_StreamCreate.call(channel,
+      Bass::BASS_STREAM_DECODE | Bass::BASS_SPLIT_DSP, nil)
+    raise Audio::EncodingError, "Cannot capture sound: #{Bass.error_name}" if @channel == 0
+    info = EltenBassStructs.bass_channel_info_buffer
+    raise Audio::EncodingError, "Cannot inspect sound: #{Bass.error_name}" if Bass::BASS_ChannelGetInfo.call(@channel, info) == 0
+    frequency, channels, flags = EltenBassStructs.bass_channel_info_values(info)
+    type = (flags & Bass::BASS_SAMPLE_FLOAT) != 0 ? :float32le : ((flags & Bass::BASS_SAMPLE_8BITS) != 0 ? :u8 : :s16le)
+    @format = Audio::Format.new(:sample_rate => frequency, :channels => channels, :sample_type => type)
+    @started = !@sound.status.stopped?
+  rescue Exception
+    close
+    raise
+  end
+
+  def each_full_buffer(chunk_frames: Audio::DEFAULT_CHUNK_FRAMES)
+    return enum_for(__method__, :chunk_frames => chunk_frames) if !block_given?
+    buffer = "\0".b * @format.bytes_for_frames(chunk_frames)
+    loop do
+      data, finished = @mutex.synchronize do
+        available = available_bytes
+        available = [available, @remaining].min if @remaining != nil
+        size = [available, buffer.bytesize].min
+        if size > 0
+          read = Bass::BASS_ChannelGetData.call(@channel, buffer, size)
+          raise Audio::EncodingError, "Cannot read sound: #{Bass.error_name}" if read < 0
+          @remaining -= read if @remaining != nil
+          @started = true if read > 0
+          [buffer.byteslice(0, read), false]
+        else
+          @started ||= !@sound.status.stopped?
+          [nil, @remaining == 0 || (@started && @sound.status.stopped?)]
+        end
+      end
+      break if finished
+      if data && !data.empty?
+        yield Audio::Buffer.new(:data => data, :format => @format)
+      else
+        sleep(0.01)
+      end
+    end
+    self
+  end
+
+  def stop
+    @mutex.synchronize { @remaining ||= @channel.to_i == 0 ? 0 : available_bytes }
+  end
+
+  def close
+    @mutex.synchronize do
+      Bass.free_stream(@channel) if @channel.to_i != 0
+      @channel = 0
+      @remaining = 0
+    end
+  end
+
+  private
+
+  def available_bytes
+    return 0 if @channel.to_i == 0
+    bytes = Bass::BASS_Split_StreamGetAvailable.call(@channel)
+    raise Audio::EncodingError, "Cannot read recording buffer: #{Bass.error_name}" if bytes == 0xffffffff
+    bytes
   end
 end

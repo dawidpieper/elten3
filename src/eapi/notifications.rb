@@ -13,20 +13,72 @@ module EltenAPI
       NOTIFICATION_QUERY_OVERLAP = 86_400
       NOTIFICATION_DEDUP_LIMIT = 8_192
       VIRTUAL_UPDATE_CHECK_INTERVAL = 600.0
+      VIRTUAL_UPDATE_RETRY_INTERVAL = 60.0
       INITIAL_RUNTIME_STATE_TIMEOUT = 5.0
       STREAM_CONTROL_INTERVAL = 6.0
-      STREAM_CONTROL_TIMEOUT = 2.5
+      STREAM_CONTROL_TIMEOUT = 10.0
       STREAM_RETRY_INTERVAL = 60.0
       STREAM_OPEN_TIMEOUT = 20.0
       STREAM_FAST_RECONNECT_TIMEOUT = 5.0
+      STREAM_STABLE_INTERVAL = 30.0
       STREAM_IDLE_TIMEOUT = 30.0
       LONG_POLL_WAIT_MS = 5_000
       POLL_ERROR_RETRY_INTERVAL = 2.0
+
+      CLIENT_INFO_MUTEX = Mutex.new
+
+      def client_login_params(refresh_apps: false)
+        values = { "appid" => $appid.to_s, "os" => platform_os.to_s, "version_string" => Elten.version.to_s.upcase,
+          "language" => configuration_string(:language), "soundtheme" => configuration_string(:soundtheme) }
+        apps = Programs.client_app_uuids(refresh: refresh_apps)
+        values["apps_uuids"] = apps unless apps.nil?
+        values.transform_values { |value| value.dup.freeze }.freeze
+      end
+
+      def client_logged_in(result, values)
+        CLIENT_INFO_MUTEX.synchronize do
+          @client_info_key = [result.name, result.token]
+          @client_info_confirmed = result.client_updated ? values.dup : {}
+          @client_info_pending = nil
+          @client_info_retry_at = result.client_updated ? 0 : monotonic_time + 60
+        end
+      end
+
+      def client_update_params(key)
+        values = client_login_params
+        CLIENT_INFO_MUTEX.synchronize do
+          return [{}, nil] unless key == @client_info_key
+          return [{}, nil] if monotonic_time < @client_info_retry_at.to_f
+          if @client_info_pending
+            @client_info_pending.last.each_key { |field| @client_info_confirmed.delete(field) }
+            @client_info_pending = nil
+          end
+          changed = values.reject { |field, value| field == "appid" || @client_info_confirmed[field] == value }
+          return [{}, nil] if changed.empty?
+          @client_info_serial = @client_info_serial.to_i + 1
+          @client_info_pending = [@client_info_serial, changed]
+          @client_info_retry_at = monotonic_time + 60
+          [changed, @client_info_serial]
+        end
+      end
+
+      def confirm_client_update(key, serial, response)
+        return unless serial
+        CLIENT_INFO_MUTEX.synchronize do
+          return unless key == @client_info_key && @client_info_pending&.first == serial
+          if response["client_updated"] == true
+            @client_info_confirmed.merge!(@client_info_pending.last)
+            @client_info_pending = nil
+            @client_info_retry_at = 0
+          end
+        end
+      end
 
       def start
         ensure_state
         return true if @thread != nil && @thread.alive?
         @stopped = false
+        ServerClock.__send__(:start)
         @thread = Thread.new { worker_loop }
         @thread.report_on_exception = false
         true
@@ -35,6 +87,7 @@ module EltenAPI
       def stop
         ensure_state
         @stopped = true
+        ServerClock.__send__(:stop)
         stop_stream
         cancel_status_requests
       end
@@ -99,6 +152,24 @@ module EltenAPI
         end
         enqueue_event("func" => "notifications") if changed
         true
+      end
+
+      def update_active_notification(notification)
+        ensure_state
+        return false unless notification.is_a?(EltenLink::Notification)
+        changed = @active_notifications_mutex.synchronize do
+          next false if @session_key != session_key
+          index = @active_notifications.index { |current| current.id == notification.id }
+          next false if index == nil || @active_notifications[index].update_time > notification.update_time
+
+          @active_notifications[index] = notification
+          @active_notifications = normalize_active_notifications(@active_notifications)
+          @active_notifications_hash = ""
+          @active_notifications_request_id = @request_serial.to_i + 1
+          true
+        end
+        enqueue_event("func" => "notifications") if changed
+        changed
       end
 
       def revoke_active_notifications(ids=nil)
@@ -194,12 +265,18 @@ module EltenAPI
         @stream_generation = 0
         @stream_supported = nil
         @stream_capability_request_id = 0
+        @server_data_request_id = 0
+        @server_data_revision = nil
+        @server_data_request = nil
+        @server_data_retry_at = 0.0
         @stream_connected = false
         @stream_opening = false
         @stream_retry_at = 0.0
         @stream_failures = 0
         @stream_recovery = false
         @stream_fast_reconnect = false
+        @stream_fast_reconnect_used = false
+        @stream_connected_at = nil
         @stream_ever_connected = false
         @http2_enabled = realtime_http2_enabled?
         @realtime_mode_reported = false
@@ -213,6 +290,7 @@ module EltenAPI
           break if @stopped == true
           begin
             key = session_key
+            ServerClock.__send__(:update, key)
             if key == nil
               reset_session(nil)
               clear_responses
@@ -224,11 +302,13 @@ module EltenAPI
               reset_session(key) if @session_key != key
               now = monotonic_time
               reconcile_notification_apps(now)
+              expire_active_notifications(now)
               http2_enabled = reconcile_realtime_transport(now)
               drain_responses
               drain_stream_responses
               drain_stream_controls
               drain_background_responses
+              refresh_server_data(key, now)
               clear_stale_requests(now)
               @feed_request_pending = false if @feed_request_pending == true && now - (@feed_request_started_at || 0) > 30
               @virtual_update_request_pending = false if @virtual_update_request_pending == true && now - (@virtual_update_request_started_at || 0) > REQUEST_STALE_AFTER
@@ -243,11 +323,7 @@ module EltenAPI
                 request_status(key)
               end
               if now >= (@next_virtual_update_check_at || 0) && @virtual_update_request_pending != true
-                if launched_by_launcher?
-                  request_virtual_updates(key, now)
-                else
-                  @next_virtual_update_check_at = now + VIRTUAL_UPDATE_CHECK_INTERVAL
-                end
+                request_virtual_updates(key, now)
               end
             end
           rescue Exception
@@ -276,6 +352,7 @@ module EltenAPI
         enqueue_event("func" => "call_stop", "call_id" => @call_id, "caller" => @call_caller) if @ringingplaying == true || @call_id != nil
         @session_key = key
         @wnlasttime = nil
+        @next_notification_expiration_at = 0.0
         @ag_msg = nil
         @ag_feed = 0
         @ag_feedtime = 0
@@ -285,12 +362,18 @@ module EltenAPI
         @sigids = []
         @stream_supported = nil
         @stream_capability_request_id = 0
+        @server_data_request_id = 0
+        @server_data_revision = nil
+        @server_data_request = nil
+        @server_data_retry_at = 0.0
         @stream_connected = false
         @stream_opening = false
         @stream_retry_at = 0.0
         @stream_failures = 0
         @stream_recovery = false
         @stream_fast_reconnect = false
+        @stream_fast_reconnect_used = false
+        @stream_connected_at = nil
         @stream_ever_connected = false
         @http2_enabled = realtime_http2_enabled?
         @realtime_mode_reported = false
@@ -389,6 +472,9 @@ module EltenAPI
           "cancellation" => cancellation
         }
         params = notification_request_params(name, token, lasttime, shown)
+        client_params, client_serial = client_update_params(key)
+        params.merge!(client_params)
+        @inflight_requests[request_id]["client_serial"] = client_serial
         params["stream_capability"] = 1
         cursor = realtime_cursor
         params["wait_ms"] = refresh_ticket == nil ? LONG_POLL_WAIT_MS : 0
@@ -442,7 +528,7 @@ module EltenAPI
       def maintain_stream(key, now)
         open_timeout = @stream_fast_reconnect ? STREAM_FAST_RECONNECT_TIMEOUT : STREAM_OPEN_TIMEOUT
         if @stream_opening && now - @stream_started_at.to_f > open_timeout
-          reason = @stream_fast_reconnect ? "reconnect after clean close timed out" : "opening timeout"
+          reason = @stream_fast_reconnect ? "reconnect after HTTP close timed out" : "opening timeout"
           stream_failed(now, reason: reason)
           return
         end
@@ -451,7 +537,16 @@ module EltenAPI
           return
         end
         if @stream_control_pending && now - @stream_control_started_at.to_f > STREAM_CONTROL_TIMEOUT
-          stream_failed(now, reason: "control timeout")
+          reason = "control timeout (waiting %.1fs, last frame %.1fs ago)" % [
+            now - @stream_control_started_at, now - @stream_last_frame_at.to_f
+          ]
+          if @stream_connected && !@stream_control_retried && @stream_last_frame_at.to_f > @stream_control_started_at
+            stop_stream_control
+            Log.warning("Realtime stream #{reason}; retrying control")
+            send_stream_control(key, window_active?, retrying: true)
+          else
+            stream_failed(now, reason: reason)
+          end
           return
         end
         if !@stream_connected && !@stream_opening
@@ -469,7 +564,7 @@ module EltenAPI
         return if @stream_control_pending
         return unless urgent || now >= @next_stream_control_at.to_f
 
-        send_stream_control(key, shown, now)
+        send_stream_control(key, shown)
       end
 
       def start_stream(key)
@@ -480,6 +575,7 @@ module EltenAPI
         stop_stream_request
         @stream_opening = true
         @stream_started_at = monotonic_time
+        @stream_connected_at = nil
         @stream_last_frame_at = @stream_started_at
         @stream_request_data = { "key" => key, "generation" => generation }
         @stream_cancellation = EltenAPI::Tasks::CancellationToken.new if defined?(EltenAPI::Tasks::CancellationToken)
@@ -511,11 +607,13 @@ module EltenAPI
         @stream_id = nil
         @stream_control_pending = false
         @stream_started_at = nil
+        @stream_connected_at = nil
         @stream_last_frame_at = nil
         @stream_fast_reconnect = false
       end
 
       def stop_stream_request
+        stop_stream_control
         @stream_request_data[:cancelled] = true if @stream_request_data.is_a?(Hash)
         @stream_cancellation.cancel if @stream_cancellation != nil && !@stream_cancellation.cancelled?
         @stream_cancellation = nil
@@ -524,14 +622,25 @@ module EltenAPI
         nil
       end
 
-      def send_stream_control(key, shown, now)
+      def stop_stream_control
+        cancellation = @stream_control_cancellation
+        @stream_control_cancellation = nil
+        @stream_control_pending = false
+        @stream_control_id = nil
+        @stream_control_started_at = nil
+        @stream_control_retried = false
+        cancellation.cancel if cancellation != nil && !cancellation.cancelled?
+      rescue Exception
+        nil
+      end
+
+      def send_stream_control(key, shown, retrying: false)
         name, token = key
         acknowledgements = @pending_signal_acks.keys.first(200)
         params = {
           "stream_id" => @stream_id,
           "shown" => shown ? 1 : 0,
-          "language" => configuration_string(:language),
-          "soundtheme" => configuration_string(:soundtheme),
+          "appid" => $appid.to_s,
           "signal_ack" => acknowledgements
         }
         params["wn_cursor"] = @stream_wn_cursor unless @stream_wn_cursor.to_s.empty?
@@ -539,9 +648,18 @@ module EltenAPI
           "/api/v1/system/realtime-stream/control",
           { "name" => name, "token" => token }
         )
+        client_params, client_serial = client_update_params(key)
+        params.merge!(client_params)
         @stream_control_pending = true
-        @stream_control_started_at = now
-        elten_link.e_json_request("POST", path, params, [key, @stream_generation, acknowledgements, shown]) do |answer, data|
+        @stream_control_serial = @stream_control_serial.to_i + 1
+        @stream_control_id = @stream_control_serial
+        @stream_control_retried = retrying
+        @stream_control_cancellation = EltenAPI::Tasks::CancellationToken.new if defined?(EltenAPI::Tasks::CancellationToken)
+        @stream_control_started_at = monotonic_time
+        elten_link.e_json_request(
+          "POST", path, params, [key, @stream_generation, @stream_control_id, acknowledgements, shown, client_serial],
+          cancellation_token: @stream_control_cancellation
+        ) do |answer, data|
           @stream_controls << [answer, data]
         end
       rescue Exception => e
@@ -551,16 +669,25 @@ module EltenAPI
       def drain_stream_controls(limit=10)
         limit.times do
           answer, data = @stream_controls.pop(true)
-          key, generation, acknowledgements, shown = data
+          key, generation, control_id, acknowledgements, shown, client_serial = data
           next unless key == @session_key && generation.to_i == @stream_generation.to_i
+          next unless @stream_control_pending && control_id == @stream_control_id
 
           @stream_control_pending = false
+          @stream_control_id = nil
+          @stream_control_cancellation = nil
+          @stream_control_started_at = nil
+          @stream_control_retried = false
           payload = answer.is_a?(String) ? JSON.load(answer) : nil
           accepted = payload.is_a?(Hash) && payload["success"] == true && payload.dig("data", "accepted") == true
           unless accepted
-            stream_failed(monotonic_time, reason: "control rejected")
+            error = payload.is_a?(Hash) && payload["error"].is_a?(Hash) ? payload["error"] : {}
+            details = error["details"].is_a?(Hash) ? error["details"] : {}
+            reason = ["control rejected", error["code"], details["profile"], details["rule"]].compact.join(": ")
+            stream_failed(monotonic_time, reason: reason, retry_after: error["retry_after"] || details["retry_after"])
             next
           end
+          confirm_client_update(key, client_serial, payload["data"])
           Array(acknowledgements).each { |id| @pending_signal_acks.delete(id.to_i) }
           @stream_last_shown = shown
           @next_stream_control_at = monotonic_time + STREAM_CONTROL_INTERVAL
@@ -571,7 +698,7 @@ module EltenAPI
         end
       end
 
-      def stream_failed(now, immediate: false, reason: "connection failed")
+      def stream_failed(now, immediate: false, reason: "connection failed", retry_after: nil)
         was_connected = @stream_connected || @stream_ever_connected
         @stream_generation = @stream_generation.to_i + 1
         stop_stream_request
@@ -580,6 +707,7 @@ module EltenAPI
         @stream_id = nil
         @stream_control_pending = false
         @stream_started_at = nil
+        @stream_connected_at = nil
         @stream_last_frame_at = nil
         @stream_fast_reconnect = false
         if immediate
@@ -588,23 +716,25 @@ module EltenAPI
           return
         end
         @stream_failures = @stream_failures.to_i + 1
-        @stream_retry_at = now + STREAM_RETRY_INTERVAL
+        retry_delay = [STREAM_RETRY_INTERVAL, retry_after.to_s.to_i].max
+        @stream_retry_at = now + retry_delay
         @next_request_at = now
         @stream_recovery = true
         state = was_connected ? "lost" : "unavailable"
-        Log.warning("Realtime stream #{state}: #{reason}; switching to #{fallback_mode_description}, retry in #{STREAM_RETRY_INTERVAL.to_i}s")
+        Log.warning("Realtime stream #{state}: #{reason}; switching to #{fallback_mode_description}, retry in #{retry_delay.to_i}s")
       end
 
-      def retry_stream_after_clean_close(now, reason)
-        if @stream_fast_reconnect
-          stream_failed(now, reason: "reconnect after clean close failed: #{reason}")
+      def retry_stream_after_close(now, reason)
+        if @stream_fast_reconnect_used
+          stream_failed(now, reason: "repeated short stream: #{reason}")
           return
         end
 
         stop_stream
         @stream_fast_reconnect = true
+        @stream_fast_reconnect_used = true
         @stream_retry_at = now
-        Log.debug("Realtime stream closed after successful HTTP response: #{reason}; reconnecting immediately")
+        Log.debug("Realtime stream closed: #{reason}; reconnecting immediately")
       end
 
       def drain_stream_responses(limit=50)
@@ -617,13 +747,13 @@ module EltenAPI
           if answer == :closed
             reason = data.is_a?(Hash) ? data["stream_error"].to_s : ""
             reason = "connection closed" if reason.empty?
-            retry_stream_after_clean_close(monotonic_time, reason)
+            retry_stream_after_close(monotonic_time, reason)
             next
           end
           if answer == :error
             reason = data.is_a?(Hash) ? data["stream_error"].to_s : ""
             reason = "request failed" if reason.empty?
-            stream_failed(monotonic_time, reason: reason)
+            stream_failed(monotonic_time, reason: reason, retry_after: data["stream_retry_after"])
             next
           end
           @stream_last_frame_at = monotonic_time
@@ -632,7 +762,7 @@ module EltenAPI
           when "state"
             handle_stream_state(frame, key)
           when "heartbeat"
-            @stream_connected = true
+            mark_stream_connected
           when "close"
             rotating = frame["reason"] == "rotate"
             stream_failed(monotonic_time, immediate: rotating, reason: frame["reason"].to_s)
@@ -642,6 +772,13 @@ module EltenAPI
         rescue JSON::ParserError, TypeError => e
           stream_failed(monotonic_time, reason: "invalid frame: #{e.message}")
         end
+      end
+
+      def mark_stream_connected
+        now = monotonic_time
+        @stream_connected = true
+        @stream_connected_at ||= now
+        @stream_fast_reconnect_used = false if now - @stream_connected_at >= STREAM_STABLE_INTERVAL
       end
 
       def handle_stream_state(frame, key)
@@ -654,7 +791,7 @@ module EltenAPI
         restored = @stream_recovery
         fast_reconnected = @stream_fast_reconnect
         @stream_opening = false
-        @stream_connected = true
+        mark_stream_connected
         @stream_failures = 0
         @stream_retry_at = 0.0
         @stream_recovery = false
@@ -677,7 +814,7 @@ module EltenAPI
         handle_status_data(response, key, false, @request_serial, nil, stream: true)
         @stream_wn_cursor = data["wn_cursor"].to_s unless data["wn_cursor"].to_s.empty?
         Log.info("Realtime stream restored over HTTP/2") if restored
-        Log.debug("Realtime stream reconnected after clean HTTP response") if fast_reconnected
+        Log.debug("Realtime stream reconnected after HTTP close") if fast_reconnected
         report_realtime_mode(:stream)
       end
 
@@ -693,12 +830,12 @@ module EltenAPI
           calibrating = info.is_a?(Hash) && info["calibrating"] == true
           refresh_ticket = info.is_a?(Hash) ? info["refresh_ticket"] : nil
           protocol = info.is_a?(Hash) ? info["protocol"] : nil
-          handle_status_response(answer, key, calibrating, request_id, refresh_ticket, protocol)
+          handle_status_response(answer, key, calibrating, request_id, refresh_ticket, protocol, info && info["client_serial"])
           count += 1
         end
       end
 
-      def handle_status_response(answer, key, calibrating=false, request_id=0, refresh_ticket=nil, protocol=nil)
+      def handle_status_response(answer, key, calibrating=false, request_id=0, refresh_ticket=nil, protocol=nil, client_serial=nil)
         return if key != @session_key
         if !answer.is_a?(String)
           schedule_poll_error_retry
@@ -711,6 +848,7 @@ module EltenAPI
           return
         end
 
+        confirm_client_update(key, client_serial, response)
         cursor = response["realtime_cursor"].to_s
         accept_realtime_cursor(cursor, request_id)
         if request_id.to_i >= @stream_capability_request_id.to_i
@@ -735,6 +873,7 @@ module EltenAPI
 
       def handle_status_data(response, key, calibrating=false, request_id=0, refresh_ticket=nil, stream: false)
         return if key != @session_key
+        handle_server_data(response, request_id)
         handle_auctions(response)
         if response["time"].is_a?(Integer)
           server_time = response["time"].to_i
@@ -756,6 +895,48 @@ module EltenAPI
         complete_runtime_state_refresh(key, refresh_ticket)
       rescue Exception
         Log.error("Notification response error: #{$!.class}: #{$!.message}")
+      end
+
+      def handle_server_data(response, request_id)
+        revision = response["client_data_revision"]
+        return unless revision.is_a?(String) && revision.match?(/\A[0-9a-f]{64}\z/)
+        return if request_id < @server_data_request_id.to_i
+
+        @server_data_request_id = request_id
+        @server_data_retry_at = 0.0 if revision != @server_data_revision
+        @server_data_revision = revision
+      end
+
+      def refresh_server_data(key, now)
+        return if @server_data_revision == nil || @server_data_revision == ServerData.revision
+        return if @server_data_request != nil || now < @server_data_retry_at.to_f
+
+        request = @server_data_request = [key, @server_data_revision]
+        Thread.new do
+          Thread.current.report_on_exception = false
+          answer = nil
+          begin
+            answer = EltenLink::System.server_data(elten_link)
+          rescue StandardError => error
+            Log.warning("Server data request failed: #{error.class}: #{error.message}")
+          ensure
+            @background_responses << ["server_data", answer, request]
+          end
+        end
+      rescue StandardError
+        @server_data_request = nil
+        @server_data_retry_at = now + 60.0
+        raise
+      end
+
+      def handle_server_data_response(answer, request)
+        return unless request.equal?(@server_data_request)
+
+        @server_data_request = nil
+        return if request[0] != @session_key || request[1] != @server_data_revision
+
+        @server_data_retry_at = monotonic_time + 60.0
+        ServerData.__send__(:receive, answer) if answer != nil && answer.revision == @server_data_revision
       end
 
       def handle_auctions(response)
@@ -875,21 +1056,23 @@ module EltenAPI
           id = notification["id"]
           queued << notification if remember_notification(id)
         end
+        batch_sounds = {}
         app_notifications, queued = queued.partition do |notification|
           notification["cat"].to_s == "app" && !notification["app_uuid"].to_s.empty?
         end
         app_notifications.each do |notification|
-          enqueue_event("func" => "app_notification", "notification" => notification)
+          enqueue_event("func" => "app_notification", "notification" => notification, "batch_sounds" => batch_sounds)
         end
         visible, invisible = queued.partition { |notification| !notification_invisible?(notification) }
         if visible.size > 10
-          enqueue_event("func" => "notif", "sound" => "new")
+          enqueue_event("func" => "notif", "sound" => "new", "batch_sounds" => batch_sounds)
         else
           visible.each do |notification|
             enqueue_event(
               "func" => "notif",
               "alert" => notification["alert"],
               "sound" => notification["sound"],
+              "batch_sounds" => batch_sounds,
               "id" => notification["id"]
             )
           end
@@ -899,6 +1082,7 @@ module EltenAPI
             "func" => "notif",
             "alert" => notification["alert"],
             "sound" => notification["sound"],
+            "batch_sounds" => batch_sounds,
             "id" => notification["id"],
             "invisible" => true
           )
@@ -941,11 +1125,11 @@ module EltenAPI
 
         @virtual_update_request_pending = true
         @virtual_update_request_started_at = now
-        @next_virtual_update_check_at = now + VIRTUAL_UPDATE_CHECK_INTERVAL
+        @next_virtual_update_check_at = now + VIRTUAL_UPDATE_RETRY_INTERVAL
         name, = key
         params = {
           "branch" => get_updatesbranch,
-          "os" => platform_os,
+          "os" => platform_target,
           "current_build_id" => Elten.build_id.to_s,
           "name" => name,
           "apps" => NotificationGroups.installed_program_update_payload
@@ -970,6 +1154,7 @@ module EltenAPI
 
         response_data = payload["data"].is_a?(Hash) ? payload["data"] : {}
         NotificationGroups.refresh_virtual_notifications(system_updates_from_response(response_data))
+        @next_virtual_update_check_at = monotonic_time + VIRTUAL_UPDATE_CHECK_INTERVAL
       rescue JSON::ParserError
         Log.warning("Notification virtual update JSON parse error")
       rescue Exception
@@ -1022,11 +1207,11 @@ module EltenAPI
           previous = @lastfeeds == nil ? nil : @lastfeeds[id]
           next if previous != nil && previous.message == current.message && previous.responses == current.responses && previous.likes == current.likes && previous.liked == current.liked && previous.audio_url == current.audio_url
           if previous == nil && @lastfeeds != nil && current.message != "" && mention?(current.message)
-            enqueue_event("func" => "notif", "sound" => "feed_mention") if $donotdisturb != true
+            enqueue_event("func" => "notif", "sound" => "feed_mention") if !EltenAPI::UI.notifications_muted?
           end
           if played == false && previous == nil && @lastfeeds != nil && current.message != ""
             played = true
-            enqueue_event("func" => "notif", "sound" => "feed_update") if $donotdisturb != true && Configuration.disablefeednotifications != true
+            enqueue_event("func" => "notif", "sound" => "feed_update") if !EltenAPI::UI.notifications_muted? && Configuration.disablefeednotifications != true
           end
           changed << current
           current_feeds[id] = current
@@ -1071,6 +1256,8 @@ module EltenAPI
             end
           when "missed_call"
             handle_missed_call_response(answer, data)
+          when "server_data"
+            handle_server_data_response(answer, data)
           when "virtual_updates"
             begin
               handle_virtual_updates_response(answer, data)
@@ -1208,8 +1395,7 @@ module EltenAPI
           "name" => name,
           "token" => token,
           "lasttime" => lasttime,
-          "language" => configuration_string(:language),
-          "soundtheme" => configuration_string(:soundtheme),
+          "appid" => $appid.to_s,
           "notifications_hash" => active_notifications_hash,
           "notification_apps" => Array(@notification_apps).join(",")
         }
@@ -1244,13 +1430,24 @@ module EltenAPI
         true
       end
 
+      def expire_active_notifications(now)
+        return if now < @next_notification_expiration_at.to_f || !ServerClock.synchronized?
+        @next_notification_expiration_at = now + 1.0
+        changed = @active_notifications_mutex.synchronize do
+          previous = @active_notifications.size
+          @active_notifications = normalize_active_notifications(@active_notifications)
+          previous != @active_notifications.size
+        end
+        enqueue_event("func" => "notifications") if changed
+      end
+
       def normalize_active_notifications(notifications)
-        now = Time.now.to_i
+        now = ServerClock.now&.to_i
         allowed_apps = Array(@notification_apps)
         notifications.to_a.each_with_object({}) do |notification, result|
           next unless notification.is_a?(EltenLink::Notification)
           next if notification.id.to_i <= 0 || notification.revoked == true
-          next if notification.expiration.to_i > 0 && notification.date.to_i + notification.expiration.to_i < now
+          next if now != nil && notification.expiration.to_i > 0 && notification.date.to_i + notification.expiration.to_i < now
           next if !notification.app_uuid.to_s.empty? && !allowed_apps.include?(notification.app_uuid.to_s.downcase)
 
           result[notification.id.to_i] = notification

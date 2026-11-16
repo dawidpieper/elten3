@@ -52,19 +52,21 @@ module EltenAPI
         alert(_("Error"), false)
       end
       def gettime
-        if Configuration.synctime == true
-          time = EltenLink::System.server_time(EltenLink.client(self))
-                    else
-                                            time=Time.now
-                                          end
-                                          return time
-        end
+        return Time.now unless Configuration.synctime == true
+        ServerClock.now || raise(EltenLink::Error.new("Server clock is not synchronized", code: "system.clock_unavailable"))
+      end
       def call_symbol
         case @action
         when :whatsnew
           if !GlobalMenu.opened?
             scene = Scene_Notifications.whatsnew
             scene == nil ? alert(p_("Notifications", "There is nothing new."), false) : insert_scene(scene)
+          end
+        when :latest_notification
+          Scene_Notifications.new.open_latest unless GlobalMenu.opened?
+        when :restart_developer_mode
+          unless GlobalMenu.developer_mode? || restart_to_developer_mode
+            alert(p_("MainMenu", "Cannot restart in developer mode."))
           end
         when :context
                    $opencontextmenu=true if !GlobalMenu.opened?
@@ -137,13 +139,17 @@ module EltenAPI
   writeconfig("Interface","MainVolume",Configuration.volume)
   play_sound("listbox_focus")
   when :donotdisturb
-    if $donotdisturb!=true
-      $donotdisturb=true
-      alert(p_("EAPI_Common", "Do not disturb is on"))
-    else
-      $donotdisturb=false
-      alert(p_("EAPI_Common", "Do not disturb is off"))
-    end
+    message = case EltenAPI::UI.cycle_do_not_disturb
+              when 0
+                p_("EAPI_Common", "Do not disturb is off")
+              when 1
+                p_("EAPI_Common", "Do not disturb: notifications muted")
+              when 2
+                p_("EAPI_Common", "Do not disturb: calls muted")
+              when 3
+                p_("EAPI_Common", "Do not disturb: all muted")
+              end
+    alert(message)
     when :conference_streaming
       if Conference.opened?
         if Conference.streaming?
@@ -342,8 +348,10 @@ end
 [:conference_pushtotalk, p_("EAPI_QuickActions", "Conferences: switch push-to-talk"), [], 0, false],
 [:conference_diceroll, p_("EAPI_QuickActions", "Conferences: roll a 6-sided die"), [], 0, false],
 [:conference_dicerollcustom, p_("EAPI_QuickActions", "Conferences: roll a custom die"), [], 0, false],
+[:latest_notification, p_("EAPI_QuickActions", "Open the latest notification"), [], 0, false],
 [:alarm, p_("EAPI_QuickActions", "Add alarm"), [], 0, false],
         ]
+        a << [:restart_developer_mode, p_("EAPI_QuickActions", "Restart in developer mode"), [], 0, false] unless GlobalMenu.developer_mode?
         for ac in @@addprocs
           a.push([ac[1], ac[2]])
           end

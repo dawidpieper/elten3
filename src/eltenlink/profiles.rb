@@ -4,7 +4,19 @@
 module EltenLink
   UserProfileBirthdate = Struct.new(:year, :month, :day, keyword_init: true) do
     def complete?
-      year.to_i > 1900 && month.to_i.between?(1, 12) && day.to_i.between?(1, 31)
+      y = year.to_i
+      m = month.to_i
+      d = day.to_i
+      return false unless y > 1900 && m.between?(1, 12) && d > 0
+
+      days = [31, leap_year?(y) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+      d <= days[m - 1]
+    end
+
+    private
+
+    def leap_year?(value)
+      (value % 4).zero? && (!(value % 100).zero? || (value % 400).zero?)
     end
   end
   UserProfile = Struct.new(
@@ -27,6 +39,7 @@ module EltenLink
     :status,
     :main_honor,
     :ban,
+    :profile_hidden,
     keyword_init: true
   )
 
@@ -34,6 +47,8 @@ module EltenLink
     class << self
       def card(client, user)
         data = client.api_data("GET", "/api/v1/users/#{user.to_s.urlenc}/card")
+        raise Error.new("Invalid visiting card response", code: "invalid_response") unless data.is_a?(Hash)
+
         visiting_card = data["visiting_card"]
         visiting_card = {} unless visiting_card.is_a?(Hash)
         status = data["status"]
@@ -44,8 +59,9 @@ module EltenLink
 
         UserCard.new(
           name: data["name"].to_s,
-          profile: build_profile(data["profile"]),
-          info: Users.build_info(data["info"]),
+          profile: data["profile"].is_a?(Hash) ? build_profile(data["profile"]) : nil,
+          profile_hidden: Client.truthy?(data["profile_hidden"]),
+          info: data["info"].is_a?(Hash) ? Users.build_info(data["info"]) : nil,
           visiting_card: Client.truthy?(visiting_card["exists"]) ? visiting_card["text"].to_s : nil,
           status: UserStatus.new(
             text: status["text"].to_s,
@@ -98,7 +114,8 @@ module EltenLink
 
       def build_profile(data)
         data = {} unless data.is_a?(Hash)
-        birthdate = data["birthdate"] || {}
+        birthdate = data["birthdate"]
+        birthdate = {} unless birthdate.is_a?(Hash)
         gender = begin
           Integer(data.fetch("gender").to_s, 10)
         rescue KeyError, ArgumentError, TypeError

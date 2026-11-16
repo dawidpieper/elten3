@@ -151,9 +151,10 @@ else
   use_soundtheme("data/audio.elsnd", true)
   Log.info("Loading locales")
   loadlocaledata
-  load_configuration
+  load_configuration(interactive: false)
     Log.info("Initializing Bass")
 Bass.init($wnd)
+configure_activity_reporting
                           if Configuration.usefx==:auto
                                 Log.debug("Testing for Bass FX")
                             Configuration.usefx=Bass.test
@@ -180,6 +181,7 @@ $thr1=Thread.new{thr1} if $thr1==nil
 $thr2=Thread.new{thr2} if $thr2==nil
                     Lists.langs=load_json_resource("langs.json", {})
                     Lists.locations=load_json_resource("locations.json", [])
+                    Lists.location_subdivisions=load_json_resource("location_subdivisions.json", {})
 if Configuration.language==""
                                           Configuration.language=EltenSystemHelpers.current_locale_name
                                                                                   writeconfig("Interface", "Language", Configuration.language) if Configuration.language.to_s!=""

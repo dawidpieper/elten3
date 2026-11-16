@@ -71,6 +71,31 @@ module EltenSystemHelpers
       ""
     end
 
+    def current_timezone
+      info = ("\0" * 432).b
+      @get_dynamic_timezone ||= Fiddle::Function.new(KERNEL32["GetDynamicTimeZoneInformation"], [PTR], INT, ABI)
+      return nil if @get_dynamic_timezone.call(info) == -1
+      if info.getbyte(428) != 0
+        bias = info.unpack1("l<") + info.byteslice(84, 4).unpack1("l<")
+        return "UTC" if bias == 0
+
+        return format("UTC%s%02d:%02d", bias > 0 ? "-" : "+", bias.abs / 60, bias.abs % 60)
+      end
+
+      @timezone_icu ||= Fiddle.dlopen("icu.dll")
+      @timezone_mapping ||= Fiddle::Function.new(
+        @timezone_icu["ucal_getTimeZoneIDForWindowsID"], [PTR, INT, PTR, PTR, INT, PTR], INT
+      )
+      output = ("\0" * 256).b
+      status = [0].pack("l<")
+      length = @timezone_mapping.call(info.byteslice(172, 256), -1, nil, output, 128, status)
+      return nil if status.unpack1("l<") > 0 || length <= 0 || length >= 128
+
+      from_wide(output.byteslice(0, length * 2))
+    rescue StandardError
+      nil
+    end
+
     def computer_name
       size = [256].pack("V")
       buffer = ("\0" * 512).b

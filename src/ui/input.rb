@@ -6,6 +6,22 @@
 
 module EltenAPI
   module UI
+    def self.do_not_disturb_mode
+      @do_not_disturb_mode.to_i
+    end
+
+    def self.cycle_do_not_disturb
+      @do_not_disturb_mode = (do_not_disturb_mode + 1) % 4
+    end
+
+    def self.notifications_muted?
+      (do_not_disturb_mode & 1) != 0
+    end
+
+    def self.calls_muted?
+      (do_not_disturb_mode & 2) != 0
+    end
+
     @@altdowntime=0
     def self.call_sound_stop
       if $callplayer != nil
@@ -83,19 +99,35 @@ Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f/100.0)
 
                       def call_sound_start(ringtone)
                         call_sound_stop
+                        return if EltenAPI::UI.calls_muted?
+                        volume = readconfig("SoundCard", "RingtoneVolume", "100").to_i.clamp(0, 100)
+                        return if volume == 0
                         voice = ringtone || "ringing"
                         return if Configuration.soundthemeactivation == false && !FileTest.exists?(voice)
                         sound = getsound(voice)
                         file = sound == nil ? voice : nil
                         return if sound == nil && !FileTest.exists?(file)
-                        $callplayer = Sound.new(file, loop: true, stream: sound)
+                        $callplayer = open_call_sound(file, sound)
                         if $callplayer != nil
-                          $callplayer.volume = Configuration.volume.to_f / 200.0
+                          $callplayer.volume = Configuration.volume.to_f / 200.0 * volume / 100.0
                           $callplayer.play
                         end
                       rescue Exception => e
                         Log.error("Call sound: #{e.class}: #{e.message}")
-                        play_sound(voice || "ringing") rescue nil
+                        play_sound(voice || "ringing", volume: volume || 100) rescue nil
+                      end
+
+                      def open_call_sound(file, sound)
+                        name = readconfig("SoundCard", "RingtoneDevice", "")
+                        unless name.empty?
+                          begin
+                            device = Sound.output_devices.find{|output| output.enabled? && output.name == name}
+                            return Sound.new(file, loop: true, stream: sound, output_device: device) if device
+                          rescue RuntimeError => e
+                            Log.warning("Call sound output device: #{e.message}")
+                          end
+                        end
+                        Sound.new(file, loop: true, stream: sound)
                       end
 
                       def call_sound_stop
@@ -570,6 +602,21 @@ if $setkeys.is_a?(Array)
       false
     end
 
+    def process_quick_action_hotkeys(only: nil)
+      return if $windowminimized == true || modifier_held?(:option)
+      main_modifier_held = modifier_held?(:main_modifier)
+      shift_held = raw_key_held?(:key_shift)
+      for i in 1..11
+        next unless raw_key_first_pressed?(0x6F + i)
+        key = i
+        key += 12 if main_modifier_held
+        key *= -1 if shift_held
+        QuickActions.hotkey_actions(key).each do |action|
+          action.call if only == nil || action.action == only
+        end
+      end
+    end
+
     def keyprocs
       return if $windowminimized == true
       main_menu_requested = consume_native_main_menu_request
@@ -610,21 +657,7 @@ if $setkeys.is_a?(Array)
           $resetting=false
         end
       end
-      if !modifier_held?(:option)
-        main_modifier_held = modifier_held?(:main_modifier)
-        shift_held = raw_key_held?(:key_shift)
-        for i in 1..11
-          k=0x6F+i
-          if raw_key_first_pressed?(k)
-            l=i
-            l+=12 if main_modifier_held
-            l*=-1 if shift_held
-            for a in QuickActions.hotkey_actions(l)
-              a.call
-            end
-          end
-        end
-      end
+      process_quick_action_hotkeys
       any_key_pressed = key_any_pressed?
       if any_key_pressed
         t=GlobalMenu.ctitems

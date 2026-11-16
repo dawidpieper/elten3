@@ -444,6 +444,10 @@ module EltenAPI
         text = from
         text = p_("Messages", "To") + " " + to if from == session_name && name == ""
         text += " " + p_("Messages", "To") + " " + name if name != ""
+        if Configuration.iireadmessagesubjects
+          spoken_subject = subject.sub(/\A(?:RE:[ \t]*)+/i, "")
+          text += ": " + spoken_subject unless spoken_subject.strip.empty?
+        end
         forwardedfrom = message.respond_to?(:forwardedfrom) ? message.forwardedfrom.to_s : ""
         text += ":\r\n" + (p_("Messages", "Forwarded from %{user}") % { user: forwardedfrom }) if forwardedfrom != ""
         text += ": " + body
@@ -825,7 +829,7 @@ module EltenAPI
       end
 
       def conference
-        $conference
+        Conference.core
       end
 
       def config_cards

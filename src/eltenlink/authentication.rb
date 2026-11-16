@@ -3,9 +3,11 @@
 
 module EltenLink
   class LoginResult
-    attr_reader :name, :token, :moderator, :fullname, :gender, :languages, :greeting, :auto_login_token, :issued_at, :premium_packages
+    attr_reader :name, :token, :moderator, :fullname, :gender, :languages, :greeting, :auto_login_token, :issued_at, :premium_packages, :client_updated, :server_data
 
     def initialize(data)
+      @client_updated = data["client_updated"] == true
+      @server_data = data["client_data"]
       @name = data["name"].to_s
       @token = data["token"].to_s
       @moderator = data["moderator"] ? 1 : 0
@@ -27,7 +29,7 @@ module EltenLink
 
   module Authentication
     class << self
-      def login(client, name:, password: nil, token: nil, version_string:, version_isdevelopment:, version_islauncher:, appid:, language:, os:, authmethod:, stamp: nil)
+      def login(client, name:, password: nil, token: nil, version_string:, version_isdevelopment:, version_islauncher:, appid:, language:, os:, authmethod:, stamp: nil, soundtheme: nil, apps_uuids: nil)
         params = {
           "name" => name,
           "version_string" => version_string.to_s.upcase,
@@ -39,6 +41,8 @@ module EltenLink
           "os" => os,
           "authmethod" => authmethod
         }
+        params["soundtheme"] = soundtheme unless soundtheme.nil?
+        params["apps_uuids"] = apps_uuids unless apps_uuids.nil?
         if stamp != nil
           params["stamp_timestamp"] = stamp["timestamp"]
           params["stamp_key_sha256"] = stamp["key_sha256"]

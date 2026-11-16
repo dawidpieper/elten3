@@ -10,6 +10,9 @@ module EltenAPI
     class TimedOut < StandardError
     end
 
+    class Busy < StandardError
+    end
+
     class CancellationRegistration
       def initialize(token=nil, id=nil)
         @mutex = Mutex.new
@@ -124,6 +127,139 @@ module EltenAPI
 
       def monotonic_time
         Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      end
+    end
+
+    class Handle
+      MUTEX = Mutex.new
+      WORKERS = []
+      GENERATIONS = {}
+      private_constant :MUTEX, :WORKERS, :GENERATIONS
+
+      def self.start(runtime, owner, key, registries, timeout, &task)
+        scope = runtime == nil ? nil : runtime.manifest.id.downcase
+        MUTEX.synchronize do
+          WORKERS.reject! { |entry| !entry[1].alive? }
+          raise Busy, "Too many background tasks" if WORKERS.count { |entry| entry[0] == scope } >= 4
+          handle = new(owner, key, registries, timeout)
+          begin
+            registries.each { |registry| registry.manage(handle) }
+            raise RuntimeError, "task owner is closed" if registries.any?(&:closed?)
+            worker = Thread.new do
+              Thread.current.report_on_exception = false
+              handle.__send__(:perform, runtime, &task)
+            end
+          rescue Exception
+            handle.__send__(:discard)
+            raise
+          end
+          WORKERS << [scope, worker]
+          if key != nil
+            generation = [owner.__id__, key]
+            previous = GENERATIONS[generation]
+            previous.__send__(:discard) if previous != nil
+            GENERATIONS[generation] = handle
+          end
+          handle
+        end
+      end
+
+      private_class_method :start
+
+      def initialize(owner, key, registries, timeout)
+        @owner = owner
+        @generation = key == nil ? nil : [owner.__id__, key]
+        @registries = registries
+        @token = CancellationToken.new
+        @state = :running
+        @outcome = nil
+        @timeout = timeout
+        @deadline = timeout == nil ? nil : Tasks.__send__(:monotonic_time) + timeout
+      end
+
+      def state
+        MUTEX.synchronize do
+          refresh
+          @state
+        end
+      end
+
+      def done?
+        state != :running
+      end
+
+      def take
+        MUTEX.synchronize do
+          refresh
+          outcome = @outcome
+          @outcome = nil
+          detach if outcome != nil
+          outcome
+        end
+      end
+
+      def cancel
+        error = MUTEX.synchronize do
+          refresh
+          return false if @state != :running
+          @state = :cancelled
+          @outcome = Outcome.new(nil, Cancelled.new("Task cancelled"))
+          @outcome.error
+        end
+        @token.cancel(error)
+        true
+      end
+
+      def close
+        MUTEX.synchronize do
+          return false if @state == :closed
+          discard
+          true
+        end
+      end
+
+      private
+
+      def refresh
+        if @registries.any?(&:closed?)
+          discard
+        elsif @state == :running && @deadline != nil && Tasks.__send__(:monotonic_time) >= @deadline
+          @state = :timed_out
+          @outcome = Outcome.new(nil, TimedOut.new("Task timed out after #{@timeout} seconds"))
+        end
+      end
+
+      def discard
+        @state = :closed
+        @outcome = nil
+        detach
+      end
+
+      def detach
+        @registries.each { |registry| registry.release(self) }
+        @registries = []
+        GENERATIONS.delete(@generation) if @generation != nil && GENERATIONS[@generation].equal?(self)
+        @generation = nil
+        @owner = nil
+      end
+
+      def perform(runtime, &task)
+        return if MUTEX.synchronize { refresh; @state != :running }
+        begin
+          value = Tasks.__send__(:with_runtime, runtime) do
+            @token.raise_if_cancelled!
+            task.call(@token)
+          end
+        rescue Exception => error
+        end
+        MUTEX.synchronize do
+          refresh
+          if @state == :running
+            @state = error == nil ? :succeeded : :failed
+            @outcome = Outcome.new(value, error)
+          end
+        end
+        nil
       end
     end
 
@@ -284,6 +420,39 @@ module EltenAPI
     private_constant :Dispatcher, :Screen, :PassiveUI, :Outcome
 
     class << self
+      def start(owner: nil, key: nil, timeout: nil, &task)
+        raise ArgumentError, "block is required" if task == nil
+        raise ArgumentError, "key must be a String or Symbol" unless key == nil || key.is_a?(String) || key.is_a?(Symbol)
+        key = key.dup.freeze if key.is_a?(String)
+        timeout = normalize_timeout(timeout)
+        runtime = current_runtime
+        if defined?(Programs)
+          runtime ||= owner if owner.is_a?(Programs::Runtime)
+          runtime ||= Programs.runtime_for(owner) if owner != nil
+          runtime ||= Programs.runtime_from_caller
+        end
+        runtime_registry = nil
+        if runtime != nil
+          runtime_registry = runtime.instance_variable_get(:@managed_resources)
+          if !Programs.runtime_registered?(runtime) || runtime_registry == nil || runtime_registry.closed?
+            raise RuntimeError, "application runtime is closed"
+          end
+        end
+        owner ||= runtime
+        registry = if owner.equal?(runtime)
+          runtime_registry
+        elsif owner.is_a?(Resources::Registry)
+          owner
+        elsif owner.respond_to?(:managed_resources)
+          owner.managed_resources
+        end
+        if owner != nil && !registry.is_a?(Resources::Registry)
+          raise ArgumentError, "owner must provide a resource registry"
+        end
+        registries = [registry, runtime_registry].compact.uniq
+        Handle.__send__(:start, runtime, owner, key, registries, timeout, &task)
+      end
+
       def run(title:, ui: :automatic, show_after: 0.5, cancellable: true, cancellation_token: nil, timeout: nil, &task)
         raise ArgumentError, "block is required" if task == nil
         timeout = normalize_timeout(timeout)

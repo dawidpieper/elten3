@@ -29,6 +29,8 @@ platforms :windows do
   gem "win32ole", "1.9.2"
 end
 gem "http-2", "1.1.3"
+gem "tzinfo", "2.0.6"
+gem "tzinfo-data", "1.2026.6"
 gem "ostruct", "0.6.3"
 gem "ruby-xz", "1.0.3"
 gem "sqlite3", "2.9.5", force_ruby_platform: true

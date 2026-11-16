@@ -52,7 +52,7 @@ module EltenAPI
       normalized
     end
 
-    def load_configuration
+    def load_configuration(interactive: true)
         Log.info("Loading configuration")
         migrate_configuration
         LocalConfig.load
@@ -68,17 +68,18 @@ module EltenAPI
   Configuration.mainnotificationtypeorder = load_configuration_order("MainWindow", "NotificationTypeOrder", NotificationGroups.default_notification_type_order)
   Configuration.iimodifiers = load_configuration_choice("InvisibleInterface", "IIModifiers", [:automatic, :alt_ctrl_windows, :alt_shift_windows, :alt_ctrl_shift, :alt_ctrl, :alt_shift], :automatic)
   Configuration.iicards = load_configuration_list("InvisibleInterface", "Cards", [:messages, :feed, :conference], [:messages, :feed, :conference])
+  Configuration.iireadmessagesubjects = load_configuration_boolean("InvisibleInterface", "ReadMessageSubjects", false)
   Configuration.roundupforms = load_configuration_boolean("Interface", "RoundUpForms", false)
   Configuration.usepan = load_configuration_boolean("Interface", "UsePan", true)
   Configuration.soundcard = readconfig("SoundCard", "SoundCard", "")
   if Configuration.soundcard==""
                 Sapi.set_device(-1) if defined?(Sapi)
-                  Bass.setdevice(-1)
+                  Bass.setdevice(-1, force: false)
                 else
     sc=Bass.soundcards
   for i in 0...sc.size
     if sc[i].name==Configuration.soundcard
-    Bass.setdevice(i)
+    Bass.setdevice(i, force: false)
     end
   end
     devices=defined?(Sapi) ? Sapi.devices : []
@@ -93,13 +94,13 @@ Configuration.microphone = readconfig("SoundCard", "Microphone", "")
   mc=Bass.microphones
   for i in 0...mc.size
     if mc[i].name==Configuration.microphone
-          Bass.setrecorddevice(i)
+          Bass.setrecorddevice(i, force: false)
     s=true
     end
   end
   if s==false
     defl=mc.index(mc.find{|m|m.default?})||-1
-  Bass.setrecorddevice(defl)
+  Bass.setrecorddevice(defl, force: false)
   end
     Configuration.controlspresentation = load_configuration_choice("Interface", "ControlsPresentation", [:voice_and_sound, :sound_only, :voice_only], :voice_and_sound)
   Configuration.contextmenubar = load_configuration_boolean("Interface", "ContextMenuBar", true)
@@ -194,6 +195,7 @@ use_soundtheme(stheme)
                           Configuration.usebilinearhrtf = load_configuration_boolean("Advanced", "UseBilinearHRTF", false)
                           Configuration.disableconferencemiconrecord = load_configuration_boolean("Advanced", "DisableConferenceMicOnRecord", false)
                           Configuration.enableaudiobuffering = load_configuration_boolean("Advanced", "EnableAudioBuffering", false)
+                          Configuration.allowp2p = load_configuration_boolean("Advanced", "AllowP2P", true)
                           Configuration.disablehttp2 = load_configuration_boolean("Advanced", "DisableHTTP2", false)
                           Configuration.requestresponsecachemode = load_configuration_choice("Advanced", "RequestResponseCacheMode", [:disabled, :mutating, :all], :mutating)
                       Configuration.tcpconferences = load_configuration_boolean("Advanced", "ConferencesTCPOnly", false)
@@ -205,16 +207,20 @@ use_soundtheme(stheme)
                             setlocale(Configuration.language)
                             SpeechOutput.apply_current_settings if defined?(SpeechOutput)
                           end
-                                if Configuration.registeractivity==nil
-  Configuration.registeractivity = confirm(p_("EAPI_EltenAPI", "Do you want to send reports on how Elten is used? This data does not contain any confidential information and is very helpful in program development. This selection can be changed at any time from the Settings."))
-  writeconfig("Privacy", "RegisterActivity", Configuration.registeractivity)
-  end
-  if Elten.branch.to_s.downcase!="stable" && Configuration.registeractivity==false
-    delay(1)
-    alert(p_("EAPI_EltenAPI", "You are currently using a beta version of Elten. In these versions, uploading usage statistics is always enabled. They contain information about the most frequently used functions, configurations and problems with program operation. They do not contain any confidential or private information. If you do not want to send statistics, please use the stable version of Elten."))
-  Configuration.registeractivity = true
-  writeconfig("Privacy", "RegisterActivity", Configuration.registeractivity)
-  end
-                        end
+      configure_activity_reporting if interactive
+    end
+
+    def configure_activity_reporting
+      if Configuration.registeractivity == nil
+        Configuration.registeractivity = confirm(p_("EAPI_EltenAPI", "Do you want to send reports on how Elten is used? This data does not contain any confidential information and is very helpful in program development. This selection can be changed at any time from the Settings."))
+        writeconfig("Privacy", "RegisterActivity", Configuration.registeractivity)
+      end
+      if Elten.branch.to_s.downcase != "stable" && Configuration.registeractivity == false
+        delay(1)
+        alert(p_("EAPI_EltenAPI", "You are currently using a beta version of Elten. In these versions, uploading usage statistics is always enabled. They contain information about the most frequently used functions, configurations and problems with program operation. They do not contain any confidential or private information. If you do not want to send statistics, please use the stable version of Elten."))
+        Configuration.registeractivity = true
+        writeconfig("Privacy", "RegisterActivity", Configuration.registeractivity)
+      end
+    end
 
 end

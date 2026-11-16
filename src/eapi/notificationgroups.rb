@@ -12,6 +12,8 @@ module NotificationGroups
     forumpostreportresolved
     friend
     birthday
+    calendar
+    tasks
     followedblog
     blogcomment
     followedblogpost
@@ -31,6 +33,10 @@ module NotificationGroups
   NotificationGroup = Struct.new(:key, :cat, :label, :category, :date, :revoked, :ids, :payload, :payloads, :fallback_text, :event_count, :virtual, :action, :program_class, :app_notification, :presentation, keyword_init: true) do
     def virtual?
       virtual == true
+    end
+
+    def local?
+      virtual? && app_notification != nil && app_notification.local?
     end
   end
 
@@ -283,7 +289,28 @@ module NotificationGroups
   end
 
   def collect_virtual_notification_groups
-    NotificationGroups.virtual_notification_groups
+    groups = NotificationGroups.virtual_notification_groups
+    Programs::LocalNotifications.list(include_revoked: true).each do |notification|
+      group = NotificationGroup.new(
+        key: notification.id,
+        cat: "app",
+        category: notification.program.name.to_s,
+        date: notification.created_at,
+        revoked: notification.revoked?,
+        ids: [],
+        payload: {},
+        payloads: [],
+        event_count: 1,
+        virtual: true,
+        program_class: notification.program,
+        app_notification: notification,
+        presentation: notification.presentation
+      )
+      group.action = action_for(group.cat, group.payload, group: group)
+      group.label = group_label(group)
+      groups << group
+    end
+    groups
   end
 
   def installed_program_update_payload
@@ -298,7 +325,7 @@ module NotificationGroups
     virtual_groups.to_a.each_with_object([]) do |group, result|
       next unless group.virtual?
 
-      group.revoked = virtual_notification_revoked?(group.key)
+      group.revoked = group.local? ? group.app_notification.revoked? : virtual_notification_revoked?(group.key)
       group.label = group_label(group)
       result << group if include_revoked == true || !group.revoked
     end
@@ -309,13 +336,18 @@ module NotificationGroups
   end
 
   def revoke_virtual_notification(group)
-    @@virtual_notification_revoked[group.key.to_s] = true
+    if group.local?
+      return false unless group.app_notification.revoke
+    else
+      @@virtual_notification_revoked[group.key.to_s] = true
+    end
     group.revoked = true
     $main_notifications_changed = true
     Session.notifications_update if defined?(Session)
     true
   end
   def update_notification(updates)
+    return nil unless launched_by_launcher?
     client = updates == nil ? nil : updates.client
     return nil if client == nil || !client.update?
 
@@ -370,7 +402,7 @@ module NotificationGroups
       ids: [],
       payload: payload,
       virtual: true,
-      action: Proc.new { insert_scene(Scene_Programs.new(:updates), true, return_to_main: true) }
+      action: Proc.new { insert_scene(Scene_Programs.new(:updates, close_after_updates: true), true, return_to_main: true) }
     )
   rescue EltenLink::Error => e
     Log.warning("Program updates notification failed: #{e.message}")
@@ -462,6 +494,10 @@ module NotificationGroups
       end
     when "followedthread", "followedforum", "followedforumpost"
       ["forum", payload["threadid"].to_i].join(":")
+    when "calendar"
+      ["calendar", payload["event"].to_i, payload["starttime"].to_i].join(":")
+    when "tasks"
+      ["tasks", payload["task"].to_i, payload["plantime"].to_i].join(":")
     when "forumthreadoffer"
       thread_id = payload["threadid"].to_i
       thread_id > 0 ? [cat, thread_id].join(":") : [cat, notification.id.to_i].join(":")
@@ -520,6 +556,10 @@ module NotificationGroups
       p_("Notifications", "Contacts")
     when "birthday"
       p_("Notifications", "Birthdays")
+    when "calendar"
+      p_("Notifications", "Calendar reminders")
+    when "tasks"
+      p_("Notifications", "Task reminders")
     when "followedblog"
       p_("Notifications", "Followed blogs")
     when "blogcomment"
@@ -579,6 +619,16 @@ module NotificationGroups
       contact_title(payload, payloads: payloads)
     when "birthday"
       birthday_title(payload, payloads: payloads)
+    when "calendar"
+      time = Time.at(payload["starttime"].to_i)
+      time = EltenLink::TimeZones.local(payload["timezone"], time) if payload["all_day"]
+      p_("Notifications", "Calendar reminder: %{event}, %{time}") % {
+        event: payload["name"].to_s, time: format_date(time, payload["all_day"] == true, false)
+      }
+    when "tasks"
+      p_("Notifications", "Task reminder: %{task}, %{date}") % {
+        task: payload["name"].to_s, date: payload["date"].to_s
+      }
     when "groupinvitation"
       group_invitation_title(payload, payloads: payloads)
     when "mtr"
@@ -928,11 +978,26 @@ module NotificationGroups
     when "followedblog", "blogcomment", "followedblogpost", "blogmention"
       Proc.new { open_blog_post(payload, cat.to_s) }
     when "blogfollower"
-      Proc.new { insert_scene(Scene_Blog_Followers.new(nil), true, return_to_main: true) }
+      Proc.new do
+        blog = payload["blog"].to_s
+        insert_scene(Scene_Blog_Followers.new(blog.empty? ? nil : blog), true, return_to_main: true)
+      end
     when "friend"
       Proc.new { insert_scene(Scene_Users_AddedMeToContacts.new(true, Scene_Main.new), true, return_to_main: true) }
     when "birthday"
       Proc.new { open_birthday(payload) }
+    when "calendar"
+      Proc.new do
+        time = Time.at(payload["starttime"].to_i)
+        time = EltenLink::TimeZones.local(payload["timezone"], time) if payload["all_day"]
+        insert_scene(Scene_Calendar.new(payload["calendar"].to_i, time.to_date,
+          event_id: payload["event"].to_i, occurrence_start: payload["starttime"].to_i), true, return_to_main: true)
+      end
+    when "tasks"
+      Proc.new do
+        insert_scene(Scene_Tasks.new(payload["project"].to_i, :all,
+          task_id: payload["task"].to_i), true, return_to_main: true)
+      end
     when "groupinvitation"
       Proc.new { insert_scene(Scene_Forum.new(nil, nil, 4), true) }
     when "app"
@@ -1067,6 +1132,7 @@ module NotificationGroups
 
   def open_notification_group(group)
     return false if group == nil
+    return false if group.local? && !Programs::LocalNotifications.include?(group.app_notification)
 
     if group.action != nil
       group.action.call
@@ -1100,10 +1166,12 @@ module NotificationGroups
   end
 
   def revoke_all_notification_groups(groups=nil)
-    EltenLink::Notifications.revoke_all(elten_link, app_uuids: Programs.notification_app_uuids)
-    EltenAPI::NotificationService.revoke_active_notifications
     groups.to_a.each do |group|
       revoke_virtual_notification(group) if group.virtual? && !group.revoked
+    end
+    if groups == nil || groups.any? { |group| !group.virtual? && !group.revoked && !group.ids.empty? }
+      EltenLink::Notifications.revoke_all(elten_link, app_uuids: Programs.notification_app_uuids)
+      EltenAPI::NotificationService.revoke_active_notifications
     end
     $main_notifications_changed = true
     Session.notifications_update if defined?(Session)

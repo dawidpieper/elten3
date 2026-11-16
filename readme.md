@@ -4,8 +4,10 @@ Elten is the desktop client for [EltenLink](https://elten.link), a social networ
 
 The project maintainer is [Dawid Pieper](mailto:dawidpieper@o2.pl).
 
+Elten 3.0 is a stable release.
+
 > [!WARNING]
-> Elten 3.0 is currently a release candidate. Documentation is still being written, and API contracts, interfaces, configuration keys, certificates, packaging details and other elements may change without prior notice. Treat the current code as evolving software, especially if you are building an application or integration on top of it.
+> The hosted application API remains experimental in Elten 3.0. Its stabilisation is planned for Elten 3.1. Application manifests, lifecycle hooks, helper APIs, package formats and signing and verification rules may change before then. See [Elten applications](docs/eltenapps.md) for the current compatibility boundary.
 
 This README provides technical information on the sources and development. General information, downloads and user-facing documentation can be found on the [EltenLink website](https://elten.link).
 
@@ -63,23 +65,18 @@ Elten 3 deliberately remains an in-process application. Its internal boundaries 
 
 - [Building Elten 3](docs/building.md) covers the Ruby quick start, build requirements and pipeline.
 - [Elten 3 architecture](docs/architecture.md) covers the process model, source tree, loading order and platform boundaries.
-- [Development roadmap](docs/roadmap.md) records cross-cutting architectural directions and committed runtime changes.
+- [Development roadmap](docs/roadmap.md) records cross-cutting architectural directions, the planned LINDAR audio backend and committed runtime changes.
 - [Elten applications](docs/eltenapps.md) covers the experimental hosted application runtime, lifecycle and packaging.
 - [Contributing to Elten 3](docs/contributing.md) covers planning changes, updating localisation and sending pull requests.
 - [Security Policy](docs/security.md) explains how to report a suspected vulnerability.
 
 ## Reporting bugs and following development
 
-GitHub Issues are disabled. Official issue tracking, discussion and milestone work take place in dedicated EltenLink forums:
+GitHub Issues are disabled. Official issue tracking, development discussion and milestone work take place in the [Elten beta-testing group](https://elten.link/forum/group/112). Follow the reporting instructions published in that group.
 
-- [Polish beta testing](https://elten.link/forum/group/110)
-- [English beta testing](https://elten.link/forum/group/111)
+When submitting a related code change, link its ELTEN thread using the [contribution guidelines](docs/contributing.md#linking-elten-issues).
 
-Both groups are active, but, frankly, the Polish group is substantially busier and has the more complete tagging, triage and milestone history, so it is the best reference for an overview of current development. The English group remains the correct place for reports and discussion in English.
-
-Details regarding bug-reporting are provided in the mentioned forums.
-
-Do not post suspected vulnerabilities to either group. Report them privately by following the [Security Policy](docs/security.md).
+Do not post suspected vulnerabilities in the public beta-testing forums. Report them privately by following the [Security Policy](docs/security.md).
 
 ## Official binaries and updates
 

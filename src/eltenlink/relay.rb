@@ -4,6 +4,7 @@
 
 require "base64"
 require "json"
+require "monitor"
 require "openssl"
 require "securerandom"
 require "socket"
@@ -19,7 +20,7 @@ module EltenLink
     MAX_UNRELIABLE_DATA = 1200
     MAX_DATAGRAM = 1400
     MAX_PARTICIPANTS = 32
-    FEATURES = %w[udp_aead payload_aead response_chunks request_dedupe session_sync].freeze
+    FEATURES = %w[udp_aead payload_aead response_chunks request_dedupe session_sync p2p_v1].freeze
     DEFAULT_LIMITS = {
       max_frame: MAX_FRAME,
       max_reliable_data: MAX_RELIABLE_DATA,
@@ -297,6 +298,7 @@ module EltenLink
         @features = []
         @tick_mutex = Mutex.new
         @ack_mutex = Mutex.new
+        @reliable_send_mutex = Monitor.new
         @pending_acks = {}
         @response_chunks = {}
         @event_chunks = nil
@@ -310,15 +312,22 @@ module EltenLink
         raise
       end
 
-      def create_session(metadata:, participant_metadata:, capacity:, public_state:, encryption:)
-        request(
-          "create_session",
+      def create_session(metadata:, participant_metadata:, capacity:, public_state:, encryption:, p2p: :off, p2p_participants_limit: 2)
+        validate_p2p_options!(p2p, p2p_participants_limit)
+        fields = {
           "metadata" => metadata,
           "participant_metadata" => participant_metadata,
           "capacity" => capacity,
           "public" => public_state,
           "encryption" => encryption
-        )
+        }
+        if supports?("p2p_v1")
+          fields["p2p"] = p2p.to_s
+          fields["p2p_participants_limit"] = p2p_participants_limit
+        end
+        result = request("create_session", fields)
+        @p2p&.track(result)
+        result
       end
 
       def public_sessions
@@ -345,11 +354,13 @@ module EltenLink
       end
 
       def join_public_session(session_id:, participant_metadata:)
-        request(
+        result = request(
           "join_public_session",
           "session_id" => session_id.to_s,
           "participant_metadata" => participant_metadata
         )
+        @p2p&.track(result)
+        result
       end
 
       def invite(session_id:, user:, metadata:)
@@ -361,11 +372,13 @@ module EltenLink
       end
 
       def accept_invitation(invitation_id:, participant_metadata:)
-        request(
+        result = request(
           "accept_invitation",
           "invitation_id" => invitation_id.to_s,
           "participant_metadata" => participant_metadata
         )
+        @p2p&.track(result)
+        result
       end
 
       def reject_invitation(invitation_id:)
@@ -393,6 +406,15 @@ module EltenLink
       end
 
       def send_reliable(session_id:, epoch:, message_id:, targets:, envelope:)
+        unless @p2p&.reliable?(session_id)
+          return send_relay_reliable(session_id: session_id, epoch: epoch, message_id: message_id, targets: targets, envelope: envelope)
+        end
+        @reliable_send_mutex.synchronize do
+          @p2p.send_reliable(session_id: session_id, epoch: epoch, message_id: message_id, targets: targets, envelope: envelope)
+        end
+      end
+
+      def send_relay_reliable(session_id:, epoch:, message_id:, targets:, envelope:)
         request(
           "reliable",
           "session_id" => session_id.to_s,
@@ -404,6 +426,15 @@ module EltenLink
       end
 
       def send_unreliable(session_id:, epoch:, message_id:, targets:, envelope:)
+        if @p2p
+          remaining = @p2p.send_unreliable(session_id: session_id, epoch: epoch, message_id: message_id, targets: targets, envelope: envelope)
+          return true if remaining == []
+          targets = remaining if remaining
+        end
+        send_relay_unreliable(session_id: session_id, epoch: epoch, message_id: message_id, targets: targets, envelope: envelope)
+      end
+
+      def send_relay_unreliable(session_id:, epoch:, message_id:, targets:, envelope:)
         if fast_path?
           begin
             packet = message_datagram(session_id, epoch, message_id, targets, envelope)
@@ -441,6 +472,7 @@ module EltenLink
       def tick
         return false if closed? || !@tick_mutex.try_lock
         begin
+          @p2p&.update_policy
           now = monotonic
           if now - @last_control_pong > limit(:session_timeout)
             fail_connection(ConnectionError.new("Relay heartbeat timed out"), :connection_lost)
@@ -465,6 +497,16 @@ module EltenLink
 
       def fast_path?
         @udp_registered && monotonic - @last_udp_pong <= limit(:fast_path_timeout)
+      end
+
+      def p2p_allowed?
+        return true unless defined?(::EltenAPI::Configuration) && ::EltenAPI::Configuration.respond_to?(:allowp2p)
+
+        ::EltenAPI::Configuration.allowp2p != false
+      end
+
+      def p2p_status(session_id)
+        @p2p ? @p2p.status(session_id) : {}
       end
 
       def limits
@@ -497,9 +539,10 @@ module EltenLink
         @control = ssl
         @writer_thread = Thread.new { writer_loop }
         @reader_thread = Thread.new { reader_loop }
+        p2p_enabled = p2p_allowed?
         login = request(
           "login",
-          { "version" => VERSION, "user" => @user, "token" => @token, "app_id" => @app_id, "features" => FEATURES },
+          { "version" => VERSION, "user" => @user, "token" => @token, "app_id" => @app_id, "features" => FEATURES, "p2p_enabled" => p2p_enabled },
           timeout: @timeout
         )
         @client_id = login["client_id"].to_s
@@ -507,6 +550,9 @@ module EltenLink
         apply_limits(login["limits"])
         @features = Array(login["features"]) & FEATURES
         @server_clock_offset = login["time"].to_f - Time.now.to_f if login["time"]
+        if supports?("p2p_v1")
+          @p2p = P2PTransport.new(self, @client_id, @datagram_secret, @host, @port, enabled: p2p_enabled)
+        end
         start_datagrams
 
       rescue RemoteError => error
@@ -532,6 +578,11 @@ module EltenLink
           end
         end
         @token = nil
+      end
+
+      def validate_p2p_options!(mode, limit)
+        raise ArgumentError, "p2p must be :off, :partial or :full" unless %i[off partial full].include?(mode)
+        raise ArgumentError, "p2p_participants_limit must be a non-negative integer" unless limit.is_a?(Integer) && limit.between?(0, 0x7fffffff)
       end
 
       def default_tls_context
@@ -578,7 +629,7 @@ module EltenLink
         fail_connection(ConnectionError.new(error.message), :connection_lost) unless @closing
       end
 
-      def request(type, fields = {}, timeout: 5, **keywords)
+      def request(type, fields = {}, timeout: 5, pump_events: true, **keywords)
         fields = fields.merge(keywords)
         waiter = ResponseWaiter.new
         request_id = nil
@@ -593,7 +644,7 @@ module EltenLink
         frame = { "type" => type, "request_id" => request_id }.merge(fields)
         frame["expires_at"] = Time.now.to_f + @server_clock_offset + timeout.to_f if supports?("request_dedupe")
         send_frame(frame, request_id: request_id, deadline: deadline)
-        pump = -> { @event_sink.__send__(:wait_step) } if @event_sink && @event_sink.respond_to?(:wait_step, true)
+        pump = -> { @event_sink.__send__(:wait_step) } if pump_events && @event_sink && @event_sink.respond_to?(:wait_step, true)
         retryable = supports?("request_dedupe") && type != "login"
         begin
           waiter.wait(retryable ? timeout.to_f / 2 : timeout, pump: pump)
@@ -650,6 +701,10 @@ module EltenLink
 
       def handle_frame(frame)
         return unless frame.is_a?(Hash)
+        if @p2p
+          @p2p.event(frame)
+          return if frame["type"] == "p2p_state"
+        end
         case frame["type"]
         when "response" then handle_response(frame)
         when "response_chunk" then handle_response_chunk(frame)
@@ -671,7 +726,9 @@ module EltenLink
         chunk[1] += 1
         if frame["last"] == true
           @event_chunks = nil
-          emit_event(JSON.parse(chunk[2], max_nesting: 24, create_additions: false))
+          event = JSON.parse(chunk[2], max_nesting: 24, create_additions: false)
+          @p2p&.event(event)
+          emit_event(event) unless event["type"] == "p2p_state"
         end
       end
 
@@ -850,6 +907,7 @@ module EltenLink
       end
 
       def close_transport
+        @p2p&.close
         @outgoing&.close
         @control&.close rescue nil
         @datagram&.close rescue nil

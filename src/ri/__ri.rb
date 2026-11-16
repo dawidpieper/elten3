@@ -91,25 +91,6 @@ class Array
     r+="]"
     return r
     end
-    def shuffle
-t=self+[]      
-res=[]
-t.each do |o|
-  v=-1
-  while v==-1 or res[v]!=nil
-  v=rand(t.size)
-  end
-    res[v]=o
-  end
-  return res  
-  end
-  def shuffle!
-    n=shuffle
-    (0..n.size-1).each do |i|
-      self[i]=n[i]
-      end
-    return self
-  end
   def polsort
         return self.sort_by {|a| polsort_key(a)} if self.all? {|a| a.is_a?(String)}
         a=self.sort {|a,b|

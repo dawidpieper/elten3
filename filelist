@@ -35,6 +35,7 @@ src/eltenlink/__eltenlink.rb
 src/eltenlink/error.rb
 src/eltenlink/client.rb
 src/eltenlink/relay.rb
+src/eltenlink/relay_p2p.rb
 src/eltenlink/attachments.rb
 src/eltenlink/users.rb
 src/eltenlink/contacts.rb
@@ -54,6 +55,7 @@ src/eltenlink/soundthemes.rb
 src/eltenlink/auctions.rb
 src/eltenlink/authentication.rb
 src/eltenlink/accounts.rb
+src/eltenlink/user_state.rb
 src/eltenlink/bans.rb
 src/eltenlink/premiumpackages.rb
 src/eltenlink/payments.rb
@@ -61,8 +63,10 @@ src/eltenlink/polls.rb
 src/eltenlink/messages.rb
 src/eltenlink/blog.rb
 src/eltenlink/notes.rb
+src/eltenlink/time_zones.rb
 src/eltenlink/calendars.rb
 src/eltenlink/tasks.rb
+src/eltenlink/forum_template.rb
 src/eltenlink/forum.rb
 src/scenes/faq.rb
 src/scenes/sponsors.rb
@@ -98,6 +102,7 @@ src/eapi/audio/encoders/ogg.rb
 src/eapi/audio/encoders/opus.rb
 src/eapi/audio/encoders/vorbis.rb
 src/eapi/audio/encoders/wave.rb
+src/eapi/audio/encoders/mp3.rb
 src/scenes/version.rb
 src/scenes/speedtest.rb
 src/platforms/windows/eapi/clipboard.rb :windows
@@ -105,8 +110,17 @@ src/platforms/osx/eapi/clipboard.rb :osx
 src/platforms/linux/eapi/clipboard.rb :linux
 src/scenes/authentication.rb
 src/eapi/audio/bass.rb
+src/eapi/audio/format.rb
+src/eapi/audio/source.rb
 src/eapi/audio/sound.rb
 src/eapi/audio/soundpool.rb
+src/eapi/audio/spatial.rb
+src/eapi/audio/steamaudio.rb
+src/eapi/audio/steamaudio/native.rb
+src/eapi/audio/steamaudio/simulation.rb
+src/eapi/audio/steamaudio/spatial_renderer.rb
+src/eapi/audio/spatial_emitter.rb
+src/eapi/audio/spatial_scene.rb
 src/eapi/audio/fx/audio3d.rb
 src/eapi/audio/fx/effects.rb
 src/scenes/debug.rb
@@ -138,6 +152,7 @@ src/scenes/update.rb
 src/scenes/messages.rb
 src/scenes/online.rb
 src/eapi/mainmenu.rb
+src/scenes/forum_templates.rb
 src/scenes/forum.rb
 src/scenes/main.rb
 src/scenes/login.rb
@@ -164,6 +179,8 @@ src/eapi/common/license.rb
 src/eapi/common/media.rb
 src/eapi/common/input.rb
 src/eapi/common/threads.rb
+src/eapi/common/draft.rb
+src/eapi/common/server_data.rb
 src/eapi/common/premium.rb
 src/eapi/common/platform.rb
 src/eapi/common/activity.rb
@@ -217,6 +234,7 @@ src/ui/controls/opus_record_button.rb
 src/ui/controls/date_button.rb
 src/ui/controls/__controls.rb
 src/eapi/tasks.rb
+src/eapi/server_clock.rb
 src/eapi/communication.rb
 src/eapi/live_sessions.rb
 src/eapi/dictionary.rb
@@ -226,9 +244,7 @@ src/platforms/windows/invisibleinterface/hotkeys.rb :windows
 src/platforms/windows/invisibleinterface/service.rb :windows
 src/platforms/osx/invisibleinterface/service.rb :osx
 src/platforms/linux/invisibleinterface/service.rb :linux
-src/eapi/audio/format.rb
 src/eapi/audio/encoders/media.rb
-src/eapi/audio/source.rb
 src/eapi/audio/processing.rb
 src/eapi/audio/renderer.rb
 src/eapi/speechtofile.rb
@@ -238,6 +254,7 @@ src/eapi/runner.rb
 src/eapi/program_package_metadata.rb
 src/eapi/unsigned_package_builder.rb
 src/eapi/program.rb
+src/eapi/program_notifications.rb
 src/eapi/program_installer.rb
 src/eapi/scheduler.rb
 src/eapi/extensions.rb

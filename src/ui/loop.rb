@@ -41,6 +41,59 @@ rescue Exception
   TICK_SECONDS
 end
 
+def dispatch_notification(event, batch_sounds=nil)
+  sound = event["sound"]
+  if batch_sounds && sound != nil
+    event = event.merge("sound" => nil) if batch_sounds[sound]
+    batch_sounds[sound] = true
+  end
+  if $notifications_callback != nil
+    $notifications_callback.call(event)
+  else
+    process_notification(event)
+  end
+end
+
+def dispatch_local_notifications
+  pending, changed = Programs::LocalNotifications.drain
+  if changed
+    $main_notifications_changed = true
+    Session.notifications_update
+  end
+  return if EltenAPI::UI.notifications_muted?
+
+  batch_sounds = {}
+  pending.each do |notification|
+    next unless notification.active?
+    presentation = notification.presentation
+    next if presentation.default_suppressed?
+
+    dispatch_notification({
+      "func" => "notif",
+      "alert" => presentation.alert,
+      "sound" => presentation.sound,
+      "id" => notification.id,
+      "local" => true,
+      "type" => notification.type,
+      "metadata" => notification.metadata,
+      "presentation_metadata" => presentation.metadata
+    }, batch_sounds)
+  end
+rescue Exception => error
+  Log.error("Local notification dispatch failed: #{error.class}: #{error.message}")
+end
+
+def dispatch_parallel_scene_events
+  return unless Thread.current.equal?($currentthread) && !Thread.current.equal?($mainthread)
+  scene = Thread.current.thread_variable_get(:elten_scene)
+  return unless scene
+
+  Programs.with_runtime(Programs.runtime_for(scene)) do
+    EltenAPI::Communication.__send__(:dispatch_scene_events, scene) if defined?(EltenAPI::Communication)
+    EltenAPI::LiveSessions.__send__(:dispatch_scene_events, scene) if defined?(EltenAPI::LiveSessions)
+  end
+end
+
                     # Updates a window, speech api and keyboard state
                     @@call=nil
                     @@missedcalls_window=nil
@@ -85,9 +138,12 @@ end
        EltenAPI::Scheduler.tick if defined?(EltenAPI::Scheduler) && Thread::current == $mainthread
        EltenAPI::Communication.tick if defined?(EltenAPI::Communication) && Thread::current == $mainthread
        EltenAPI::LiveSessions.tick if defined?(EltenAPI::LiveSessions) && Thread::current == $mainthread
+       dispatch_parallel_scene_events
        $input_frame_serial=($input_frame_serial||0)+1
        EltenAPI::Controls::ListBox.tick_audio_players if defined?(EltenAPI::Controls::ListBox)
        Sound.update_slide_events if defined?(Sound) && Thread.current == $mainthread
+       Programs::NotificationLifecycles.tick if defined?(Programs::NotificationLifecycles) && Thread.current == $mainthread
+       dispatch_local_notifications if defined?(Programs::LocalNotifications) && Thread.current == $mainthread
        $getkeychar_cache_serial=nil
        $getkeychar_cache=nil
        EltenWindow.begin_input_frame
@@ -104,13 +160,14 @@ end
        begin
          NotificationService.start
          NotificationService.drain_events.each do |d|
+           batch_sounds = d.delete("batch_sounds")
            if d['func']=="app_notification"
              program, notification, presentation = Programs.receive_app_notification(d["notification"])
              next if program == nil || presentation == nil
 
              $main_notifications_changed = true
              Session.notifications_update
-             next if presentation.default_suppressed? || $donotdisturb == true
+             next if presentation.default_suppressed? || EltenAPI::UI.notifications_muted?
 
              event = {
                "func" => "notif",
@@ -122,26 +179,18 @@ end
                "metadata" => notification.metadata,
                "presentation_metadata" => presentation.metadata
              }
-             if $notifications_callback!=nil
-               $notifications_callback.call(event)
-             else
-               process_notification(event)
-             end
+             dispatch_notification(event, batch_sounds)
            elsif d['func']=="notif"
              if d['invisible'] != true
                $main_notifications_changed = true
                Session.notifications_update
              end
-             next if $donotdisturb == true
-             if $notifications_callback!=nil
-               $notifications_callback.call(d)
-             else
-               process_notification(d)
-             end
+             next if EltenAPI::UI.notifications_muted?
+             dispatch_notification(d, batch_sounds)
            elsif d['func']=='msg'
              $notification_msg_count=d['msgs'].to_i
             elsif d['func']=='sig'
-              play_sound('right')
+              play_sound('right') unless EltenAPI::UI.notifications_muted?
               if $scene.class.ancestors.include?(Program) and d['appid'].to_s == $scene.class.app_uuid.to_s
                 begin
                   $scene.signaled(d['sender'], JSON.parse(d['packet'].to_s))
@@ -150,8 +199,7 @@ end
                 end
               end
             elsif d['func']=='call_start'
-              call_sound_start(d['ringtone'] || 'ringing')
-              @@call = CallWindow.new(d['call_id'], d['caller'], d['channel'], d['password']) if @@call==nil || @@call.id!=d['call_id']
+              @@call = CallWindow.new(d['call_id'], d['caller'], d['channel'], d['password'], d['ringtone']) if @@call==nil || @@call.id!=d['call_id']
            elsif d['func']=='call_stop'
               call_sound_stop
               missed_call = @@call if @@call != nil && @@call.id == d['call_id'] && !@@call.handled?
@@ -338,6 +386,9 @@ if $agalarm==true and $alarmproc!=true
     play_sound("dialog_close")
     loop_update
     $alarmproc=false
+  end
+  if @@call != nil || (@@missedcalls_window != nil && @@missedcalls_window.active)
+    process_quick_action_hotkeys(only: :donotdisturb)
   end
   if @@call!=nil
   @@call.update

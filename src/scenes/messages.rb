@@ -5,6 +5,11 @@
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
 
 class Scene_Messages
+  def self.draft_key(recipient, subject)
+    parts = [recipient.to_s.downcase, subject == nil ? nil : subject.to_s.sub("RE: ", "")]
+    Digest::SHA256.hexdigest(JSON.generate(parts))
+  end
+
     def utf8(value)
       str=value.to_s.dup
       str.force_encoding(Encoding::UTF_8) if str.encoding!=Encoding::UTF_8
@@ -65,6 +70,7 @@ when 0
   when 1
     @sel_conversations.focus
     when 2
+      bind_message_draft
       @form_messages.focus
       load_messages(@messages_user, @messages_subject, @messages_sp, @messages_limit, true)
 end
@@ -222,7 +228,7 @@ def context_users(menu)
   if @users.size >0 and @sel_users.index<@users.size
 menu.useroption(@users[@sel_users.index].user) if @users[@sel_users.index].is_user
 menu.option(p_("Messages", "Reply"), nil, "o") {
-  $scene = Scene_Messages_New.new(@users[@sel_users.index].user,"","",export)
+  $scene = Scene_Messages_New.new(@users[@sel_users.index].user,"","",export, draft_subjectless: LocalConfig["MessagesDefaultToAllMessages", type: :bool])
 }
 if !LocalConfig['MessagesDefaultToAllMessages', type: :bool]
 menu.option(p_("Messages", "Show all messages"), nil, :shift_enter) {
@@ -239,10 +245,9 @@ else
   begin
     EltenLink::Messages.mark_all_read(elten_link, user: @users[@sel_users.index].user)
   rescue EltenLink::Error
-    alert(_("Error"))
     @sel_users.focus
-    next
-    end
+    alert(_("Error"))
+  else
     alert(p_("Messages", "All messages in this conversation have been marked as read."))
 speech_wait
 if @wn == true
@@ -250,6 +255,7 @@ if @wn == true
 else
   main
 end
+  end
 }
 menu.submenu(p_("Messages", "Add conversation to quick actions")) {|m|
 m.option(p_("Messages", "Add list of conversations to quick actions"), nil, "q") {
@@ -314,7 +320,7 @@ menu.option(p_("Messages", "Create new conversation"), nil, "t") {
     @sel_users.focus
 }
 menu.option(p_("Messages", "Send a new message"), nil, "n") {
-$scene = Scene_Messages_New.new("","","",export)
+$scene = Scene_Messages_New.new("","","",export, draft_subjectless: LocalConfig["MessagesDefaultToAllMessages", type: :bool])
 }
 menu.option(p_("Messages", "Mark all messages as read"), nil, "W") {
 confirm(p_("messages", "Are you sure you want to mark all messages in all conversations as read?")) {
@@ -565,6 +571,7 @@ def deleteconversation(c)
       end
     end
     def load_messages(user,subject,sp=nil,limit=@messages_limit||50,complete=false)
+      previous_reply = @form_messages.fields[3] if @cat == 2 && @form_messages && user == @messages_user && subject == @messages_subject && sp == @messages_sp
                      @messages=[] if !complete
    @messages_user=user
    @messages_subject=subject
@@ -605,24 +612,15 @@ def deleteconversation(c)
        end
 @messages_more=result.more if !complete
 @messages_name=utf8(result.name)
-curids=[]
-@messages.each {|m| curids.push(m.id)}
-result.messages.each do |m|
-  if !(complete and curids.include?(m.id))
-    o=(complete)?0:(@messages.size)
-    @messages.insert(o,m)
-  end
-end
+    known_ids = @messages.to_h { |message| [message.id, true] }
+    new_messages = result.messages.uniq(&:id).reject { |message| known_ids[message.id] }
+    @messages = new_messages + @messages
          selt=[]
          states=[]
          audio_urls=[]
          audio_autoplay=[]
          audio_completion_labels=[]
-    for m in @messages
-      if !curids.include?(m.id)
-      if complete
-      play_sound("messages_update")
-    end
+    new_messages.each do |m|
         m.date=Time.now if m.date==0
             sender=EltenAPI::SpeechSequence.new(utf8(m.sender))
             sender << attachment_message_command if m.attachments.size>0
@@ -642,7 +640,6 @@ end
               subject=utf8(m.subject)
               selt[-1]+=":\r\n"+((sp!=nil and sp!="new")?(subject+":\r\n"):"")+text.split("")[0...5000].join+((text.size>5000)?"... #{p_("Messages", "Open this message to read more")}":"")+"\r\n"+format_date(m.date)+"\r\n"
             end
-            end
     end
     selt.push(p_("Messages", "Show older")) if @messages_more and !complete
     if !complete
@@ -655,13 +652,31 @@ end
     states.each_with_index{|st,i|@sel_messages.set_item_states(i, st) if st!=nil}
     audio_urls.each_with_index{|url,i|@sel_messages.set_item_audio(i, url, autoplay: audio_autoplay[i]!=false, completion_label: audio_completion_labels[i]) if url!=nil && url.to_s!=""}
     @sel_messages.bind_context{|menu|context_messages(menu)}
-        @form_messages=Form.new([@sel_messages,nil,nil,EditBox.new(p_("Messages", "Your reply"),type: EditBox::Flags::MultiLine,text: "",quiet: true),nil,Button.new(p_("Messages", "Compose"))],index: 0,silent: true)
+        @form_messages=Form.new([@sel_messages,nil,nil,previous_reply || EditBox.new(p_("Messages", "Your reply"),type: EditBox::Flags::MultiLine,text: "",quiet: true),nil,Button.new(p_("Messages", "Compose"))],index: 0,silent: true)
   @form_messages.fields[3..5]=[nil,nil,nil] if !result.can_reply or @messages_sp=='flagged' or @messages_sp=='search'
-  else
+  bind_message_draft
+  elsif !new_messages.empty?
+    index = @sel_messages.options.empty? ? 0 : @sel_messages.index + selt.size
     @sel_messages.prepend_options(selt, states, audio_urls, audio_autoplay, audio_completion_labels)
-    @sel_messages.index+=selt.size
+    @sel_messages.index = index
+    play_sound("messages_update")
   end
       end
+  def bind_message_draft
+    field = @form_messages.fields[3]
+    return unless field.is_a?(EditBox)
+    subjectless = @messages_subject == nil
+    key = proc { |data| self.class.draft_key(data["recipient"], subjectless ? nil : data["subject"]) }
+    draft = field.params[:draft] ||= Draft.new(key, config_key: "MessagesDrafts", collection: "message_drafts")
+    data = draft.restore({ "text" => field.text, "recipient" => @messages_user, "subject" => @messages_subject })
+    field.set_text(data["text"]) if field.text != data["text"]
+    draft.bind(@form_messages, field, context: proc { @form_messages.fields[@form_messages.index] != @sel_messages }) { { "text" => field.text, "recipient" => @messages_user, "subject" => @messages_subject } }
+  end
+
+  def message_draft
+    @form_messages.fields[3]&.params&.fetch(:draft, nil)
+  end
+
   def update_messages
    if $notification_msg_count != nil and @form_messages!=nil and @form_messages.index!=3 and @form_messages.index!=4
      mwn=$notification_msg_count
@@ -671,7 +686,7 @@ end
    @form_messages.update
        if key_pressed?(:key_escape) or ((key_pressed?(:key_left) and @form_messages.index==0) and @form_messages.fields[0]==@sel_messages) or (@sel_messages.options.size-@sel_messages.grayed.count(true))==0
       if @form_messages.fields[0]==@sel_messages
-        if (@form_messages.fields[3]==nil || @form_messages.fields[3].text=="") || confirm(p_("Messages", "Are you sure you want to cancel creating this message?"))
+        if @form_messages.fields[3] == nil || message_draft.close
       return $scene=Scene_Main.new if @wn.is_a?(String) || @wn.is_a?(Hash) || @close_to_main
           if @messages_sp!="flagged" and @messages_sp!="search" and @messages_subject!=nil
       load_conversations(@messages_user,@messages_sp)
@@ -768,6 +783,7 @@ elsif @form_messages.fields[3].text!="" and @form_messages.fields[4]==nil
       else
       @form_messages.index=3
       @form_messages.fields[3].set_text("")
+      message_draft.sent
       alert(p_("Messages", "The message has been sent"))
       end
 load_messages(@messages_user, @messages_subject, @messages_sp, @messages_limit, true)
@@ -798,7 +814,7 @@ if (key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form_messages.ind
 menu.option(p_("Messages", "Reply to message sender"), nil, "O") {
   rec=@messages[@sel_messages.index].sender
   rec=@messages[@sel_messages.index].receiver if rec==Session.name
-  $scene = Scene_Messages_New.new(rec,"RE: " + @messages[@sel_messages.index].subject.sub("RE: ",""),"",export)
+  $scene = Scene_Messages_New.new(rec,"RE: " + @messages[@sel_messages.index].subject.sub("RE: ",""),"",export, draft_subjectless: @messages_subject == nil)
 }
 end
 if @sel_messages.index<@messages.size and @messages[@sel_messages.index].receiver==Session.name
@@ -860,9 +876,10 @@ menu.option(_("Delete")) {
   deletemessage
 }
 end
+message_draft&.context(menu)
 if @messages_sp!="new"
 menu.option(p_("Messages", "Send a new message in this conversation"), nil, "n") {
-$scene = Scene_Messages_New.new(@messages_user,"","",export)
+$scene = Scene_Messages_New.new(@messages_user,"","",export, draft_subjectless: @messages_subject == nil)
 }
 end
 if @messages.size>0 and @sel_messages.index<@messages.size
@@ -933,18 +950,24 @@ def audiolimit
     end
      
      class Scene_Messages_New
-       def initialize(receiver="",subject="",text="",scene=false,cursor_at_start: false)
+       def initialize(receiver="",subject="",text="",scene=false,cursor_at_start: false, draft_subjectless: false)
          @receiver = receiver
          @subject = subject
          @text = text
          @scene = scene
          @cursor_at_start = cursor_at_start
+         @draft_subjectless = draft_subjectless
          end
        def main
          receiver=@receiver
          subject=@subject
          text=@text
          text=@text.text if @text.is_a?(EditBox)
+         @draft = @text.params[:draft] if @text.is_a?(EditBox)
+         @draft ||= Draft.new("editor:#{Scene_Messages.draft_key(receiver, @draft_subjectless ? nil : subject)}",
+           config_key: "MessagesDrafts", collection: "message_drafts")
+         data = @draft.restore({ "recipient" => receiver, "subject" => subject, "text" => text }, editor: true)
+         receiver, subject, text = data["recipient"].to_s, data["subject"].to_s, data["text"]
          @fields = []
            @fields[0] = EditBox.new(p_("Messages", "Recipient"),type: 0,text: receiver,quiet: true)
            @fields[0]=nil if receiver[0..0]=="["
@@ -1030,8 +1053,13 @@ def audiolimit
                       ind=0
            ind=1 if receiver!=""
            ind=2 if receiver!="" and subject!=""
-           @form = Form.new(@fields,index: ind)
-           @fields[2].set_text(text) if @cursor_at_start
+           @form = Form.new(@fields,index: ind,quiet: true)
+           @fields[2].set_text(text) if @cursor_at_start || @fields[2].text != text
+           @draft.bind(@form, @fields[2]) {
+             { "recipient" => @fields[0] ? @fields[0].text : receiver,
+               "subject" => @fields[1].text, "text" => @fields[2].text }
+           }
+           @form.focus
 @attachments=[]
 @polls=[]
                                  loop do                     
@@ -1082,17 +1110,16 @@ def audiolimit
                        break
                        end
                      end
-                     if (key_pressed?(:key_escape) or ((key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form.index == 7)) && (@form.fields[3]==nil || @form.fields[3].delete_audio)
-                       if ((@form.fields[2]==nil || @form.fields[2].text=="") && (@form.fields[1]==nil || @form.fields[1].text==@subject.to_s)) || confirm(p_("Messages", "Are you sure you want to cancel creating this message?"))
-                                                              if @scene != false and @scene != true and @scene.is_a?(Integer)==false and @scene.is_a?(Array)==false
-           $scene = @scene
-         else
-                      $scene = Scene_Messages.new(@scene)
-                    end
-                    end
-         loop_update
-         return  
-           break
+                     if key_pressed?(:key_escape) or ((key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form.index == 7)
+                       if @draft.close(detach: false) && (@form.fields[3]==nil || @form.fields[3].delete_audio)
+                         if @scene != false and @scene != true and @scene.is_a?(Integer)==false and @scene.is_a?(Array)==false
+                           $scene = @scene
+                         else
+                           $scene = Scene_Messages.new(@scene)
+                         end
+                         loop_update
+                         return
+                       end
          end
          end
                     sent=false
@@ -1120,6 +1147,9 @@ f.delete_audio(true)
 waiting_end
 end
          if sent
+           @fields[2].set_text("")
+           @draft.sent
+           @draft.detach
            alert(p_("Messages", "The message has been sent"))
            if @scene != false and @scene != true and @scene.is_a?(Integer) == false and @scene.is_a?(Array)==false
            $scene = @scene
@@ -1128,8 +1158,12 @@ end
            $scene = Scene_Messages.new(@scene)
            return
            end
+         else
+           @receiver, @subject, @text = receiver, subject, @fields[2]
          end
-             end
+       ensure
+         @draft&.detach
+       end
              private
 def message_send_error(error)
   case error.code.to_s

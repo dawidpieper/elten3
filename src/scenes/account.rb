@@ -4,6 +4,8 @@
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
 
+require "fileutils"
+
 class Scene_Account
   WHATSNEW_DISABLE_LIST = 1
   WHATSNEW_DISABLE_PC = 2
@@ -206,6 +208,7 @@ location=currentconfig("location")
 location_a={}
 countries=[""]+Lists.locations.map {|c| location_a=c if c['geonameid']==location.to_i;c['country']}.uniq.polsort
 subcountries=[]
+subcountry_names=[]
 cities=[]
 ind=[-1, -1, -1]
 @form.fields[6].options=countries
@@ -216,8 +219,16 @@ if ind[0]==-1
 @form.fields[6].on(:move) {
             subcountries=[""]+Lists.locations.map {|c| (c['country']==countries[@form.fields[6].index])?(c['subcountry']):(nil)}.uniq
             subcountries.delete(nil)
-            subcountries.polsort!
-                        @form.fields[7].options = subcountries
+            subdivisions=(Lists.location_subdivisions||{})[Configuration.language.to_s]||{}
+            subcountry_pairs=subcountries.map {|subcountry|
+              location=Lists.locations.find {|c| c['country']==countries[@form.fields[6].index] and c['subcountry']==subcountry}
+              code=location ? location['subcountry_code'] : nil
+              [subcountry, subdivisions[code]||subcountry]
+            }
+            subcountry_pairs.sort! {|a,b| polsorter(a[1],b[1])}
+            subcountries=subcountry_pairs.map {|pair| pair[0]}
+            subcountry_names=subcountry_pairs.map {|pair| pair[1]}
+                        @form.fields[7].options = subcountry_names
             if ind[1]==-1
               ind[1]=subcountries.find_index(location_a['subcountry'])||0
               @form.fields[7].index=ind[1]
@@ -297,8 +308,8 @@ def load_signs
 end
 def load_notifications_settings
   setting_category(p_("Account", "Notifications"))
-  cats=[p_("Account", "Messages"),p_("Account", "Posts in followed threads"),p_("Account", "Posts on the followed blogs"),p_("Account", "Comments on your blog"),p_("Account", "Threads on followed forums"),p_("Account", "Posts on followed forums"),p_("Account", "New friends"),p_("Account", "Friends' birthdays"),p_("Account", "Mentions"),p_("Account", "Followed blog posts"), p_("Account", "Blog followers"), p_("Account", "Blog mentions"), p_("Account", "Awaiting group invitations")]
-  sets = ["wn_messages", "wn_followedthreads", "wn_followedblogs", "wn_blogcomments", "wn_followedforums", "wn_followedforumsthreads", "wn_friends", "wn_birthday", "wn_mentions", "wn_followedblogposts", "wn_blogfollowers","wn_blogmentions", "wn_groupinvitations"]
+  cats=[p_("Account", "Messages"),p_("Account", "Posts in followed threads"),p_("Account", "Posts on the followed blogs"),p_("Account", "Comments on your blog"),p_("Account", "Threads on followed forums"),p_("Account", "Posts on followed forums"),p_("Account", "New friends"),p_("Account", "Friends' birthdays"),p_("Account", "Mentions"),p_("Account", "Followed blog posts"), p_("Account", "Blog followers"), p_("Account", "Blog mentions"), p_("Account", "Awaiting group invitations"), p_("Account", "Calendar reminders"), p_("Account", "Task reminders")]
+  sets = ["wn_messages", "wn_followedthreads", "wn_followedblogs", "wn_blogcomments", "wn_followedforums", "wn_followedforumsthreads", "wn_friends", "wn_birthday", "wn_mentions", "wn_followedblogposts", "wn_blogfollowers","wn_blogmentions", "wn_groupinvitations", "wn_calendar", "wn_tasks"]
   for i in 0...sets.size
     make_setting(cats[i], :whatsnew_delivery, sets[i])
     end
@@ -318,8 +329,20 @@ def load_notifications_settings
     make_setting(p_("Account", "Premium packages"), :custom, Proc.new{insert_scene(Scene_PremiumPackages.new)})
     make_setting(p_("Account", "Activity statistics"), :custom, Proc.new{insert_scene(Scene_Account_Statistics.new)})
     make_setting(p_("Account", "Export user data"), :custom, Proc.new{insert_scene(Scene_Account_Export.new)})
+    make_setting(p_("Account", "Clear supplementary user state saved by Elten and programs on server"), :custom, proc { clear_user_state })
     make_setting(p_("Account", "Archive this account"), :custom, Proc.new{insert_scene(Scene_Account_Archive.new)})
     end
+      def clear_user_state
+        return unless confirm(p_("Account", "Clear supplementary state saved by Elten and programs on server, such as drafts, caches, local configurations? This will not delete any published content."))
+
+        begin
+          EltenLink::UserState.new(elten_link).clear_all
+          alert(p_("Account", "Supplementary state has been cleared."))
+        rescue EltenLink::Error => error
+          alert(error.message)
+        end
+      end
+
       def main
         make_window
         load_profile
@@ -356,35 +379,38 @@ def load_notifications_settings
     
     class Scene_Account_Password
   def main
+    oldpassword = password = repeatpassword = nil
+    loop do
       oldpassword = ""
-  password = ""
-  repeatpassword = ""
-  while oldpassword == ""
-    oldpassword = input_text(p_("Account", "Enter your old password."),flags: EditBox::Flags::Password, text: "", escapable: true)
-  end
-  if oldpassword == nil
+      password = ""
+      repeatpassword = ""
+      while oldpassword == ""
+        oldpassword = input_text(p_("Account", "Enter your old password."),flags: EditBox::Flags::Password, text: "", escapable: true)
+      end
+      if oldpassword == nil
         $scene = Scene_Main.new
-    return
-  end
-    while password == ""
-    password = input_text(p_("Account", "Enter your new password."),flags: EditBox::Flags::Password,text: "",escapable: true)
-  end
-  if oldpassword == nil
-    $scene = Scene_Main.new
-    return
-  end
-    while repeatpassword == ""
-
-      repeatpassword = input_text(p_("Account", "Repeat new password."),flags: EditBox::Flags::Password,text: "",escapable: true)
-  end
-  if repeatpassword == nil
+        return
+      end
+      while password == ""
+        password = input_text(p_("Account", "Enter your new password."),flags: EditBox::Flags::Password,text: "",escapable: true)
+      end
+      if password == nil
         $scene = Scene_Main.new
-    return
-  end
-  if password != repeatpassword
-    alert(p_("Account", "The passwords do not match."))
-    main
-  end
+        return
+      end
+      while repeatpassword == ""
+        repeatpassword = input_text(p_("Account", "Repeat new password."),flags: EditBox::Flags::Password,text: "",escapable: true)
+      end
+      if repeatpassword == nil
+        $scene = Scene_Main.new
+        return
+      end
+      if password != repeatpassword
+        alert(p_("Account", "The passwords do not match."))
+        next
+      end
+      break
+    end
   begin
     EltenLink::Accounts.change_password(elten_link, old_password: oldpassword, new_password: password)
     alert(p_("Account", "Your password has been changed."))
@@ -689,31 +715,43 @@ class Scene_Account_Statistics
       [p_("AccountStatistics", "Forum mentions sent"), ["mentions", "sent"], :number],
       [p_("AccountStatistics", "Forum mentions received"), ["mentions", "received"], :number]
     ]
-    rows = metrics.map do |label, path, kind|
+    general_lines = metrics.map do |label, path, kind|
       current_value = statistic.integer(*path)
-      previous_value = previous == nil ? nil : previous.integer(*path)
-      [
-        label,
-        statistic_value_text(current_value, kind),
-        previous_value == nil ? p_("AccountStatistics", "No data") : statistic_value_text(previous_value, kind),
-        change_text(current_value, previous_value)
-      ]
+      cur_text = statistic_value_text(current_value, kind) || (kind == :duration ? duration_text(0) : "0")
+      if previous != nil
+        previous_value = previous.integer(*path)
+        prev_text = statistic_value_text(previous_value, kind) || (kind == :duration ? duration_text(0) : "0")
+        chg = change_text(current_value, previous_value)
+        if chg != nil && chg != ""
+          "#{label}: #{cur_text} (#{statistic.year - 1}: #{prev_text}, #{chg})"
+        else
+          "#{label}: #{cur_text}"
+        end
+      else
+        "#{label}: #{cur_text}"
+      end
     end
-    comparison = TableBox.new(
-      [
-        p_("AccountStatistics", "Statistic"),
-        statistic.year.to_s,
-        (statistic.year - 1).to_s,
-        p_("AccountStatistics", "Year-to-year change")
-      ],
-      rows,
-      index: 0,
-      header: p_("AccountStatistics", "Statistics for %{year}") % { year: statistic.year },
-      quiet: false
+    general_text = general_lines.join("\r\n")
+
+    comparison_box = EditBox.new(
+      p_("AccountStatistics", "Statistics for %{year}") % { year: statistic.year },
+      type: EditBox::Flags::ReadOnly | EditBox::Flags::MultiLine,
+      text: general_text,
+      quiet: true
     )
-    details = ranking_controls(statistic)
+    details, detail_sections = ranking_controls(statistic)
+    btn_copy = Button.new(p_("Conference", "Copy to clipboard"))
     close = Button.new(p_("AccountStatistics", "Close"))
-    form = Form.new([comparison] + details + [close])
+    btn_copy.on(:press) do
+      sections = []
+      sections << "#{p_("AccountStatistics", "Statistics for %{year}") % { year: statistic.year }}\r\n#{general_text}"
+      detail_sections.each do |sec_header, sec_text|
+        sections << "#{sec_header}\r\n#{sec_text}" unless sec_text.to_s.empty?
+      end
+      Clipboard.text = sections.join("\r\n\r\n")
+      speak(_("Copied"))
+    end
+    form = Form.new([comparison_box] + details + [btn_copy, close])
     form.cancel_button = close
     close.on(:press) { form.resume }
     form.wait
@@ -722,6 +760,7 @@ class Scene_Account_Statistics
 
   def ranking_controls(statistic)
     controls = []
+    sections = []
     forum_rows = statistic.value("forum", "top_forums").to_a.filter_map do |entry|
       next unless entry.is_a?(Hash)
 
@@ -731,15 +770,20 @@ class Scene_Account_Statistics
       name += " (#{group})" unless group.empty?
       next if name.empty? || posts == 0
 
-      [name, statistic_value_text(posts, :number)]
+      [name, posts]
     end
     unless forum_rows.empty?
-      controls << TableBox.new(
-        [nil, p_("AccountStatistics", "Forum posts")],
-        forum_rows,
-        index: 0,
-        header: p_("AccountStatistics", "Most frequently used forums")
+      forum_header = p_("AccountStatistics", "Most frequently used forums")
+      forum_text = forum_rows.map.with_index(1) do |row, index|
+        "#{index}. #{row[0]}: #{row[1]}"
+      end.join("\r\n")
+      controls << EditBox.new(
+        forum_header,
+        type: EditBox::Flags::ReadOnly | EditBox::Flags::MultiLine,
+        text: forum_text,
+        quiet: true
       )
+      sections << [forum_header, forum_text]
     end
 
     correspondent_rows = statistic.value("messages", "top_correspondents").to_a.filter_map do |entry|
@@ -750,48 +794,60 @@ class Scene_Account_Statistics
       received = entry["received"].to_i
       next if name.empty? || (sent == 0 && received == 0)
 
-      [
-        name,
-        statistic_value_text(sent, :number),
-        statistic_value_text(received, :number)
-      ]
+      [name, sent, received]
     end
     unless correspondent_rows.empty?
-      controls << TableBox.new(
-        [
-          nil,
-          p_("AccountStatistics", "Messages sent"),
-          p_("AccountStatistics", "Messages received")
-        ],
-        correspondent_rows,
-        index: 0,
-        header: p_("AccountStatistics", "Most frequent correspondents")
+      corr_header = p_("AccountStatistics", "Most frequent correspondents")
+      corr_text = correspondent_rows.map.with_index(1) do |row, index|
+        "#{index}. #{row[0]} - #{p_("AccountStatistics", "Messages sent")}: #{row[1]}, #{p_("AccountStatistics", "Messages received")}: #{row[2]}"
+      end.join("\r\n")
+      controls << EditBox.new(
+        corr_header,
+        type: EditBox::Flags::ReadOnly | EditBox::Flags::MultiLine,
+        text: corr_text,
+        quiet: true
       )
+      sections << [corr_header, corr_text]
     end
 
     commenters = ranking_list(statistic.value("blogs", "top_commenters"))
     unless commenters.empty?
-      controls << ListBox.new(
-        commenters,
-        header: p_("AccountStatistics", "Most frequent commenters")
+      comm_header = p_("AccountStatistics", "Most frequent commenters")
+      comm_text = commenters.map.with_index(1) { |item, index| "#{index}. #{item}" }.join("\r\n")
+      controls << EditBox.new(
+        comm_header,
+        type: EditBox::Flags::ReadOnly | EditBox::Flags::MultiLine,
+        text: comm_text,
+        quiet: true
       )
+      sections << [comm_header, comm_text]
     end
 
     commented_blogs = ranking_list(statistic.value("blogs", "top_commented_blogs"))
     unless commented_blogs.empty?
-      controls << ListBox.new(
-        commented_blogs,
-        header: p_("AccountStatistics", "Most frequently commented blogs")
+      blogs_header = p_("AccountStatistics", "Most frequently commented blogs")
+      blogs_text = commented_blogs.map.with_index(1) { |item, index| "#{index}. #{item}" }.join("\r\n")
+      controls << EditBox.new(
+        blogs_header,
+        type: EditBox::Flags::ReadOnly | EditBox::Flags::MultiLine,
+        text: blogs_text,
+        quiet: true
       )
+      sections << [blogs_header, blogs_text]
     end
 
     if controls.empty?
-      controls << ListBox.new(
-        [p_("AccountStatistics", "No additional details are available for this year.")],
-        header: p_("AccountStatistics", "Details")
+      no_details_header = p_("AccountStatistics", "Details")
+      no_details_text = p_("AccountStatistics", "No additional details are available for this year.")
+      controls << EditBox.new(
+        no_details_header,
+        type: EditBox::Flags::ReadOnly | EditBox::Flags::MultiLine,
+        text: no_details_text,
+        quiet: true
       )
+      sections << [no_details_header, no_details_text]
     end
-    controls
+    [controls, sections]
   end
 
   def ranking_list(entries)
@@ -848,14 +904,18 @@ if !state.verified
     alert(_("Error"))
     return $scene=Scene_Main.new
   end
-  code=input_text(p_("Account", "The verification code has been sent to you via E-mail. Please type it here."))
+  code=input_mail_event_verification_code
+  if code==nil
+    $scene=Scene_Main.new
+    return
+  end
   begin
     EltenLink::Accounts.verify_mail_events(elten_link, @password, code: code)
   rescue EltenLink::Error
     alert(_("Error"))
     return $scene=Scene_Main.new
   else
-    return main
+    return
   end
   }
   $scene=Scene_Main.new if $scene==self
@@ -875,13 +935,14 @@ e=1 if enb==0
 begin
   EltenLink::Accounts.set_mail_events(elten_link, @password, enabled: e == 1)
   if e==0
-    code=input_text(p_("Account", "The verification code has been sent to you via E-mail. Please type it here."))
+    code=input_mail_event_verification_code
+    return if code==nil
     EltenLink::Accounts.set_mail_events(elten_link, @password, enabled: false, code: code)
   end
 rescue EltenLink::Error
   alert(_("Error"))
   end
-return main
+return
       when 1
         $scene=Scene_Main.new
       end
@@ -889,6 +950,17 @@ return main
   break if $scene!=self
 end  
 end
+    end
+
+    private
+
+    def input_mail_event_verification_code
+      loop do
+        code=input_text(p_("Account", "The verification code has been sent to you via E-mail. Please type it here."), text: "", escapable: true)
+        return nil if code==nil
+        code=code.delete("\r\n ")
+        return code if code!=""
+      end
     end
   end
   
@@ -1021,11 +1093,28 @@ nm=sprintf(Session.name+"_%04d%02d%02d%02d%02d.zip", tm.year, tm.month, tm.day, 
 fl=EltenPath.join(tr_path.selected, edt_filename.text)
 fl+=".zip" if File.extname(fl).downcase!=".zip"
 url = EltenLink::Accounts.export_download_url(export_file)
-download_file(url, fl, use_waiting: true, can_cancel: true, override: false) 
-alert(p_("Account", "Data export saved"))
+if download_export(url, fl)
+  alert(p_("Account", "Data export saved"))
         form.resume
+end
         }
 form.wait
           dialog_close
+end
+def download_export(url, destination)
+  temporary = "#{destination}.download-#{$$}-#{Thread.current.object_id}"
+  FileUtils.rm_f(temporary)
+  return false unless download_file(url, temporary, use_waiting: true, can_cancel: true, override: true)
+  if FileTest.exists?(destination) && !confirm(p_("EAPI_Network", "The file already exists. Do you want to overwrite it?"))
+    return false
+  end
+  FileUtils.mv(temporary, destination, force: true)
+  true
+rescue Exception => e
+  Log.warning("Account export download failed: #{e.class}: #{e.message}")
+  alert(_("Error"))
+  false
+ensure
+  FileUtils.rm_f(temporary) if temporary != nil
 end
     end

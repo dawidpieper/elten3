@@ -4,6 +4,8 @@
 
 This document provides a technical map of the desktop client: its runtime model, navigation and interaction patterns, major source areas, loading order and platform boundaries. It is intended as an orientation point rather than a complete API reference.
 
+The [hosted application API](eltenapps.md) remains experimental in Elten 3.0. Its stabilisation is planned for Elten 3.1; current application interfaces and package contracts may change before then.
+
 ## Runtime and process model
 
 Most of Elten is written in Ruby. Packaged releases use a C++ launcher to initialise the bundled runtime, load embedded assets and start the application; the client can also be run directly through an external Ruby installation during development.
@@ -312,3 +314,7 @@ A missing or misplaced entry may remain unnoticed during an ad-hoc test yet fail
 Portable application behaviour belongs in the shared `src/eltenlink/`, `src/eapi/`, `src/ui/` and `src/scenes/` layers. Operating-system-specific implementations belong under `src/platforms/`; common runtime structures and helpers shared by those implementations belong under `src/ri/`.
 
 Keep platform checks close to the boundary they describe. When a shared interface needs different implementations, expose one stable Ruby-facing contract and load the appropriate adapter through `filelist`. Native code or Fiddle bindings should remain focused on facilities that cannot be expressed safely or practically in portable Ruby.
+
+### Audio backend
+
+Elten 3.0 currently uses BASS as its main audio backend. A move to LINDAR is planned for Elten 3.1, with possible postponement if problems arise; see the [audio roadmap](roadmap.md#audio-backend-lindar-planned-for-elten-31-may-be-postponed). Feature code should use Elten's shared audio interfaces, such as `Sound`, `Recorder`, `Player` and `MediaEncoders`, so that the backend can change without spreading native dependencies through the application.

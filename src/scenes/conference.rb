@@ -163,6 +163,21 @@ end
         Conference.kick(user.id)
         }
       end
+      if Conference.channel.administrators.include?(Session.name) && (Conference.channel.groupid==0 || Conference.channel.groupid==nil) && user.name != Session.name
+        menu.option(p_("Conference", "Ban user"), nil, "b") {
+          confirm(p_("Conference", "Are you sure you want to ban %{user}?") % { user: user.name }) do
+            Conference.ban(user.name)
+          end
+          @form.focus
+        }
+        if !(Conference.channel.whitelist || []).include?(user.name)
+          menu.option(p_("Conference", "Add to whitelist"), nil, "l") {
+            Conference.whitelist(user.name)
+            play_sound("listbox_select")
+            @form.focus
+          }
+        end
+      end
       if Conference.channel.administrators.include?(Session.name)
         if user.supervisor==nil || user.supervisor==0
                 menu.option(p_("Conference", "Take over this user's stream")) {
@@ -201,6 +216,23 @@ end
     txt+=p_("Conference", "Current latency")+": "+((status['latency']||0)*1000).round.to_s+"ms\n"
     txt+=p_("Conference", "Bytes sent")+": "+(status['sendbytes']||0).to_s+"\n"
     txt+=p_("Conference", "Bytes received")+": "+(status['receivedbytes']||0).to_s
+    channel=Conference.channel
+    if channel.p2p_enabled
+      participants=channel.users.count { |user| !user.waiting }
+      if channel.p2p_participants_limit>0 && participants>channel.p2p_participants_limit
+        txt+="\n"+p_("Conference", "Channel P2P: disabled - participant limit exceeded")
+      else
+        txt+="\n"+p_("Conference", "Channel P2P: enabled")
+        p2p=status['p2p']
+        if p2p && p2p['channel_id']==channel.id
+          if p2p['local_enabled']
+            txt+="\n"+p_("Conference", "Local P2P: enabled, %{direct}/%{total} participants")%{direct: p2p['recipients'], total: p2p['total_recipients']}
+          else
+            txt+="\n"+p_("Conference", "Local P2P: disabled")
+          end
+        end
+      end
+    end
     @status=txt
       }
       @waitingchannel_hook = Conference.on(:waitingchannel) {
@@ -343,13 +375,14 @@ elsif channel_target?(@target)
         Conference.close
         end
       end
-      Conference.remove_hook(@waitingchannel_hook)
+  $scene=Scene_Main.new
+ensure
+  Conference.remove_hook(@waitingchannel_hook)
   Conference.remove_hook(@users_hook)
   Conference.remove_hook(@status_hook)
   Conference.remove_hook(@text_hook)
   Conference.remove_hook(@close_hook)
   timeout_break
-  $scene=Scene_Main.new
 end
 def invite(user)
   begin
@@ -375,6 +408,8 @@ def list_channels(user=nil)
         channels=[]
                 lst_channels = TableBox.new(["", ""], [], index: 0, header: p_("Conference", "Channels"))
       locha = Proc.new{|chans|
+      selected_index=lst_channels.index
+      selected_id=selected_index>=0 ? channels[selected_index]&.id : nil
       knownlanguages = Session.languages.split(",").map{|lg|lg.upcase}
       channels = chans.find_all{|c|
       if LocalConfig["ConferenceShowUnknownLanguages", type: :bool] || knownlanguages.size==0 || knownlanguages.include?(c.lang[0..1].upcase)
@@ -390,14 +425,15 @@ def list_channels(user=nil)
       selt = channels.map{|ch|channel_summary(ch)}
       lst_channels.rows=selt
       lst_channels.reload
+      lst_channels.index=channels.find_index{|ch|ch.id==selected_id} || [[selected_index, channels.size-1].min, 0].max
       lst_channels.clear_row_states
       channels.each_with_index{|ch,i|lst_channels.set_row_status(i, "conference_someoneonchannel", "", "") if ch.users.size>0}
       }
       locha.call(@chans)
       lst_channels.focus
   lst_channels.bind_context{|menu|
-  if channels.size>0
-    ch=channels[lst_channels.index]
+  ch=lst_channels.index>=0 ? channels[lst_channels.index] : nil
+  if ch!=nil
     if ch.id!=Conference.channel.id
     menu.option(p_("Conference", "Join"), nil, "j") {
         ps=nil
@@ -474,6 +510,20 @@ when 1
   locha.call(@chans)
         lst_channels.focus
   }
+    if ch.permanent && (ch.groupid==0 || ch.groupid==nil)
+      menu.option(p_("Conference", "Delete channel"), nil, :del) {
+        confirm(p_("Conference", "Are you sure you want to delete channel %{channel}?")%{:channel=>ch.name}) do
+          if Conference.delete_channel(ch.id)
+            play_sound("editbox_delete")
+          else
+            alert(_("Error"))
+          end
+          @chans=get_channelslist
+          locha.call(@chans)
+          lst_channels.focus
+        end
+      }
+    end
     end
   end
   if Conference.channel.id!=0
@@ -519,8 +569,8 @@ when 1
   loop do
     loop_update
     lst_channels.update
-    if lst_channels.selected?
-      ch=channels[lst_channels.index]
+    ch=lst_channels.index>=0 ? channels[lst_channels.index] : nil
+    if lst_channels.selected? && ch!=nil
       return if Conference.channel.id==ch.id
       ps=nil
     ps=input_text(p_("Conference", "Channel password"), flags: EditBox::Flags::Password, text: "", escapable: true) if ch.passworded
@@ -608,6 +658,8 @@ for preset in presets
     lst_channels = ListBox.new(["Mono", "Stereo"], header: p_("Conference", "Channels"), index: channel.channels-1),
     lst_spatialization = ListBox.new(["Panning", "HRTF", p_("Conference", "Round table")], header: p_("Conference", "Spatial audio mode"), index: channel.spatialization),
     chk_conference = CheckBox.new(p_("Conference", "Enable conference mode (only channel administrators and allowed users can speak)"), checked: channel.conference_mode>0),
+    chk_p2p = CheckBox.new(p_("Conference", "Enable peer-to-peer connections"), checked: channel.p2p_enabled),
+    edt_p2p_limit = EditBox.new(p_("Conference", "P2P participant limit (0 for unlimited)"), type: EditBox::Flags::Numbers, text: channel.p2p_participants_limit.to_s, quiet: true),
     chk_waiting = CheckBox.new(p_("Conference", "Enable waiting room"), checked: channel.waiting_type>0),
     chk_allowguests = CheckBox.new(p_("Conference", "Allow guests to join this channel"), checked: channel.allow_guests),
     lst_blacklist_policy = ListBox.new([
@@ -624,6 +676,14 @@ chk_hidden = CheckBox.new(p_("Conference", "Make this channel hidden"), checked:
     btn_create = Button.new(p_("Conference", "Create")),
     btn_cancel = Button.new(p_("Conference", "Cancel"))
     ], index: 0, silent: false, quiet: true)
+    chk_p2p.on(:change) {
+      if chk_p2p.checked
+        form.show(edt_p2p_limit)
+      else
+        form.hide(edt_p2p_limit)
+      end
+    }
+    chk_p2p.trigger(:change)
     chk_permanent.on(:change) {
     if !holds_premiumpackage("director") && !requires_premiumpackage("audiophile")
     chk_permanent.checked = channel.permanent
@@ -723,6 +783,12 @@ chk_hidden = CheckBox.new(p_("Conference", "Make this channel hidden"), checked:
     btn_create.on(:press) {
     suc=true
     suc=false if edt_name.text==""
+    p2p_limit_valid=edt_p2p_limit.text.match?(/\A[0-9]+\z/) && edt_p2p_limit.text.to_i<=0x7fffffff
+    p2p_limit=p2p_limit_valid ? edt_p2p_limit.text.to_i : channel.p2p_participants_limit
+    if suc && chk_p2p.checked && !p2p_limit_valid
+      alert(p_("Conference", "Enter a non-negative P2P participant limit"))
+      suc=false
+    end
     if suc && (edt_height.text.to_i<1 || edt_height.text.to_i<1)
       alert(p_("Conference", "Channel width and height must be at least 1"))
       suc=false
@@ -766,9 +832,9 @@ when 1
       key_len=0
 end
       if channel.id==0
-      Conference.create(name, public, bitrate, framesize, vbr_type, codec_application, prediction_disabled, fec, password, spatialization, channels, lang, width, height, key_len, waiting_type, permanent, motd, allow_guests, conference_mode, blacklist_policy)
+      Conference.create(name, public, bitrate, framesize, vbr_type, codec_application, prediction_disabled, fec, password, spatialization, channels, lang, width, height, key_len, waiting_type, permanent, motd, allow_guests, conference_mode, blacklist_policy, chk_p2p.checked, p2p_limit)
     else
-      Conference.edit(channel.id, name, public, bitrate, framesize, vbr_type, codec_application, prediction_disabled, fec, password, spatialization, channels, lang, width, height, key_len, waiting_type, permanent, motd, allow_guests, conference_mode, blacklist_policy)
+      Conference.edit(channel.id, name, public, bitrate, framesize, vbr_type, codec_application, prediction_disabled, fec, password, spatialization, channels, lang, width, height, key_len, waiting_type, permanent, motd, allow_guests, conference_mode, blacklist_policy, chk_p2p.checked, p2p_limit)
       end
       form.resume
       end
@@ -881,7 +947,9 @@ sel.focus
           alert(p_("Conference", "This file is too large"))
           else
         begin
-          EltenLink::ConferenceResources.add(elten_link, File.basename(file, File.extname(file)), File.binread(file))
+          File.open(file, "rb") do |input|
+            EltenLink::ConferenceResources.add(elten_link, File.basename(file, File.extname(file)), input)
+          end
         rescue EltenLink::Error => e
           Log.warning("Conference resource upload failed: #{e.message}")
           alert(_("Error"))
@@ -1390,7 +1458,7 @@ card=cards[cardid] if cardid>0
 if Conference.channel.id!=0
   menu.submenu(p_("Conference", "Channel")) {|m|
   if Conference.channel.groupid==0 || Conference.channel.groupid==nil
-  m.option(p_("Conference", "Show banned users")) {
+  m.option(p_("Conference", "Show banned users"), nil, "B") {
   showbanned
   @form.focus
   }
@@ -1401,7 +1469,7 @@ if Conference.channel.id!=0
   }
   if Conference.channel.administrators.include?(Session.name)
     if Conference.channel.groupid==0 || Conference.channel.groupid==nil
-  m.option(p_("Conference", "Show channel whitelist"), nil, "l") {
+  m.option(p_("Conference", "Show channel whitelist"), nil, "L") {
   showwhitelist
   @form.focus
   }
@@ -1429,11 +1497,18 @@ def showbanned
   lst_banned.bind_context{|menu|
   if banned.size>0
     menu.useroption(banned[lst_banned.index])
-    menu.option(p_("Conference", "Unban"), nil, :del) {
-    Conference.unban(banned[lst_banned.index])
-    refr.call
-        lst_banned.focus
-    }
+    if Conference.channel.administrators.include?(Session.name) && (Conference.channel.groupid==0 || Conference.channel.groupid==nil)
+      menu.option(p_("Conference", "Unban"), nil, :del) {
+        user = banned[lst_banned.index]
+        if user != nil
+          confirm(p_("Conference", "Are you sure you want to unban %{user}?") % { user: user }) do
+            Conference.unban(user)
+            refr.call
+          end
+          lst_banned.focus
+        end
+      }
+    end
   end
   if Conference.channel.administrators.include?(Session.name) && (Conference.channel.groupid==0 || Conference.channel.groupid==nil)
   menu.option(p_("Conference", "Ban user"), nil, "n") {

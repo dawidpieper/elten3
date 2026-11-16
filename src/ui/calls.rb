@@ -9,8 +9,10 @@ module EltenAPI
     private
 class CallWindow
       attr_reader :id, :caller, :channel, :password
-      def initialize(id, caller, channel, password)
+      def initialize(id, caller, channel, password, ringtone=nil)
         @id, @caller, @channel, @password = id, caller, channel, password
+        @ringtone = ringtone || "ringing"
+        @ringing = nil
         @handled = false
         @form = Form.new([
         @st_caller = Static.new(p_("EAPI_UI", "%{user} is calling you")%{:user=>@caller}),
@@ -19,6 +21,11 @@ class CallWindow
         ])
       end
       def update
+        ringing = !EltenAPI::UI.calls_muted?
+        if !handled? && @ringing != ringing
+          ringing ? call_sound_start(@ringtone) : EltenAPI::UI.call_sound_stop
+          @ringing = ringing
+        end
         @form.update
           if @btn_reject.pressed?
             @handled = true

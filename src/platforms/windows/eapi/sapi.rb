@@ -278,20 +278,33 @@ class Sapi < SpeechOutput
     end
 
     def native_voices
-      voice_tokens.map do |token|
-        Voice.new(
-          token.Id.to_s,
-          token.GetDescription.to_s,
-          token.GetAttribute("Language").to_s,
-          token.GetAttribute("Age").to_s,
-          token.GetAttribute("Gender").to_s,
-          token.GetAttribute("Vendor").to_s,
-          :native,
+      return @native_voices if @native_voices
+      return @native_voices = [] if voice == nil
+      tokens = voice.GetVoices
+      @native_voices = (0...tokens.Count.to_i).map do |index|
+        token = tokens.Item(index)
+        begin
+          Voice.new(
+            token.Id.to_s,
+            token.GetDescription.to_s,
+            token.GetAttribute("Language").to_s,
+            token.GetAttribute("Age").to_s,
+            token.GetAttribute("Gender").to_s,
+            token.GetAttribute("Vendor").to_s,
+            :native,
+            nil
+          )
+        rescue Exception
           nil
-        )
-      rescue Exception
-        nil
+        ensure
+          # Release on the COM-initialized thread, not a later GC thread.
+          token.ole_free if token != nil
+        end
       end.compact
+    rescue Exception
+      @native_voices = []
+    ensure
+      tokens.ole_free if tokens != nil
     end
 
     def bridge_voices

@@ -5,16 +5,80 @@
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
 
 require_relative "resources" if !defined?(EltenAPI::Resources)
+require_relative "dictionary_plural_rule"
 
 module EltenAPI
   module Dictionary
     private
-    DictCache={}
+    Catalogs = {nil => [].freeze}
+    CatalogMutex = Mutex.new
     Docs={}
-    Params=[]
-  Sources=[]
-  Translations=[]
-  Languages=[]
+    Languages=[]
+
+    class Catalog
+      def initialize(data)
+        @entries = {}
+        @plural_count = 2
+        @plural_rule = PluralRule.new("n != 1")
+        if data != nil && !data.empty?
+          data = data.to_s.b
+          raise ArgumentError, "Truncated translation catalog" if data.bytesize < 28
+          order = case data.unpack1("V")
+          when 0x950412de then "V"
+          when 0xde120495 then "N"
+          else raise ArgumentError, "Invalid translation catalog"
+          end
+          revision, count, originals, translations = data.byteslice(4, 16).unpack("#{order}4")
+          if revision != 0 || [originals, translations].any? { |offset| offset < 28 || offset + count * 8 > data.bytesize }
+            raise ArgumentError, "Invalid translation catalog tables"
+          end
+          read = lambda do |table, index|
+            length, offset = data.byteslice(table + index * 8, 8).unpack("#{order}2")
+            if offset < 28 || offset + length >= data.bytesize || data.getbyte(offset + length) != 0
+              raise ArgumentError, "Truncated translation catalog string"
+            end
+            data.byteslice(offset, length)
+          end
+          entries = count.times.map { |index| [read.call(originals, index), read.call(translations, index)] }
+          header = entries.find { |source, _translation| source.empty? }&.last.to_s
+          charset = header[/^Content-Type:[^\r\n]*\bcharset\s*=\s*"?([^;\s"]+)/i, 1] || "UTF-8"
+          encoding = Encoding.find(charset)
+          raise ArgumentError, "Invalid translation encoding" if !encoding.ascii_compatible?
+          forms = header[/^Plural-Forms:\s*([^\r\n]+)/i, 1]
+          if forms != nil
+            @plural_count = forms[/\bnplurals\s*=\s*(\d+)\s*;/, 1].to_i
+            raise ArgumentError, "Invalid plural form count" if !(1..16).include?(@plural_count)
+            @plural_rule = PluralRule.new(forms[/\bplural\s*=\s*([^;]+);?/, 1])
+          end
+          entries.each do |source, translation|
+            next if source.empty?
+            values = [source, translation].map do |value|
+              value.force_encoding(encoding)
+              raise ArgumentError, "Invalid translation encoding" if !value.valid_encoding?
+              value.encode(Encoding::UTF_8).split("\0", -1).each(&:freeze).freeze
+            end
+            @entries[values[0].first] ||= values.freeze
+          end
+        end
+        @entries.freeze
+        freeze
+      end
+
+      def translate(forms, count = nil)
+        entry = @entries[forms.first]
+        return nil if entry == nil || entry[0].size < forms.size || entry[0][0, forms.size] != forms
+        index = count == nil ? 0 : plural_index(count)
+        return nil if index == nil
+        value = entry[1][index]
+        value.dup if value != nil && !value.empty?
+      end
+
+      def plural_index(count)
+        index = @plural_rule.index(count)
+        index if index != nil && index >= 0 && index < @plural_count
+      end
+    end
+    private_constant :Catalog, :Catalogs, :CatalogMutex
   def locale_text(value)
     str=value.to_s.dup
     if str.encoding==Encoding::UTF_8
@@ -71,103 +135,55 @@ module EltenAPI
     end
     return lang
        end
-       def setlocale(code)
-    code=normalize_locale_code(code)
-    lang=nil
-    Languages.each do |l|
-      if l.realcode.downcase==code.downcase
-        lang=l
-        break
-        end
+def setlocale(code)
+  code = normalize_locale_code(code)
+  lang = getlocale(code)
+  return if lang == nil
+  catalog = Catalog.new(lang.mo)
+  CatalogMutex.synchronize do
+    catalogs = {nil => [catalog].freeze}
+    Catalogs.each_key do |runtime|
+      catalogs[runtime] = read_program_catalog(runtime, code) if runtime != nil
     end
-    return if lang==nil
-       Docs.clear
-       loadmo(lang.mo)
+    Catalogs.replace(catalogs)
+    Docs.replace(lang.docs)
+  end
+rescue ArgumentError, EncodingError => e
+  Log.warning("Cannot load locale #{code}: #{e.class}: #{e.message}") if defined?(Log)
+  nil
+end
 
-   if defined?(Programs) && Programs.respond_to?(:language_locale_data)
-     Programs.language_locale_data(code).each { |data| loadmo(data, false) }
-   end
- lang.docs.each do |d|
-   Docs[d[0]]=d[1]
-   end
-end
 def loadlocale(file, reset=true)
-     loadmo(File.binread(file), reset) if FileTest.exists?(file)
-     end
+  loadmo(File.binread(file), reset) if File.file?(file)
+end
+
 def loadmo(data, reset=true)
-          DictCache.clear if reset
-        if reset
-    Params[0]=nil
-  Sources.clear
-  Translations.clear
-  Params[2]=2
-  Params[3]="(n!=1)?1:0"
-  Params[1]=0
-end
-        Params[0]=nil#file if reset
-  return if data==nil || data.bytesize<20
-  data=data.to_s.b
-  magic=data[0..3].unpack("I").first
-  return if magic!=0x950412de
-  format=data[4..7].unpack("I").first
-  return if format!=0
-  n=data[8..11].unpack("I").first
-  Params[1] ||= 0
-  Params[2] ||= 2
-  Params[3] ||= "(n!=1)?1:0"
-  Params[1]+=n
-  src=data[12..15].unpack("I").first
-  dst=data[16..19].unpack("I").first
-  (0...n).each do |i|
-src_length = data[src+8*i..src+8*i+3].unpack("I").first
-src_offset = data[src+8*i+4..src+8*i+7].unpack("I").first
-dst_length = data[dst+8*i..dst+8*i+3].unpack("I").first
-dst_offset = data[dst+8*i+4..dst+8*i+7].unpack("I").first
-if reset or !Sources.include?(data[src_offset..src_offset+src_length].split("\0"))
-  Sources.push(data[src_offset..src_offset+src_length].split("\0"))
-Translations.push(data[dst_offset..dst_offset+dst_length].split("\0"))
-if Sources.last==[]
-  t=Translations.last
-  setparams(t[0]) if t[0].is_a?(String)
-end
-DictCache[Sources.last.first]||=[]
-DictCache[Sources.last.first].push(Sources.size-1)
-end
-end
+  catalog = Catalog.new(data)
+  CatalogMutex.synchronize do
+    Catalogs[nil] = (reset ? [catalog] : Catalogs[nil] + [catalog]).freeze
+  end
+  true
+rescue ArgumentError, EncodingError => e
+  Log.warning("Cannot load translation catalog: #{e.class}: #{e.message}") if defined?(Log)
+  nil
 end
 def _doc(d)
   fallback=getlocale("en-GB")
   locale_text(Docs[d]||(fallback!=nil ? fallback.docs[d] : nil)||"")
   end
 def _(src)
-  source = src.to_s
-  context = program_translation_context
-  if context != nil
-    translated = translate_context(context, source)
-    return translated if translated != nil
-  end
-  find(source)[0]
+  source = locale_text(src)
+  translate_message([source], implicit: true) || source
 end
-def n_(*pr)
- context = program_translation_context
- if context != nil
-   translated = translate_context_plural(context, *pr)
-   return translated if translated != nil
- end
- forms=[]
- n=0
- pr.each do |param|
-   if param.is_a?(String)
-   forms.push(param)
- elsif param.is_a?(Integer)
-   n=param
-   end
- end
- f=find(*forms)
- f[pluralform(n)]||f.last
+
+def n_(*params)
+  forms, count = plural_arguments(params)
+  translate_message(forms, count, implicit: true) || plural_source(forms, count)
 end
+
 def p_(context, src)
-  translate_context(context, src) || src.to_s
+  source = locale_text(src)
+  translate_message([source], context: locale_text(context)) || source
 end
 def s_(str)
   s=_(str)
@@ -177,8 +193,9 @@ def s_(str)
     return str
     end
   end
-  def np_(context, src, *params)
-  translate_context_plural(context, src, *params) || n_(src, *params)
+def np_(context, src, *params)
+  forms, count = plural_arguments([src.to_s, *params])
+  translate_message(forms, count, context: locale_text(context)) || n_(src, *params)
 end
 def ns_(context, src, *params)
   str=n_(context+"|"+src, *params)
@@ -229,74 +246,71 @@ def build_resource_locale(code, keys)
   lang
 end
 
-def program_translation_context
-  runtime = Programs.current_runtime
-  runtime = Programs.runtime_from_caller if runtime == nil
-  return nil if runtime == nil || runtime.manifest == nil
-  runtime.manifest.name
-rescue Exception
+def program_translation_runtime
+  return nil if !defined?(Programs)
+  Programs.current_runtime || Programs.runtime_from_caller
+rescue StandardError
   nil
 end
 
-def translate_context(context, src)
-  separator = 4.chr
-  key = context.to_s + separator + src.to_s
-  translated = find(key)[0]
-  return nil if translated == key
-  translated.gsub(context.to_s + separator, "")
+def translation_catalogs(runtime)
+  CatalogMutex.synchronize do
+    host = Catalogs[nil]
+    catalog = Catalogs[runtime] if runtime != nil
+    catalog == nil ? host : host + [catalog]
+  end
 end
 
-def translate_context_plural(context, src, *params)
-  separator = 4.chr
-  forms = [context.to_s + separator + src.to_s]
-  n = 0
-  params.each do |param|
-    if param.is_a?(String)
-      forms << param.to_s
-    elsif param.is_a?(Integer)
-      n = param
+def translate_message(forms, count = nil, context: nil, implicit: false)
+  return nil if forms.empty?
+  runtime = program_translation_runtime
+  catalogs = translation_catalogs(runtime)
+  context = runtime.manifest.name if implicit && runtime != nil && runtime.manifest != nil
+  if context != nil
+    contextual = forms.dup
+    contextual[0] = locale_text(context) + "\004" + forms.first.to_s
+    catalogs.each do |catalog|
+      value = catalog.translate(contextual, count)
+      return value if value != nil
     end
+    return nil if !implicit
   end
-  found = find(*forms)
-  translated = found[pluralform(n)] || found.last
-  return nil if forms.include?(translated)
-  translated.gsub(context.to_s + separator, "")
+  catalogs.each do |catalog|
+    value = catalog.translate(forms, count)
+    return value if value != nil
+  end
+  nil
 end
 
-def find(*forms)
-  c=DictCache[forms.first]
-  return forms if c==nil
-  c.each do |i|
-    return Translations[i].map{|s|s.force_encoding(Encoding::UTF_8)} if Sources[i].size>=forms.size && Sources[i][0...forms.size]==forms
-  end
-  return forms.map{|s|s.force_encoding(Encoding::UTF_8)}
+def plural_arguments(params)
+  [params.grep(String).map { |value| locale_text(value) }, params.grep(Integer).last || 0]
 end
-def setparams(t)
-  pr=t.split("\n")
-  pr.each do |param|
-    c=param.index(": ")
-    next if c==nil
-    head=param[0...c]
-    val=param[c+2..-1]
-    if head=='Plural-Forms'
-      parse_plurals(val)
-      end
-    end
+
+def plural_source(forms, count)
+  index = count == 1 ? 0 : 1
+  if forms.size > 2
+    catalog = CatalogMutex.synchronize { Catalogs[nil].first }
+    index = catalog.plural_index(count) || index if catalog != nil
   end
-  def parse_plurals(pl)
-    pl=pl.delete(" \t")
-    if (/Params[2]=(\d+)/=~pl)!=nil
-      Params[2]=$1.to_i
-    end
-    if (/plural=([^;]+);/=~pl)!=nil
-      Params[3]=$1
-    end
-  end
-  def pluralform(n)
-    eval(Params[3]).to_i
-  rescue Exception
-    return 0
-    end
+  forms[index] || forms.last
+end
+
+def load_program_locale(runtime, code)
+  CatalogMutex.synchronize { Catalogs[runtime] = read_program_catalog(runtime, code, Catalogs[runtime]) }
+end
+
+def remove_program_locale(runtime)
+  CatalogMutex.synchronize { Catalogs.delete(runtime) }
+end
+
+def read_program_catalog(runtime, code, previous = nil)
+  return nil if code == nil
+  data = runtime.language_data(code)
+  Catalog.new(data) if data != nil && !data.empty?
+rescue StandardError => e
+  Log.warning("Cannot load program locale #{runtime.entry_id}: #{e.class}: #{e.message}") if defined?(Log)
+  previous
+end
   end
   include Dictionary
   end

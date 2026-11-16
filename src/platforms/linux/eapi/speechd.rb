@@ -220,6 +220,7 @@ module SpeechdBridge
       return nil unless File.socket?(path)
       sock = UNIXSocket.new(path)
       @buffer = +"".b
+      @read_buffer = +"".b
       @event_fields = []
       @last_index = nil
       @speaking = false
@@ -434,7 +435,7 @@ module SpeechdBridge
           line = @buffer.slice!(0, index + 1)
           return line.chomp
         end
-        chunk = @socket.read_nonblock(8192, exception: false)
+        chunk = @socket.read_nonblock(8192, @read_buffer, exception: false)
         # nil means EOF - the daemon is gone. It must NOT be treated like
         # :wait_readable: an EOF socket always selects as readable, so the
         # blocking branch below would spin at 100% CPU forever.
@@ -444,7 +445,7 @@ module SpeechdBridge
           return nil unless IO.select([@socket], nil, nil, REPLY_TIMEOUT)
           next
         end
-        @buffer << chunk.b
+        @buffer << chunk
       end
     rescue *DISCONNECT_ERRORS
       raise

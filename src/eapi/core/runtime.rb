@@ -5,20 +5,78 @@
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>.
 
 module EltenAPI
-  private
-def execute_scene_main(scene)
-  if defined?(Program) && scene.is_a?(Program) && scene.respond_to?(:program_main, true)
-    begin
-      result = scene.__send__(:program_main)
-    rescue StandardError
-      scene.finalize(reason: :error)
-      raise
-    else
-      scene.finalize(result, reason: :normal)
+  module ExceptionRecovery
+    @mutex = Mutex.new
+
+    class << self
+      def ready!
+        @mutex.synchronize do
+          @ready = true
+          @retry_after = nil unless @reporting
+        end
+      end
+
+      def report
+        started = false
+        @mutex.synchronize do
+          return false unless @ready
+          return false if @reporting || Process.clock_gettime(Process::CLOCK_MONOTONIC) < @retry_after.to_f
+          @reporting = true
+          started = true
+        end
+        yield
+        true
+      ensure
+        if started
+          @mutex.synchronize do
+            @retry_after = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 1
+            @reporting = false
+          end
+        end
+      end
     end
-  else
-    scene.main
   end
+
+  private
+
+def recover_elten_error(error, scene)
+  return false if defined?(Programs) && Programs.runtime_from_error(error, scene) != nil
+  ExceptionRecovery.report do
+    Log.error("Elten failed: #{error.class}: #{error.message}\n#{Array(error.backtrace).join("\n")}")
+    trace = Programs.clean_program_backtrace(error)
+    details = "#{error.class}: #{error.message}"
+    details += "\n\n#{p_("Program", "Backtrace:")}\n#{trace.join("\n")}" unless trace.empty?
+    input_text(
+      p_("Elten", "Error in Elten"),
+      flags: EditBox::Flags::MultiLine | EditBox::Flags::ReadOnly,
+      text: details,
+      escapable: true
+    )
+  end
+end
+def execute_scene_main(scene)
+  with_scene_context(scene) do
+    if defined?(Program) && scene.is_a?(Program) && scene.respond_to?(:program_main, true)
+      begin
+        result = scene.__send__(:program_main)
+      rescue StandardError
+        scene.finalize(reason: :error)
+        raise
+      else
+        scene.finalize(result, reason: :normal)
+      end
+    else
+      scene.main
+    end
+  end
+end
+
+def with_scene_context(scene)
+  previous = Thread.current.thread_variable_get(:elten_scene)
+  Thread.current.thread_variable_set(:elten_scene, scene)
+  yield
+ensure
+  Thread.current.thread_variable_set(:elten_scene, previous)
 end
 
 def insert_scene(scene, must=false, return_to_main: false)

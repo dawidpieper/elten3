@@ -209,7 +209,7 @@ def context(menu)
     }
   end
   if @sel.index>0
-  menu.option(p_("Blog", "Copy category URL")) {
+  menu.option(p_("Blog", "Copy category URL"), nil, "c") {
   Clipboard.text=@categories[@sel.index-1].url
   alert(p_("Blog", "Category URL copied to clipboard"))
   }
@@ -506,8 +506,8 @@ else
             rescue EltenLink::Error
               alert(_("Error"))
             else
-              alert(np_("Blog", "The mention has been sent.", "The mentions have been sent.", selections.size))
               @sel.focus
+              alert(np_("Blog", "The mention has been sent.", "The mentions have been sent.", selections.size))
               break
             end
           end
@@ -537,7 +537,7 @@ else
       end
     }
   end
-  menu.option(p_("Blog", "Copy post URL")) {
+  menu.option(p_("Blog", "Copy post URL"), nil, "c") {
   Clipboard.text=@post[@sel.index].url
   alert(p_("Blog", "Post URL copied to clipboard"))
   }
@@ -551,6 +551,10 @@ end
 end
   
 class Scene_Blog_Read
+  def self.draft_key(blog, post_id)
+    Digest::SHA256.hexdigest(JSON.generate([blog.to_s.downcase, post_id.to_i]))
+  end
+
   def initialize(post,category,categoryselindex=0,postselindex=0,scene=nil,page=0,search=nil,first_unread: false)
     @post=post
     @category = category
@@ -604,9 +608,10 @@ end
 @postcur = 0
 @fields = []
 fdate=""
+comments_count = @posts.size - 1
 for i in 0..@posts.size-1
 field_index=(i==0?i:(i+2))
-@fields[field_index] = EditBox.new(@posts[i].author,type: EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly|EditBox::Flags::HTML,text: format(@posts[i]),quiet: true)
+@fields[field_index] = EditBox.new(@posts[i].author,type: EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly|EditBox::Flags::HTML,text: format(@posts[i], i, comments_count),quiet: true)
 @fields[field_index].audio_url=@posts[i].audio_url if @posts[i].audio_url.to_s!="" && @posts[i].text.to_s.delete(" \r\n")==""
 if i==0
   date = Time.now
@@ -649,7 +654,14 @@ else
     end
 end
 if Session.logged?
-@fields.push(EditBox.new(p_("Blog", "Your comment"),type: EditBox::Flags::MultiLine,text: "",quiet: true))
+  @comment_field = EditBox.new(p_("Blog", "Your comment"), type: EditBox::Flags::MultiLine, text: @comment_field&.text.to_s, quiet: true)
+  if @comments != 0
+    @comment_draft ||= Draft.new(self.class.draft_key(@post.owner, @post.id),
+      config_key: "BlogCommentsDrafts", collection: "blog_comment_drafts")
+    data = @comment_draft.restore({ "text" => @comment_field.text })
+    @comment_field.set_text(data["text"]) if @comment_field.text != data["text"]
+  end
+  @fields.push(@comment_field)
 else
   @fields.push(nil)
   end
@@ -661,12 +673,14 @@ else
   end
 @fields.push(Button.new(p_("Blog", "Return")))
 @postcur=@knownposts+2 if @first_unread && @knownposts<@posts.size
-@form = Form.new(@fields,index: @postcur)
+@form = Form.new(@fields,index: @postcur,quiet: true)
 if @comments==0
   @form.fields[-3]=nil
   @form.fields[-4]=nil
 end
 @form.bind_context(p_("Blog", "Blogs")){|menu|context(menu)}
+@comment_draft.bind(@form, @comment_field) { { "text" => @comment_field.text } } if @comment_draft && @comments != 0
+@form.focus
 loop do
   loop_update
   @form.update
@@ -698,6 +712,8 @@ def update
     rescue EltenLink::Error
       alert(_("Error"))
     else
+      @comment_field.set_text("")
+      @comment_draft&.sent
       if comment_status == "hold"
         alert(p_("Blog", "The comment has been submitted and is awaiting moderation."))
       else
@@ -724,10 +740,9 @@ if @scene == nil
   end
 end
 def confirm_comment_discard
-  comment_field = @form.fields[@form.fields.size - 4]
-  comment_field==nil || comment_field.text=="" || comment_field.text=="\r\n" || confirm(p_("Blog", "Are you sure you want to cancel creating this comment?"))
+  @comment_draft == nil || @comment_draft.close
 end
-def format(post)
+def format(post, comment_number, comments_count)
    date=Time.now
   begin
     date=Time.at(post.date)
@@ -737,7 +752,9 @@ def format(post)
   if text.delete(" \r\n")=="" && post.audio_url!=""
     text=p_("EAPI_Form", "Media")
     end
-  text+"\n\n"+format_date(date)
+  text += "\n\n" + format_date(date)
+  text += "\n#{comment_number}/#{comments_count}" if comment_number > 0
+  text
   end
 def post_has_text?(post)
   post!=nil && post.text.to_s.delete(" \r\n")!=""
@@ -903,8 +920,8 @@ def context(menu)
         rescue EltenLink::Error
           alert(_("Error"))
         else
-          alert(np_("Blog", "The mention has been sent.", "The mentions have been sent.", selections.size))
           @form.focus
+          alert(np_("Blog", "The mention has been sent.", "The mentions have been sent.", selections.size))
           break
         end
       end
@@ -1254,7 +1271,7 @@ else
 alert(_("Error"))
 end
 }
-menu.option(p_("Blog", "Copy blog URL")) {
+menu.option(p_("Blog", "Copy blog URL"), nil, "c") {
 Clipboard.text=@blogs[@sel.index].url
 alert(p_("Blog", "Blog URL copied to clipboard"))
 }
@@ -1273,22 +1290,16 @@ confirm(p_("Blog", "All posts on this blog will be marked as read. Do you want t
 end
 end
 menu.option(p_("Blog", "Create new blog"), nil, "n") {
-can=true
-begin
-b=EltenLink::Blog.managed(elten_link)
-rescue EltenLink::Error
-      alert(_("Error"))
-      $scene=Scene_Main.new
-      can=false
-    else
-      can=false if b.size>0 && !requires_premiumpackage("scribe")
-    end
-    if can==true
-$bloglistindex = @sel.index
-$scene=Scene_Blog_Create.new(true, $scene)
-else
-  alert(p_("Blog", "You cannot create more blogs"))
+  begin
+    managed = EltenLink::Blog.managed(elten_link)
+  rescue EltenLink::Error
+    alert(_("Error"))
+    next
   end
+  next if !managed.empty? && !requires_premiumpackage("scribe")
+
+  $bloglistindex = @sel.index
+  $scene = Scene_Blog_Create.new(true, $scene)
 }
 if !@type.is_a?(String)
 if Session.languages.size>0
@@ -1998,12 +2009,37 @@ class Scene_Blog_PostEditor
 @categoryselindex = categoryselindex
 @postselindex = postselindex
   end
+  def show_publish_error(message, error)
+    code = error.respond_to?(:code) ? error.code.to_s : ""
+    details = error.message.to_s.strip
+    details = error.class.to_s if details == ""
+    details += " (#{code})" if code != "" && !details.include?(code)
+    trace = Array(error.backtrace).first(8).join("\n")
+    Log.warning("Blog publishing failed: #{error.class}: #{error.message}#{code == "" ? "" : " (#{code})"}\n#{trace}")
+    alert(message % { error: details })
+  rescue StandardError => display_error
+    Log.warning("Blog publishing error reporting failed: #{display_error.class}: #{display_error.message}")
+    alert(_("Error"))
+  end
   def main
     resetdate=false
+    audio_draft_key=Digest::SHA256.hexdigest("#{@owner.to_s.downcase}:#{@post.to_i}")[0, 24]
+    audio_directory=Dirs.temp
+    if @post==0
+      begin
+        account_key=Digest::SHA256.hexdigest(Session.name.to_s.downcase)
+        audio_directory=EltenPath.join(Dirs.eltendata, "drafts", account_key, "blog_post_audio")
+        FileUtils.mkdir_p(audio_directory)
+      rescue StandardError => error
+        Log.warning("Cannot prepare persistent blog audio draft directory: #{error.class}: #{error.message}")
+        audio_directory=Dirs.temp
+      end
+    end
+    audio_draft_path=EltenPath.join(audio_directory, "audioblogpost-#{audio_draft_key}.opus")
     begin
     bt = EltenLink::Blog.categories(elten_link, blog: @owner)
-    rescue EltenLink::Error
-      alert(_("Error"))
+    rescue EltenLink::Error => error
+      show_publish_error(p_("Blog", "The post editor could not load categories. Details: %{error}"), error)
       speech_wait
       return $scene=Scene_Main.new
     end
@@ -2016,8 +2052,8 @@ class Scene_Blog_PostEditor
     end
         begin
         bt = EltenLink::Blog.tags_list(elten_link, blog: @owner)
-    rescue EltenLink::Error
-      alert(_("Error"))
+    rescue EltenLink::Error => error
+      show_publish_error(p_("Blog", "The post editor could not load tags. Details: %{error}"), error)
       speech_wait
       return $scene=Scene_Main.new
     end
@@ -2032,7 +2068,7 @@ class Scene_Blog_PostEditor
 edt_title = EditBox.new(p_("Blog", "Post title"),text: "",quiet: true),
 lst_editor = ListBox.new([p_("Blog", "Rich-text editor"), p_("Blog", "Source editor (HTML and WordPress shortcodes)")], header: p_("Blog", "Editor")),
 edt_post = EditBox.new(p_("Blog", "Post"), type: EditBox::Flags::MultiLine|EditBox::Flags::HTML|EditBox::Flags::Formattable,text: "",quiet: true),
-btn_audio = OpusRecordButton.new(p_("Blog", "Audio content"), EltenPath.join(Dirs.temp, "audioblogpost.opus"), max_bitrate: 128),
+btn_audio = OpusRecordButton.new(p_("Blog", "Audio content"), audio_draft_path, max_bitrate: 128),
 lst_categories = ListBox.new(@categories.map{|c|c.name},header: p_("Blog", "Post categories"),index: 0,flags: ListBox::Flags::MultiSelection),
 lst_tags = ListBox.new(@tags.map{ |t| t.name}, header: p_("Blog", "Post tags"), index: 0, flags: ListBox::Flags::MultiSelection),
 lst_visibility = ListBox.new([p_("Blog", "Show to everyone"),p_("Blog", "Show to Elten users only")],header: p_("Blog", "Visibility")),
@@ -2047,6 +2083,10 @@ lst_tags.bind_context{|menu|
 menu.option(p_("Blog", "Add tag to this post"), nil, "n") {
 tagname=input_text(p_("Blog", "Tag to add"), flags: 0, text: "", escapable: true)
 if tagname!=nil
+tagname=tagname.strip
+if tagname==""
+  alert(p_("Blog", "Enter a tag name."))
+else
 tagindex=-1
 for i in 0...@tags.size
   if @tags[i].name.downcase==tagname.downcase
@@ -2058,8 +2098,9 @@ if tagindex==-1 and confirm(p_("Blog", "This tag does not exist. Do you want to 
   tagid=-1
   begin
     tagid=EltenLink::Blog.tag_create(elten_link, blog: @owner, name: tagname).to_i
-  rescue EltenLink::Error
-    tagid=-1
+    alert(p_("Blog", "The tag could not be created because the server returned an invalid identifier.")) if tagid<=0
+  rescue EltenLink::Error => error
+    show_publish_error(p_("Blog", "The tag could not be created. Details: %{error}"), error)
   end
   if tagid>0
     @tags.push(Struct_Blog_Tag.new(tagid))
@@ -2074,23 +2115,17 @@ if tagindex>=0
   lst_tags.focus
   end
 end
+end
 }
 }
-changed=false
-edt_title.on(:delete) {changed=true}
-edt_title.on(:insert) {changed=true}
-edt_post.on(:delete) {changed=true}
-edt_post.on(:insert) {changed=true}
-edt_excerpt.on(:delete) {changed=true}
-edt_excerpt.on(:insert) {changed=true}
 for i in 0...@categories.size
   lst_categories.selected[i] = true if @categories[i].id == @category
 end
 if @post>0
   begin
   bt=EltenLink::Blog.post_details(elten_link, blog: @owner, post_id: @post)
-  rescue EltenLink::Error
-    alert(_("Error"))
+  rescue EltenLink::Error => error
+    show_publish_error(p_("Blog", "The post could not be loaded for editing. Details: %{error}"), error)
       speech_wait
       return $scene=Scene_Main.new
     end
@@ -2113,7 +2148,7 @@ ph=$1
 ph[0..0]="" if ph[0..0]=="\""
 ph.chop! if ph[-1..-1]=="\""
 ph = EltenLink::Client.absolute_api_url(ph)
-    btn_audio.set_source(ph)
+    btn_audio.set_source(ph, changed: false, needs_upload: false)
     ""
     }
     edt_title.set_text(title)
@@ -2128,7 +2163,35 @@ ph = EltenLink::Client.absolute_api_url(ph)
       lst_tags.selected[i] = (tags.include?(@tags[i].id))
     end
     end
-    @lasteditor=0
+    if @post == 0
+      @draft = Draft.new(@owner.to_s.downcase, config_key: "BlogPostsDrafts", collection: "blog_post_drafts",
+        empty: proc { |data| %w[text title excerpt].all? { |field| data[field].to_s == "" } && data["audio"] != true })
+      data = @draft.restore({ "text" => "" }, editor: true)
+      edt_title.set_text(data.fetch("title", ""))
+      edt_excerpt.set_text(data.fetch("excerpt", ""))
+      lst_editor.index = data["editor"] == 1 ? 1 : 0
+      edt_post.flags = EditBox::Flags::MultiLine if lst_editor.index == 1
+      edt_post.set_text(data["text"])
+      lst_visibility.index = data["private"] == true ? 1 : 0
+      chk_comments.checked = data.fetch("comments", true) == true
+      chk_schedule.checked = data["schedule"] == true && holds_premiumpackage("scribe")
+      date = data["date"]
+      btn_scheduledate.setdate(*date) if date.is_a?(Array) && date.size == 6 && date[0].to_i > 0
+      if data["categories"].is_a?(Array)
+        @categories.each_with_index { |category, index| lst_categories.selected[index] = data["categories"].include?(category.id) }
+      end
+      if data["tags"].is_a?(Array)
+        @tags.each_with_index { |tag, index| lst_tags.selected[index] = data["tags"].include?(tag.id) }
+      end
+      if data["audio"] == true
+        if File.file?(audio_draft_path)
+          btn_audio.set_source(audio_draft_path)
+        else
+          alert(p_("Blog", "The audio saved with this draft is no longer available on this device."))
+        end
+      end
+    end
+    @lasteditor=lst_editor.index
     lst_editor.on(:move) {
 if @lasteditor==0
   text=edt_post.text_html
@@ -2143,7 +2206,19 @@ if lst_editor.index==0
     edt_post.set_text(text)
     @lasteditor=lst_editor.index
     }
-@form = Form.new(@fields)
+@form = Form.new(@fields, quiet: @draft != nil)
+if @draft
+  @draft.bind(@form, edt_post) {
+    { "title" => edt_title.text, "text" => lst_editor.index == 0 ? edt_post.text_html : edt_post.text,
+      "editor" => lst_editor.index, "excerpt" => edt_excerpt.text,
+      "categories" => @categories.each_with_index.select { |_, index| lst_categories.selected[index] }.map { |category, _| category.id },
+      "tags" => @tags.each_with_index.select { |_, index| lst_tags.selected[index] }.map { |tag, _| tag.id },
+      "private" => lst_visibility.index == 1, "comments" => chk_comments.checked, "schedule" => chk_schedule.checked,
+      "audio" => btn_audio.source == audio_draft_path && File.file?(audio_draft_path),
+      "date" => [btn_scheduledate.year, btn_scheduledate.month, btn_scheduledate.day, btn_scheduledate.hour, btn_scheduledate.min, btn_scheduledate.sec] }
+  }
+  @form.focus
+end
 @form.hide(btn_scheduledate) if !chk_schedule.checked
 @form.hide(chk_schedule) if !chk_schedule.checked && !holds_premiumpackage("scribe")
 chk_schedule.on(:change) {
@@ -2153,6 +2228,23 @@ else
  @form.hide(btn_scheduledate) 
 end
 }
+editor_state = proc {
+  {
+    "title" => edt_title.text,
+    "text" => lst_editor.index == 0 ? edt_post.text_html : edt_post.text,
+    "editor" => lst_editor.index,
+    "excerpt" => edt_excerpt.text,
+    "categories" => @categories.each_with_index.select { |_, index| lst_categories.selected[index] }.map { |category, _| category.id },
+    "tags" => @tags.each_with_index.select { |_, index| lst_tags.selected[index] }.map { |tag, _| tag.id },
+    "private" => lst_visibility.index,
+    "comments" => chk_comments.checked,
+    "schedule" => chk_schedule.checked,
+    "date" => [btn_scheduledate.year, btn_scheduledate.month, btn_scheduledate.day, btn_scheduledate.hour, btn_scheduledate.min, btn_scheduledate.sec],
+    "audio_source" => btn_audio.source,
+    "audio_changed" => btn_audio.source_changed?
+  }
+}
+original_editor_state = editor_state.call
 loop do
   loop_update
   #if btn_audio.empty?
@@ -2164,7 +2256,11 @@ loop do
     #end
   @form.update
   if key_pressed?(:key_escape) or btn_cancel.pressed?
-    if !changed or confirm(p_("Blog", "Are you sure you want to cancel creating this post?"))
+    if @draft ? @draft.close(detach: false) : (editor_state.call == original_editor_state || confirm(p_("Blog", "Are you sure you want to cancel creating this post?")))
+      if @draft && @draft.last_close_action == :saved
+        alert(p_("Blog", "The draft has been saved. To continue editing it, open the new post editor for this blog again."))
+        break
+      end
       break if btn_audio.delete_audio==true
   end
   end
@@ -2174,6 +2270,9 @@ loop do
     if chk_schedule.checked
       if btn_scheduledate.year==0
         alert(p_("Blog", "Publication date not set"))
+        suc=false
+        @form.index=btn_scheduledate
+        btn_scheduledate.focus
         else
             tim=Time.local(btn_scheduledate.year, btn_scheduledate.month, btn_scheduledate.day, btn_scheduledate.hour, btn_scheduledate.min, btn_scheduledate.sec)
             if tim.to_i<=Time.now.to_i
@@ -2204,51 +2303,96 @@ if suc
   date_value=Time.now.to_i if date_value==nil && resetdate
   excerpt = nil
   excerpt = edt_excerpt.text if edt_excerpt.text!="" || @post>0
-  audio=btn_audio.get_recording_file(true)
-  if audio==nil
-    content = changed ? text : nil
+  audio_url = btn_audio.uploaded_source
+  audio_source = btn_audio.source
+  if audio_source != nil && audio_url == nil && btn_audio.source_needs_upload?
     begin
-      if @post>0
-        EltenLink::Blog.update_post(elten_link, blog: @owner, post_id: @post, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
-      else
-        EltenLink::Blog.create_post(elten_link, blog: @owner, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
-      end
-    rescue EltenLink::Error
-      alert(_("Error"))
-      next
-    end
-  else
-   alert(p_("Blog", "Please wait..."))
-        fl=File.binread(audio).to_s.b
-        if fl.byteslice(0, 4)!='OggS'
-          alert(_("Error"))
-          return $scene=Scene_Main.new
+      audio=btn_audio.get_recording_file(true)
+      raise IOError, "Audio encoder did not return a file" if audio==nil
+      invalid_audio=false
+      File.open(audio, "rb") do |file|
+        if file.read(4)!="OggS"
+          invalid_audio=true
         end
-    begin
-      audio_url = EltenLink::Blog.upload_audio(elten_link, blog: @owner, data: fl)
-      if audio_url.to_s == ""
-        alert(_("Error"))
+      end
+      if invalid_audio
+        alert(p_("Blog", "The selected audio file is not a valid Ogg Opus file."))
+        @draft&.autosave
+        @form.index=btn_audio
+        btn_audio.focus
         next
       end
-      audio_content = %Q([audio src="#{audio_url}"][/audio])
-      content = [text.to_s, audio_content].reject { |part| part.to_s.strip == "" }.join("\n\n")
-      if @post>0
-        EltenLink::Blog.update_post(elten_link, blog: @owner, post_id: @post, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
-      else
-        EltenLink::Blog.create_post(elten_link, blog: @owner, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
+      client = elten_link
+      audio_url = Tasks.run(title: p_("Blog", "Uploading audio. Press Escape to cancel."), show_after: 0, cancellable: true) do |_progress, cancellation_token|
+        File.open(audio, "rb") do |file|
+          EltenLink::Blog.upload_audio(client, blog: @owner, data: file, cancellation_token: cancellation_token)
+        end
       end
-    rescue EltenLink::Error
-      alert(_("Error"))
+      if audio_url.to_s == ""
+        alert(p_("Blog", "The server did not return an address for the uploaded audio."))
+        @draft&.autosave
+        @form.index=btn_audio
+        btn_audio.focus
+        next
+      end
+      btn_audio.mark_uploaded_source(audio_url)
+    rescue Tasks::Cancelled
+      alert(p_("Blog", "Audio upload cancelled. The recording is still available in the editor."))
+      @draft&.autosave
+      @form.index=btn_audio
+      btn_audio.focus
+      next
+    rescue EltenLink::Error => error
+      show_publish_error(p_("Blog", "The audio could not be uploaded. Details: %{error}"), error)
+      @draft&.autosave
+      @form.index=btn_audio
+      btn_audio.focus
+      next
+    rescue StandardError => error
+      show_publish_error(p_("Blog", "The audio could not be prepared. Details: %{error}"), error)
+      @draft&.autosave
+      @form.index=btn_audio
+      btn_audio.focus
       next
     end
-      end
-        alert(p_("Blog", "The post has been added."))
+  elsif audio_source != nil && audio_url == nil
+    audio_url = audio_source
+  end
+  content = nil
+  text_changed = @post==0 ? text.to_s!="" : text!=original_editor_state["text"]
+  if text_changed || btn_audio.source_changed?
+    audio_content = audio_url == nil ? nil : %Q([audio src="#{audio_url}"][/audio])
+    content = [text.to_s, audio_content].reject { |part| part.to_s.strip == "" }.join("\n\n")
+  end
+  begin
+    if @post>0
+      EltenLink::Blog.update_post(elten_link, blog: @owner, post_id: @post, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
+    else
+      EltenLink::Blog.create_post(elten_link, blog: @owner, title: edt_title.text, content: content, excerpt: excerpt, categories: cats, tags: tagids, private: lst_visibility.index, comments: chk_comments.checked, date: date_value)
+    end
+  rescue EltenLink::Error => error
+    show_publish_error(p_("Blog", "The post could not be published. Details: %{error}"), error)
+    @draft&.autosave
+    next
+  rescue StandardError => error
+    show_publish_error(p_("Blog", "The post could not be published. Details: %{error}"), error)
+    @draft&.autosave
+    next
+  end
+        draft_deleted = @draft == nil || @draft.sent(show_error: false)
+        if draft_deleted
+          alert(p_("Blog", "The post has been published."))
+        else
+          alert(p_("Blog", "The post has been published, but its saved draft could not be deleted. If the old draft appears again, discard it instead of publishing it a second time."))
+        end
         btn_audio.delete_audio(true)
         break
       end
       end
   end
     $scene = Scene_Blog_Posts.new(@owner,@category,@categoryselindex,@postselindex)
+  ensure
+    @draft&.detach
   end
   end
   
@@ -2405,7 +2549,7 @@ end
     users.push(source.user)
     end
   if users.size==0
-    alert(p_("Blog", "This blog is not followed by any user"))
+    alert(@owner==nil ? p_("Blog", "No new followers.") : p_("Blog", "This blog is not followed by any user"))
   else
     rows=[]
     for i in 0...b.size

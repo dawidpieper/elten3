@@ -5,7 +5,7 @@
 This document describes applications hosted by the Elten desktop client: how their code is loaded, what the runtime does and does not isolate, how an application participates in the interface, and how development packages are built. It is an orientation guide for contributors, not a complete or stable API reference.
 
 > [!IMPORTANT]
-> The application system in Elten 3.0 should be treated as experimental. Elten 3.1 is planned as the release in which Elten applications reach their intended full shape and stability, including concrete, published rules for package signing and verification. Current manifests, lifecycle hooks, certificates, trust roots, package details and helper APIs may therefore change before that point.
+> The application system and its API remain experimental in Elten 3.0. Stabilisation is planned only for Elten 3.1, including concrete, published rules for package signing and verification. Current manifests, lifecycle hooks, certificates, trust roots, package details and helper APIs may therefore change before that point.
 >
 > This status is not intended to discourage writing applications, testing the runtime or proposing improvements. Practical experiments during Elten 3.0 are welcome and are valuable to the design. The warning defines the present compatibility boundary and the planned stabilisation point; it does not ask developers to wait for Elten 3.1 before trying the platform.
 
@@ -430,6 +430,12 @@ SERVER_TABLES = {
       "points" => "int",
       "level" => "int"
     }
+  },
+  "games" => {
+    "visibility" => "public",
+    "columns" => { "mode" => "string:32" },
+    "filtered_columns" => ["__insertion_user", "__last_update_user"],
+    "filter_for" => "others"
   }
 }.freeze
 
@@ -441,9 +447,25 @@ server_app(
 )
 ```
 
+Use `"filter_for" => "everyone"` to hide the listed columns in your own rows as well.
+
 `server_table("scores")`, `server_resources` and `delete_server_app` then use the declared UUID unless an explicit UUID is passed. `update_server_schema!` updates the declared tables and protection setting. The existing argument-based helpers remain available for applications which manage their server registration themselves.
 
 For an initial registration, declare `uuid: nil` and call `register_server_app!`. It returns the generated UUID and keeps it for the current process. Put that UUID into the declaration before distributing the application. To prevent accidental duplicate registrations, `register_server_app!` refuses to run when the declaration already contains a UUID.
+
+`user_state` uses the declared server UUID and requires a registered application. Keys are separate for each collection and each server application, with a shared quota across that application's collections. Keys contain 1-256 UTF-8 bytes; collection names, keys and JSON-encoded values count towards the byte limit. Collection names contain at most 128 UTF-8 bytes; the empty name selects the default collection.
+
+```ruby
+drafts = user_state(collection: "drafts")
+drafts.write("message:123", {"text" => text}, override: true, evict_oldest: true)
+draft = drafts.read("message:123")
+pending = user_state(collection: "settings").write_async("main", settings, override: true, ttl: 0)
+drafts.delete("message:123")
+```
+
+`read` returns `nil` for a missing key or a stored JSON null. `write` returns `true`; `delete` returns whether an entry existed. `read_async`, `write_async` and `delete_async` return a `Tasks::Handle`: collect `take` once `done?` is true and check the outcome's `error` and `value`. Operations support timeouts; synchronous methods also accept a cancellation token. Cancelling an operation does not undo a write already accepted by the server. A UserState instance remains bound to the login session in which it was created; create a new instance after logging in again.
+
+Both `override` and `evict_oldest` default to `false`. The former permits replacing an existing key; the latter permits removing the least recently written entries in the selected collection to make room. Reads do not change their order. An unsuccessful write removes nothing. Entries expire 30 days after their last write by default; pass `ttl:` in seconds or `ttl: 0` to keep an entry indefinitely. `ttl: 0` disables time-based expiry but still permits explicit eviction. Reads do not extend the TTL. Expired entries cannot be read and do not prevent new writes within the quota. Account settings can clear this data for Elten and all applications.
 
 `notifications: true` is an explicit declaration that the program handles notifications for this server application. The client advertises the UUID only while such a program is installed and loaded. A notification addressed to an application is not delivered to clients which do not advertise that UUID.
 
@@ -554,6 +576,38 @@ session.invite("alice")
 session.invite("bob", metadata: { "role" => "reviewer" })
 ```
 
+Public sessions can also expose a participant preview and a small status object:
+
+```ruby
+session = live_sessions.create(
+  visibility: :public,
+  capacity: 4,
+  hide_participants: false,
+  discovery_metadata: { "status" => "waiting" }
+)
+session.update_discovery_metadata({ "status" => "playing", "round" => 2 })
+session.on_discovery_metadata_changed do |metadata|
+  Log.info(metadata["status"])
+end
+```
+
+`hide_participants` defaults to `false` and can only be set when creating a session, including through `connect`. Setting it to `true` hides the public participant preview. Membership lists inside a joined session and existing invitations retain their previous behaviour. The participant count remains available.
+
+`discovery_metadata` is a JSON object limited to 1,024 bytes after JSON encoding. Only the current owner can update it. Each update replaces the whole object; `{}` clears it. Updates reach discovery results and joined participants through the existing transport. The callback receives an immutable copy of the metadata for that change. The separate session `metadata` and participant metadata keep their existing meaning and are not exposed by discovery.
+
+```ruby
+preview = live_sessions.discover_sessions(sources: [:public]).first
+if preview
+  preview.refresh
+  users = preview.participants&.map { |participant| participant["user"] }
+  status = preview.discovery_metadata["status"]
+end
+```
+
+A discovered session exposes `hide_participants?` and `participants`. The latter is an immutable array of hashes containing `"id"` and `"user"`, or `nil` when the list is unavailable, hidden or the session is private. `refresh` updates the same discovered-session object and returns it, without joining, reserving a place or extending the session lifetime. Private sessions retain discovery access through ownership, invitations or a join code. Refresh renews a valid discovery token; after its five-minute expiry, discover the session again or use `find_by_code` again.
+
+Existing applications can keep their current calls and message callbacks. Older clients ignore the new metadata event and continue acknowledging events normally. New optional operations check server capabilities; in particular, requesting `hide_participants: true` on an unsupported server fails before creation. Ordinary creation still works without those capabilities.
+
 Incoming invitations are asynchronous:
 
 ```ruby
@@ -578,8 +632,8 @@ the highest consumed cursor. A successful `send` means that the server
 accepted the event, not that every participant executed its callback.
 
 Live sessions are deliberately ephemeral, bounded and server-readable. They
-accept JSON-compatible values, have no public directory and allocate no
-dedicated socket. Use `communication` when an app needs binary payloads,
+accept JSON-compatible values, support discovery within the same application
+and allocate no dedicated socket. Use `communication` when an app needs binary payloads,
 unreliable delivery, per-recipient delivery reports or separate session
 encryption.
 
@@ -594,7 +648,7 @@ encryption.
 - `live_sessions` provides small, ephemeral sessions over Elten's shared runtime transport;
 - server-application helpers register metadata and access application tables or resources.
 
-These areas are especially subject to the Elten 3.0 experimental status. Use the existing helpers rather than writing directly into global menu collections, and discuss additions to the event vocabulary or server contract before depending on them.
+These areas are especially subject to the experimental status of the Elten 3.0 application API, whose stabilisation is planned for Elten 3.1. Use the existing helpers rather than writing directly into global menu collections, and discuss additions to the event vocabulary or server contract before depending on them.
 
 ## Building packages
 

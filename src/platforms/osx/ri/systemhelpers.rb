@@ -27,6 +27,15 @@ module OSXSystemNative
       ""
     end
 
+    def current_timezone
+      return nil unless available?
+
+      timezone = @msg_id.call(cls("NSTimeZone"), sel("localTimeZone"))
+      objc_string(@msg_id.call(timezone, sel("name")))
+    rescue StandardError
+      nil
+    end
+
     def first_day_of_week
       return nil unless available?
       calendar = @msg_id.call(cls("NSCalendar"), sel("currentCalendar"))
@@ -277,6 +286,10 @@ module EltenSystemHelpers
   class << self
     def current_lcid
       0
+    end
+
+    def current_timezone
+      OSXSystemNative.current_timezone
     end
 
     def current_locale_name

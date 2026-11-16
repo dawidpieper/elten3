@@ -56,7 +56,9 @@ module MediaEncoders
 
     def list
       external = @@mutex.synchronize { @@encoders.dup }
-      ([OpusEncoder, VorbisEncoder, WaveEncoder] + external).uniq
+      built_in = [OpusEncoder, VorbisEncoder, WaveEncoder]
+      built_in << Mp3Encoder if Mp3Encoder.available?
+      (built_in + external).uniq
     end
 
     def for_audio
@@ -243,6 +245,56 @@ class VorbisEncoder < MediaEncoder
       :frequency => input_format.sample_rate,
       :channels => input_format.channels
     )
+  end
+end
+
+class Mp3Encoder < MediaEncoder
+  Extension = ".mp3"
+  Name = "MP3"
+  SupportsPcmStream = true
+
+  class << self
+    def identifier
+      :mp3
+    end
+
+    def available?
+      Mp3AudioEncoder.available?
+    end
+
+    def output_descriptor
+      @output_descriptor ||= {
+        :codec => :mp3,
+        :container => :mp3,
+        :extensions => [Extension].freeze,
+        :mime_type => "audio/mpeg"
+      }.freeze
+    end
+
+    def input_constraints
+      @input_constraints ||= Audio::FormatConstraint.new(:sample_types => [:s16le],
+        :sample_rates => Mp3AudioEncoder::SAMPLE_RATES, :channels => 1..2)
+    end
+
+    def encode_file(file, output, bitrate = nil)
+      Audio.open(file).export(output, :encoder => new(:bitrate => bitrate || 192))
+      true
+    end
+
+    def audio_encoder(bitrate = nil)
+      Mp3AudioEncoder.new(bitrate || 192)
+    end
+  end
+
+  def initialize(bitrate: 192)
+    @bitrate = Integer(bitrate)
+    raise ArgumentError, "Unsupported MP3 bitrate" if !Mp3AudioEncoder::BITRATES.include?(@bitrate)
+  end
+
+  def start(output:, input_format:, metadata: {})
+    raise Audio::FormatMismatch, "Unsupported MP3 input format" if !input_constraints.allows?(input_format)
+    Mp3AudioEncoder.new(@bitrate).start(output,
+      :frequency => input_format.sample_rate, :channels => input_format.channels)
   end
 end
 

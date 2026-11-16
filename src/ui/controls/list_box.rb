@@ -111,7 +111,8 @@ class Flags
 # @param flags [Int] combination of flags
 # @param quiet [Boolean] don't read a caption at creation
 # @param empty_label [String, nil] custom text announced when the list is empty
-def initialize(options, header: "", index: 0, flags: 0, quiet: true, empty_label: nil)
+def initialize(options, header: "", index: 0, flags: 0, quiet: true, empty_label: nil, keys: nil)
+  keys=normalize_item_keys(keys, options.size) unless keys==nil
     $lastkeychar=nil
     @border = true
             @border=false if Configuration.listtype == :circular or (flags&Flags::Circular)>0
@@ -146,6 +147,7 @@ def initialize(options, header: "", index: 0, flags: 0, quiet: true, empty_label
       index+=options.size if index<0
       self.index = index
 self.options=(options)
+@item_keys=keys
                                                 @selected = []
                                                             for i in 0..@options.size - 1
               @grayed[i] = false if @grayed[i]!=true
@@ -161,45 +163,73 @@ def empty_label=(label)
   @empty_label=label==nil ? nil : text_utf8(label)
 end
 
-            def options=(opts)
-              @required_multiselection_indices.clear if @required_multiselection_indices!=nil
-              if @options==nil
-                @options=[]
-                else
-              @options.clear
-              end
-              @grayed||=[]
-              @grayed.clear
-              @selected.clear if @selected!=nil
-              @item_states||=[]
-              @item_states.clear
-              clear_item_audio
-              @hotkeys||={}
-              @hotkeys.clear
-                                                                                                                                                                                                                                      for i in 0..opts.size - 1
-                                                                          gray=false
-              if opts[i]!=nil
-                ind=nil
-if @hk
-                opttext=text_utf8(opts[i])
-                ind=opttext.index("\&")
-    @hotkeys[opttext[ind+1..ind+1].upcase.getbyte(0)] = i if ind!=nil && ind<opttext.length-1
-    end
-opt=opts[i]
-opt=text_utf8(opt).dup if opt.is_a?(String)
-opt.delete!("&") if opt.is_a?(String) && ind!=nil
-else
-  opt=""
-  gray=true
+def options=(opts)
+  @item_keys=nil
+  @required_multiselection_indices.clear if @required_multiselection_indices!=nil
+  @options||=[]
+  @options.clear
+  @grayed||=[]
+  @grayed.clear
+  @selected.clear if @selected!=nil
+  @item_states||=[]
+  @item_states.clear
+  clear_item_audio
+  @hotkeys||={}
+  @hotkeys.clear
+  options, grayed, hotkeys=prepare_options(opts)
+  @options.concat(options)
+  @grayed.concat(grayed)
+  @hotkeys.merge!(hotkeys)
+  options.size.times do
+    @item_states << {}
+    @selected << false if @selected!=nil
+  end
+  0..options.size-1
 end
-@options.push(opt)
-@item_states[@options.size-1]={}
-@grayed[@options.size-1]=true if gray
-@selected[@options.size-1]=false if @selected!=nil
-end
+
+def update_options(options, keys:, fallback: :nearest)
+  raise ArgumentError, "fallback must be :nearest or :first" unless [:nearest, :first].include?(fallback)
+  keys=normalize_item_keys(keys, options.size)
+  options, grayed, hotkeys=prepare_options(options)
+  previous=(@item_keys || []).each_with_index.to_h
+  indices=keys.map { |key| previous[key] }
+  positions={}
+  indices.each_with_index { |old, index| positions[old]=index if old!=nil }
+  old_index=@index
+  current=positions[old_index]
+
+  @item_audio_entries.keys.each { |index| close_item_audio(index) unless positions.key?(index) }
+  @item_audio_entries=@item_audio_entries.transform_keys { |index| positions[index] }
+  @grayed.replace(indices.each_with_index.map { |old, index| grayed[index]==true || (old!=nil && @grayed[old]==true) })
+  @selected.replace(indices.map { |old| old==nil ? false : @selected[old] })
+  @item_states.replace(indices.map { |old| old==nil ? {} : @item_states[old] })
+  [@item_audio_urls, @item_audio_sources, @item_audio_autoplay_values, @item_audio_completion_labels].each do |values|
+    values.replace(indices.map { |old| old==nil ? nil : values[old] })
+  end
+  @required_multiselection_indices.replace(@required_multiselection_indices.filter_map { |index| positions[index] })
+  @options.replace(options)
+  @hotkeys.replace(hotkeys)
+  @item_keys=keys
+  available=(0...options.size).reject { |index| hidden?(index) }
+  @index=if current!=nil && !hidden?(current)
+    current
+  elsif fallback==:first
+    available.first
+  else
+    available.min_by { |index| [(index-old_index.to_i).abs, -index] }
+  end
+  @index||=options.empty? ? 0 : -1
+  pause_other_item_audio(@index) if current!=@index
+  @late_state_focus_index=positions[@late_state_focus_index]
+  @late_state_focus_index=nil if @late_state_focus_index!=@index
+  @late_state_focus_pos=lpos
+  @item_audio_entries[@index][:pan]=lpos if @item_audio_entries[@index]!=nil
+  @selected_now=false
+  self
 end
 
 def clear_options
+  @item_keys=[] if @item_keys!=nil
   @required_multiselection_indices&.clear
   @options.clear
   @grayed.clear
@@ -304,6 +334,36 @@ def item_states_for(id)
 end
 
 private
+
+def normalize_item_keys(keys, size)
+  unless keys.is_a?(Array) && keys.size==size && !keys.include?(nil) && keys.uniq.size==size
+    raise ArgumentError, "keys must contain one unique, non-nil ID per option"
+  end
+  keys.map { |key| key.is_a?(String) ? key.dup.freeze : key }.freeze
+end
+
+def prepare_options(opts)
+  options, grayed, hotkeys=[], [], {}
+  opts.size.times do |index|
+    option=opts[index]
+    if option==nil
+      option=""
+      grayed[index]=true
+    else
+      text=@hk ? text_utf8(option) : nil
+      marker=text&.index("&")
+      if marker!=nil
+        hotkeys[text[marker+1..marker+1].upcase.getbyte(0)]=index if marker<text.length-1
+      end
+      if option.is_a?(String)
+        option=text_utf8(option).dup
+        option.delete!("&") if marker!=nil
+      end
+    end
+    options << option
+  end
+  [options, grayed, hotkeys]
+end
 
 def normalize_item_audio_source(source, data)
   if data!=nil
@@ -811,8 +871,8 @@ super
 @selected_now=false
 mark_item_audio_active(self.index) if item_audio?(self.index)
 position_action = keyboard_action_pressed?(:list_position, :list_count)
-speak((@index+1).to_s) if position_action == :list_position
-speak(@options.size.to_s) if position_action == :list_count
+speak(visible_position(@index).to_s) if position_action == :list_position
+speak(visible_count.to_s) if position_action == :list_count
     oldindex = self.index
       options = @options
 if options.empty? && @empty_label!=nil && (key_pressed?(:key_up) || key_pressed?(:key_down))
@@ -1133,6 +1193,12 @@ self.index = 0 if @border == false
 end
 def enable_item(id)
   @grayed[id]=false
+end
+def visible_count
+  (0...@options.size).count { |id| !hidden?(id) }
+end
+def visible_position(id)
+  (0..id).count { |visible_id| !hidden?(visible_id) }
 end
 def hidden?(id)
   return false if id<0 || id>=@options.size
