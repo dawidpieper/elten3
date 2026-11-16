@@ -70,10 +70,11 @@ attr_reader :framesize
 def initialize(freq=48000, ch=2, framesize=20)
 @queue=""
 @freq, @ch, @framesize = freq, ch, framesize
-@stepsize=@ch*@framesize*2*@freq/1000
+frame_samples=(@framesize.to_f*@freq/1000).to_i
+@stepsize=@ch*frame_samples*2
 @preprocessors=[]
 @echo=nil
-ch.times {@preprocessors.push(Preprocess_state_init.call(@framesize*@freq/1000, @freq))}
+ch.times {@preprocessors.push(Preprocess_state_init.call(frame_samples, @freq))}
 setctl_int(SPEEX_PREPROCESS_SET_DENOISE, 0)
 setctl_int(SPEEX_PREPROCESS_SET_AGC, 0)
 setctl_int(SPEEX_PREPROCESS_SET_AGC_LEVEL, @freq)
@@ -158,10 +159,12 @@ def initialize(freq=48000, ch=2, framesize=20, delay=100)
 @playbackqueue=""
 @capturequeue=""
 @freq, @ch, @framesize, @delay = freq, ch, framesize, delay
-@stepsize=@ch*@framesize*2*@freq/1000
-@delaysize=@ch*@delay*2*@freq/1000
+frame_samples=(@framesize.to_f*@freq/1000).to_i
+delay_samples=(@delay.to_f*@freq/1000).to_i
+@stepsize=@ch*frame_samples*2
+@delaysize=@ch*delay_samples*2
 @echoes=[]
-ch.times {@echoes.push(Echo_state_init.call(@framesize*@freq/1000, @delay*@freq/1000))}
+ch.times {@echoes.push(Echo_state_init.call(frame_samples, delay_samples))}
 setctl_int(SPEEX_ECHO_SET_SAMPLING_RATE, @freq)
 end
 def free
