@@ -60,10 +60,11 @@ else
        return
         end
       t=decrypt(token,pin) if tokenenc>0
-      if t=="" and pin==nil
+      if (t==nil || t=="") && tokenenc==1
+        Log.warning("Failed to decrypt the system-protected auto-login key, switching to manual login")
         @skipauto=true
-        return main
-      elsif t!=""
+        return
+      elsif t!=nil && t!=""
         token=t
         break
       end
@@ -350,6 +351,10 @@ end
           else
             p1=input_text(p_("Login", "Enter PIN"),flags: EditBox::Flags::Password,text: "",escapable: true)
             next if p1==nil
+            if p1==""
+              alert(p_("Login", "The PIN cannot be empty. Please try again."))
+              next
+            end
             p2=input_text(p_("Login", "Enter PIN again"),flags: EditBox::Flags::Password,text: "",escapable: true)
             next if p2==nil
             if p1==p2
