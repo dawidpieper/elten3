@@ -64,6 +64,10 @@ module EltenAPI
           end
         when :latest_notification
           Scene_Notifications.new.open_latest unless GlobalMenu.opened?
+        when :restart_developer_mode
+          unless GlobalMenu.developer_mode? || restart_to_developer_mode
+            alert(p_("MainMenu", "Cannot restart in developer mode."))
+          end
         when :context
                    $opencontextmenu=true if !GlobalMenu.opened?
         when :lastspeech
@@ -347,6 +351,7 @@ end
 [:latest_notification, p_("EAPI_QuickActions", "Open the latest notification"), [], 0, false],
 [:alarm, p_("EAPI_QuickActions", "Add alarm"), [], 0, false],
         ]
+        a << [:restart_developer_mode, p_("EAPI_QuickActions", "Restart in developer mode"), [], 0, false] unless GlobalMenu.developer_mode?
         for ac in @@addprocs
           a.push([ac[1], ac[2]])
           end

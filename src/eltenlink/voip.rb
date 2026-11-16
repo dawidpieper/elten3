@@ -24,6 +24,12 @@ ResponseAliases={'success'=>0,'error'=>1}
 CommandTimeout = 5.0
 CommandReadChunk = 16 * 1024
 ConferenceHost = "conferencing.elten.link"
+SendTimeLimit = 1024
+PingLimit = 128
+PingTimeout = 30
+ChannelSecretLimit = 16
+CrcLogInterval = 5.0
+CrcLogBurstLimit = 8
 
 class CommandTimeoutError < StandardError; end
 
@@ -63,9 +69,15 @@ def initialize
 @connected=false
 @cipher_mutex=Mutex.new
 @cipher=OpenSSL::Cipher::AES256.new :CTR
-@channel_secrets=[]
+@channel_secrets={}
 @received={}
 @receive_mutex=Mutex.new
+@timing_mutex=Mutex.new
+@crc_log_mutex=Mutex.new
+@crc_log_window_started=nil
+@crc_log_last_failure=nil
+@crc_log_reported=0
+@crc_log_suppressed=0
 @pings={}
 @tcp_mutex = Mutex.new
 @update_mutex = Mutex.new
@@ -74,6 +86,7 @@ def initialize
 @status_hooks=[]
 @ping_hooks=[]
 @params_queue=Queue.new
+@params_queue_mutex=Mutex.new
 @params_stop=Object.new
 @params_stop_enqueued=false
 @params_thread=Thread.new do
@@ -221,11 +234,22 @@ log(-1, "Conference: updating parameters")
 @last_uuid = resp['channel_uuid']
 @cur_rx_packets=0
 @cur_lostpackets=0
+@timing_mutex.synchronize do
 @index=1
-@channel_secrets[@stamp]=Base64.strict_decode64(resp['channel_secret']) if resp['channel_secret']!=nil
+@sendtimes.clear
+@receivetimes.clear
+end
+if resp['channel_secret']!=nil
+secret=Base64.strict_decode64(resp['channel_secret'])
+@cipher_mutex.synchronize do
+@channel_secrets.delete(@stamp)
+@channel_secrets[@stamp]=secret
+@channel_secrets.shift while @channel_secrets.size>ChannelSecretLimit
+end
+end
 @receive_mutex.synchronize { @received={} }
 if resp['params']!=nil
-@params_queue << resp['params']
+queue_params(resp['params'])
 end
 end
 @udp_transport.configure(resp['udp'], requested_at) if @udp_transport && resp.is_a?(Hash)
@@ -240,6 +264,15 @@ end
 end
 }
 end
+def queue_params(params)
+@params_queue_mutex.synchronize do
+return false if @params_stop_enqueued
+@params_queue.clear
+@params_queue << params
+end
+true
+end
+private :queue_params
 def close_transport
 udpthread=@udpthread
 tcpthread=@tcpthread
@@ -263,6 +296,7 @@ rescue Exception
 end
 stop_transport_thread(udpthread)
 stop_transport_thread(tcpthread)
+flush_crc_failure_log
 @udp_transport=nil
 @connected=false
 end
@@ -272,6 +306,47 @@ thread.exit
 thread.join
 end
 private :stop_transport_thread
+def log_crc_failure(userid, index, type)
+now=Process.clock_gettime(Process::CLOCK_MONOTONIC)
+messages=[]
+@crc_log_mutex.synchronize do
+if @crc_log_last_failure==nil || now-@crc_log_last_failure>=CrcLogInterval
+messages << crc_log_summary if @crc_log_suppressed>0
+@crc_log_reported=0
+@crc_log_suppressed=0
+@crc_log_window_started=now
+elsif now-@crc_log_window_started>=CrcLogInterval
+messages << crc_log_summary if @crc_log_suppressed>0
+@crc_log_suppressed=0
+@crc_log_window_started=now
+end
+@crc_log_last_failure=now
+if @crc_log_reported<CrcLogBurstLimit
+@crc_log_reported+=1
+messages << "VoIP: Wrong CRC signature for packet #{index} from #{userid}, type #{type}"
+else
+@crc_log_suppressed+=1
+end
+end
+messages.each{|message|log(-1, message)}
+end
+private :log_crc_failure
+def flush_crc_failure_log
+message=nil
+@crc_log_mutex.synchronize do
+message=crc_log_summary if @crc_log_suppressed>0
+@crc_log_window_started=nil
+@crc_log_last_failure=nil
+@crc_log_reported=0
+@crc_log_suppressed=0
+end
+log(-1, message) if message!=nil
+end
+private :flush_crc_failure_log
+def crc_log_summary
+"VoIP: suppressed #{@crc_log_suppressed} additional wrong CRC packet logs within a #{CrcLogInterval}-second window"
+end
+private :crc_log_summary
 def disconnect
 log(0, "Conference: disconnecting from server")
 @closing=true
@@ -285,9 +360,12 @@ def request_close
 @params_hooks.clear
 @status_hooks.clear
 @ping_hooks.clear
+@params_queue_mutex.synchronize do
 if !@params_stop_enqueued
 @params_stop_enqueued=true
+@params_queue.clear
 @params_queue << @params_stop
+end
 end
 [@tcp, @udp].each do |socket|
 begin
@@ -350,14 +428,22 @@ def generate_packet(type, message, p1=0, p2=0, p3=0, p4=0, userid=nil, index=nil
 return nil if @chid==0 && type<200
 return nil if (message=="" && type<10) || !message.is_a?(String)
 message=message+""
-return nil if @channel_secrets[@stamp]==nil && type<200
+return nil if type<200 && @cipher_mutex.synchronize { @channel_secrets[@stamp]==nil }
 crc=Zlib.crc32(message)
+if userid==nil
+userid=@uid
+end
+@timing_mutex.synchronize do
 if index==nil
 index=@index
 @index+=1
 end
-if userid==nil
-userid=@uid
+if type==1 && userid==@uid
+send_index=index&0xffff
+@sendtimes.delete(send_index)
+@sendtimes[send_index]=Time.now.to_f
+@sendtimes.shift while @sendtimes.size>SendTimeLimit
+end
 end
 bytes=[userid%256, userid/256, @stamp%256, (@stamp/256)%256, @stamp/256/256, index%256, index/256, type, p1, p2, p3, p4, crc%256, (crc/256)%256, (crc/256/256)%256, crc/256/256/256]
 data=bytes.pack("C*")
@@ -395,7 +481,6 @@ return false
 end
 def send_packet(data)
 return false if data==nil
-@sendtimes[@index-1]=Time.now.to_f
 return @udp_transport.send(data) if @udp_transport
 @sendbytes+=data.bytesize
 if !@tcp_requested
@@ -581,10 +666,15 @@ command("stream_remove", {'id'=>stream_id(id)})
 end
 
 def ping(material="")
-r=0
-r=rand(16777216) while @pings.keys.include?(r) || r==0
-@pings[r]=Time.now
-t=@pings[r].sec*1000+@pings[r].usec/1000
+now=Time.now
+r,t=@timing_mutex.synchronize do
+@pings.delete_if{|_id, sent_at| now-sent_at>PingTimeout}
+@pings.shift while @pings.size>=PingLimit
+id=0
+id=rand(16777216) while @pings.key?(id) || id==0
+@pings[id]=now
+[id, now.sec*1000+now.usec/1000]
+end
 message=[r].pack("I")
 message<<material if material!=""
 send(251, message, t%256, t/256)
@@ -755,21 +845,23 @@ end
 }
 end
 if userid==@uid && type==1
+@timing_mutex.synchronize do
 @receivetimes[index]=Time.now.to_f
 if @receivetimes.size>50
-s=0
-r=0
-c=0
+sent=0
+received=0
+count=0
 for ind in @receivetimes.keys
 if @sendtimes[ind]!=nil
-r+=@receivetimes[ind]
-s+=@sendtimes[ind]
-c+=1
+received+=@receivetimes[ind]
+sent+=@sendtimes[ind]
+count+=1
 end
 end
+@latency=(received-sent)/count.to_f if count>0
 @receivetimes.clear
 @sendtimes.clear
-@latency=(r-s)/c.to_f
+end
 end
 end
 if Time.now.to_f-(@statustime||0)>5
@@ -780,7 +872,7 @@ if type<200
 if Zlib.crc32(message)==crc || crc==0
 @receive_hooks.each{|h|h.call(userid, type, message, p1, p2, p3, p4, index)}
 else
-log(-1, "VoIP: Wrong CRC signature for packet #{index} from #{userid}, type #{type}")
+log_crc_failure(userid, index, type)
 end
 else
 case type
@@ -789,9 +881,8 @@ pong(message)
 when 252
 return if message.bytesize<4
 m=message.unpack("I").first
-if @pings.include?(m)
-lt=@pings[m]
-@pings.delete(m)
+lt=@timing_mutex.synchronize { @pings.delete(m) }
+if lt!=nil
 rt=receiveTime
 t=rt-lt
 @ping_hooks.each{|h|h.call(t.to_f)}
