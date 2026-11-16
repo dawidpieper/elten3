@@ -24,6 +24,8 @@ ResponseAliases={'success'=>0,'error'=>1}
 CommandTimeout = 5.0
 CommandReadChunk = 16 * 1024
 ConferenceHost = "conferencing.elten.link"
+CrcLogInterval = 5.0
+CrcLogBurstLimit = 8
 
 class CommandTimeoutError < StandardError; end
 
@@ -66,6 +68,11 @@ def initialize
 @channel_secrets=[]
 @received={}
 @receive_mutex=Mutex.new
+@crc_log_mutex=Mutex.new
+@crc_log_window_started=nil
+@crc_log_last_failure=nil
+@crc_log_reported=0
+@crc_log_suppressed=0
 @pings={}
 @tcp_mutex = Mutex.new
 @update_mutex = Mutex.new
@@ -263,6 +270,7 @@ rescue Exception
 end
 stop_transport_thread(udpthread)
 stop_transport_thread(tcpthread)
+flush_crc_failure_log
 @udp_transport=nil
 @connected=false
 end
@@ -272,6 +280,47 @@ thread.exit
 thread.join
 end
 private :stop_transport_thread
+def log_crc_failure(userid, index, type)
+now=Process.clock_gettime(Process::CLOCK_MONOTONIC)
+messages=[]
+@crc_log_mutex.synchronize do
+if @crc_log_last_failure==nil || now-@crc_log_last_failure>=CrcLogInterval
+messages << crc_log_summary if @crc_log_suppressed>0
+@crc_log_reported=0
+@crc_log_suppressed=0
+@crc_log_window_started=now
+elsif now-@crc_log_window_started>=CrcLogInterval
+messages << crc_log_summary if @crc_log_suppressed>0
+@crc_log_suppressed=0
+@crc_log_window_started=now
+end
+@crc_log_last_failure=now
+if @crc_log_reported<CrcLogBurstLimit
+@crc_log_reported+=1
+messages << "VoIP: Wrong CRC signature for packet #{index} from #{userid}, type #{type}"
+else
+@crc_log_suppressed+=1
+end
+end
+messages.each{|message|log(-1, message)}
+end
+private :log_crc_failure
+def flush_crc_failure_log
+message=nil
+@crc_log_mutex.synchronize do
+message=crc_log_summary if @crc_log_suppressed>0
+@crc_log_window_started=nil
+@crc_log_last_failure=nil
+@crc_log_reported=0
+@crc_log_suppressed=0
+end
+log(-1, message) if message!=nil
+end
+private :flush_crc_failure_log
+def crc_log_summary
+"VoIP: suppressed #{@crc_log_suppressed} additional wrong CRC packet logs within a #{CrcLogInterval}-second window"
+end
+private :crc_log_summary
 def disconnect
 log(0, "Conference: disconnecting from server")
 @closing=true
@@ -780,7 +829,7 @@ if type<200
 if Zlib.crc32(message)==crc || crc==0
 @receive_hooks.each{|h|h.call(userid, type, message, p1, p2, p3, p4, index)}
 else
-log(-1, "VoIP: Wrong CRC signature for packet #{index} from #{userid}, type #{type}")
+log_crc_failure(userid, index, type)
 end
 else
 case type
