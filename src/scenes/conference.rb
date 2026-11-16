@@ -370,6 +370,7 @@ if Conference.channel.id==0
 elsif channel_target?(@target)
   speak(p_("Conference", "You are already connected to another channel."))
     end
+    st_conference.add_tip(p_("Conference", "Press L to look around and Ctrl to stop the announcements")) if Conference.channel.spatialization != 2
     @form.wait if Conference.channel.id!=0
     timeout_expired=conference_timeout_expired?
     timeout_break
@@ -380,6 +381,7 @@ elsif channel_target?(@target)
       end
   $scene=Scene_Main.new
 ensure
+  speech_stop if @look_around_sequence && current_speechsequence.equal?(@look_around_sequence)
   Conference.remove_hook(@waitingchannel_hook)
   Conference.remove_hook(@users_hook)
   Conference.remove_hook(@status_hook)
@@ -884,33 +886,28 @@ end
       return
     end
     nearby.sort_by!{|distance, name, _pan| [distance, name]}
-    cancel = Button.new(p_("Conference", "Stop looking around (Ctrl)"))
-    form = Form.new([cancel], quiet: true)
-    form.add_timer(FormTimer.new(0, repeat: true) do
-      cancel.press if keyboard_modifier_state?(:control, :first_pressed)
-    end)
-    timer = FormTimer.new(0.8, repeat: true) do
-      if !Conference.opened? || Conference.channel.id != channel.id
-        speech_stop
-        form.resume
-      elsif !speech_actived
-        if nearby.empty?
-          form.resume
-        else
-          distance, name, pan = nearby.shift
-          steps = distance.round
+    indexed = Configuration.soundthemeactivation && speech_indexes_supported?
+    parts = nearby.flat_map do |distance, name, pan|
+      steps = distance.round
+      label = np_("Conference", "%{name}, %{count} step", "%{name}, %{count} steps", steps) % {name: name, count: steps}
+      if indexed
+        cue = EltenAPI::SpeechCommands::CustomCommand.new do
           play_sound("listbox_focus", pan: pan, pitch: distance > 15 ? 75 : 100)
-          alert(np_("Conference", "%{name}, %{count} step", "%{name}, %{count} steps", steps) % {name: name, count: steps}, false)
         end
+        [cue, label + "\r\n"]
+      else
+        direction = if pan < 50
+          p_("Conference", "left")
+        elsif pan > 50
+          p_("Conference", "right")
+        else
+          p_("Conference", "centre")
+        end
+        [p_("Conference", "%{participant}, %{direction}") % {participant: label, direction: direction} + "\r\n"]
       end
     end
-    form.add_timer(timer)
-    cancel.on(:press) do
-      timer.stop
-      speech_stop
-      form.resume
-    end
-    form.wait
+    @look_around_sequence = EltenAPI::SpeechSequence.new(parts)
+    speak(@look_around_sequence, limit: 0)
   end
 
   def get_channelslist
