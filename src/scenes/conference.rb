@@ -577,7 +577,7 @@ when 1
         index = channel_group_target(channels, lst_channels.index, direction)
         if index
           lst_channels.index = index
-          lst_channels.sel.say_option
+          lst_channels.say_option
         end
       end
     end
@@ -889,6 +889,7 @@ end
 def channel_group_target(channels, index, direction)
   return if index < 0 || !channels[index]
   starts = channels.each_index.select{|i| i == 0 || channel_access_group(channels[i]) != channel_access_group(channels[i - 1])}
+  return if starts.size < 2
   group = starts.rindex{|i| i <= index}
   starts[(group + direction) % starts.size]
 end
