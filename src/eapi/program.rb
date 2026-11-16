@@ -1795,6 +1795,10 @@ module Programs
 
     def unregister_runtime(runtime, reason = :unload)
       return if runtime == nil
+      classes = @@bypaths[runtime.entry_id] || []
+      classes.each do |program|
+        program.close_app_cache if program.respond_to?(:close_app_cache)
+      end
       if defined?(EltenAPI::Scheduler)
         EltenAPI::Scheduler.unregister_program_runtime(runtime, reason,
           :remove_state => reason.to_sym == :uninstall)
@@ -1804,10 +1808,6 @@ module Programs
       MediaFinders.unregister_owner(runtime) if defined?(MediaFinders) && MediaFinders.respond_to?(:unregister_owner)
       MediaEncoders.unregister_owner(runtime) if defined?(MediaEncoders) && MediaEncoders.respond_to?(:unregister_owner)
       Extensions.unregister_runtime(runtime, reason) if defined?(Extensions)
-      classes = @@bypaths[runtime.entry_id] || []
-      classes.each do |program|
-        program.close_app_cache if program.respond_to?(:close_app_cache)
-      end
       remove_program_locale(runtime) if respond_to?(:remove_program_locale, true)
       @@runtimes.delete(runtime.entry_id) if @@runtimes[runtime.entry_id].equal?(runtime)
       @@runtime_by_prefix.delete(runtime.virtual_prefix)
