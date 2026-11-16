@@ -6,42 +6,40 @@ require "cgi"
 
 module EltenAPI
   module InvisibleInterface
-    # Keep repeated global shortcuts from building an unbounded backlog while
-    # the Invisible Interface worker is busy. Non-hotkey jobs retain ordinary
-    # Queue ordering and are never coalesced.
+    # Collapse only adjacent repetitions of one global shortcut while the
+    # Invisible Interface worker is busy. Alternating shortcuts and non-hotkey
+    # jobs retain their exact order.
     class HotkeyJobQueue
       def initialize
-        @queue = Queue.new
-        @pending_hotkeys = {}
+        @jobs = []
         @mutex = Mutex.new
+        @ready = ConditionVariable.new
       end
 
       def <<(job)
-        if hotkey_job?(job)
-          key = job[1].to_i
-          @mutex.synchronize do
-            return self if @pending_hotkeys.key?(key)
-            @pending_hotkeys[key] = true
-            @queue << job
-          end
-        else
-          @queue << job
+        @mutex.synchronize do
+          tail = @jobs[-1]
+          return self if same_hotkey?(tail, job)
+          @jobs << job
+          @ready.signal
         end
         self
       end
 
       def pop(non_block=false)
-        job = @queue.pop(non_block)
-        if hotkey_job?(job)
-          @mutex.synchronize { @pending_hotkeys.delete(job[1].to_i) }
+        @mutex.synchronize do
+          raise ThreadError, "queue empty" if non_block && @jobs.empty?
+          @ready.wait(@mutex) while @jobs.empty?
+          @jobs.shift
         end
-        job
       end
 
       private
 
-      def hotkey_job?(job)
-        job.is_a?(Array) && job[0] == :hotkey
+      def same_hotkey?(first, second)
+        first.is_a?(Array) && second.is_a?(Array) &&
+          first[0] == :hotkey && second[0] == :hotkey &&
+          first[1].to_i == second[1].to_i
       end
     end
 
