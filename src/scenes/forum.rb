@@ -1944,6 +1944,7 @@ loop do
     btn_search = Button.new(p_("Forum", "Search")),
     btn_cancel = Button.new(_("Cancel"))
     ], index: 0, silent: false, quiet: true)
+    lst_phrasein.add_tip(p_("Forum", "Leave all fields unchecked to search in titles, content and authors."))
     form.hide(lst_threadin) if obj!=nil
     lst_threadin.selected[0]=true
     lst_threadin.selected[1]=true
@@ -1955,11 +1956,6 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
     result=nil
     btn_cancel.on(:press) {form.resume}
     btn_search.on(:press) {
-    if lst_phrasein.multiselections.empty?
-      alert(p_("Forum", "Select at least one place to search"))
-      lst_phrasein.focus
-      next
-    end
     if obj==nil && lst_threadin.multiselections.empty?
       alert(p_("Forum", "Select at least one group category to search"))
       lst_threadin.focus
