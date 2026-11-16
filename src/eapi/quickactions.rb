@@ -62,6 +62,10 @@ module EltenAPI
             scene = Scene_Notifications.whatsnew
             scene == nil ? alert(p_("Notifications", "There is nothing new."), false) : insert_scene(scene)
           end
+        when :restart_developer_mode
+          unless GlobalMenu.developer_mode? || restart_to_developer_mode
+            alert(p_("MainMenu", "Cannot restart in developer mode."))
+          end
         when :context
                    $opencontextmenu=true if !GlobalMenu.opened?
         when :lastspeech
@@ -344,6 +348,7 @@ end
 [:conference_dicerollcustom, p_("EAPI_QuickActions", "Conferences: roll a custom die"), [], 0, false],
 [:alarm, p_("EAPI_QuickActions", "Add alarm"), [], 0, false],
         ]
+        a << [:restart_developer_mode, p_("EAPI_QuickActions", "Restart in developer mode"), [], 0, false] unless GlobalMenu.developer_mode?
         for ac in @@addprocs
           a.push([ac[1], ac[2]])
           end
