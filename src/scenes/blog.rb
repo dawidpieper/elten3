@@ -1290,22 +1290,16 @@ confirm(p_("Blog", "All posts on this blog will be marked as read. Do you want t
 end
 end
 menu.option(p_("Blog", "Create new blog"), nil, "n") {
-can=true
-begin
-b=EltenLink::Blog.managed(elten_link)
-rescue EltenLink::Error
-      alert(_("Error"))
-      $scene=Scene_Main.new
-      can=false
-    else
-      can=false if b.size>0 && !requires_premiumpackage("scribe")
-    end
-    if can==true
-$bloglistindex = @sel.index
-$scene=Scene_Blog_Create.new(true, $scene)
-else
-  alert(p_("Blog", "You cannot create more blogs"))
+  begin
+    managed = EltenLink::Blog.managed(elten_link)
+  rescue EltenLink::Error
+    alert(_("Error"))
+    next
   end
+  next if !managed.empty? && !requires_premiumpackage("scribe")
+
+  $bloglistindex = @sel.index
+  $scene = Scene_Blog_Create.new(true, $scene)
 }
 if !@type.is_a?(String)
 if Session.languages.size>0
