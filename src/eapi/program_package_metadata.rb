@@ -14,17 +14,25 @@ module Programs
     LOCALIZED_FILE_PATTERN = /\Alocale\/([a-zA-Z]{2}(?:[-_][a-zA-Z]{2})?)_metadata\.json\z/i.freeze
 
     class << self
-      def prepare(metadata, source_dir:, warning: nil, sources: PackageSources.new(source_dir))
+      def prepare(metadata, source_dir:, warning: nil, sources: PackageSources.new(source_dir), default_main: "__app.rb")
         raise_metadata_error("Package metadata must be an object") if !metadata.is_a?(Hash)
         root = File.expand_path(source_dir)
         prepared = metadata.dup
         encoding = normalize_sources_default_encoding(prepared["sources_default_encoding"])
         prepared["sources_default_encoding"] = encoding.name if encoding != nil
-        main = prepared["main"].to_s.tr("\\", "/").delete_prefix("./")
-        main = "__app.rb" if main.empty?
+        entry = [prepared["main"], prepared["file"], default_main].find { |value| !value.to_s.empty? }
+        main = entry.to_s.tr("\\", "/").delete_prefix("./")
+        prepared["main"] = main
         raise_metadata_error("Main file #{main} is excluded by .eltenignore") if sources.excluded?(main)
         if File.extname(main).downcase != ".rb" || !sources.files.include?(File.join(root, main))
           raise_metadata_error("Main Ruby file #{main} is missing from the package")
+        end
+        normalize_required_assets(prepared["required_assets"], root).each do |type, names|
+          names.each do |name|
+            if sources.excluded_required_asset?(type, name)
+              raise_metadata_error("Required asset #{type}: #{name} is excluded by .eltenignore")
+            end
+          end
         end
         files, detected_languages = scan_locale(root, sources)
 
@@ -53,6 +61,20 @@ module Programs
           emit_warning(warning, "Program locale files declare languages missing from supported_languages: #{unsupported_files.join(", ")}")
         end
         prepared
+      end
+
+      def normalize_required_assets(value, source)
+        return {}.freeze if value == nil
+        value = { "sounds" => value } if value.is_a?(Array)
+        raise_metadata_error("Invalid required_assets in #{source}") if !value.is_a?(Hash)
+        assets = {}
+        value.each do |type, names|
+          type = type.to_s.strip
+          raise_metadata_error("Empty required asset type in #{source}") if type == ""
+          names = names.is_a?(Array) ? names : [names]
+          assets[type] = names.map { |name| name.to_s.strip }.reject { |name| name == "" }.uniq.freeze
+        end
+        assets.freeze
       end
 
       def normalize_sources_default_encoding(value)

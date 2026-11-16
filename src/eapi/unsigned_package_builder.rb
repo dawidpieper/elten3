@@ -13,8 +13,6 @@ module Programs
   # produces unsigned packages and rejects manifests requiring gem bundling.
   # Production builds continue to use the signed canonical build tools.
   class UnsignedPackageBuilder
-    LANGUAGE_EXTENSIONS = [".mo"].freeze
-
     class ZipWriter
       Entry = Struct.new(:name, :crc, :compressed_size, :uncompressed_size, :method,
         :offset, :dos_time, :dos_date, keyword_init: true)
@@ -126,9 +124,9 @@ module Programs
           extension = File.extname(relative).downcase
           if extension == ".rb"
             write_named_record(buffer, 1, relative, Zstd.compress(File.binread(file).b, :level => 19))
-          elsif relative.start_with?("Audio/") && Programs::SOUND_EXTENSIONS.include?(extension)
+          elsif PackageSources.sound?(relative)
             write_named_record(buffer, 2, relative, File.binread(file).b)
-          elsif (language = language_code(relative)) != nil
+          elsif (language = PackageSources.language_code(relative)) != nil
             content = Zstd.compress(File.binread(file).b, :level => 19)
             buffer << [3].pack("C") << language << [content.bytesize].pack("L<") << content
           end
@@ -145,7 +143,7 @@ module Programs
         each_source_file(root, sources) do |file, relative|
           extension = File.extname(relative).downcase
           next if extension == ".rb" || extension == ".eltenapp" || relative == "__manifest.json"
-          next if relative.start_with?("Audio/") && Programs::SOUND_EXTENSIONS.include?(extension)
+          next if PackageSources.sound?(relative)
           next if relative.start_with?("locale/")
           writer.add(relative, File.binread(file).b, File.mtime(file))
         end
@@ -165,12 +163,6 @@ module Programs
         raise ProgramError, "Program file name is too long: #{name}" if name_bytes.bytesize > 0xffff
         buffer << [type, name_bytes.bytesize].pack("CS<") << name_bytes
         buffer << [content.bytesize].pack("L<") << content
-      end
-
-      def language_code(relative)
-        return nil if !relative.start_with?("locale/") || !LANGUAGE_EXTENSIONS.include?(File.extname(relative).downcase)
-        code = File.basename(relative, File.extname(relative))[0, 2].to_s
-        code.match?(/\A[a-zA-Z]{2}\z/) ? code.upcase : nil
       end
 
       def normalized_path(path)

@@ -19,7 +19,7 @@ module Programs
   MANIFEST_BEGIN = /^\=begin[ \t]+Elten3AppInfo[ \t]*\r?\n/.freeze
   MANIFEST_END = /^\=end[ \t]+Elten3AppInfo[ \t]*$/m.freeze
   UUID_PATTERN = /\A[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/i.freeze
-  SOUND_EXTENSIONS = %w[.ogg .opus .wav .wave .mp3 .flac .aac .m4a .wma .spx .webm].freeze
+  SOUND_EXTENSIONS = PackageSources::SOUND_EXTENSIONS
 
   @@programs = []
   @@bypaths = {}
@@ -621,7 +621,7 @@ module Programs
       @platforms = Array(@raw["platforms"]).map { |platform| platform.to_s.downcase.strip }.reject { |platform| platform == "" }
       @menu = @raw["menu"].is_a?(Hash) ? @raw["menu"] : {}
       @gems = Array(@raw["gems"]).map { |gem| gem.is_a?(Hash) ? gem["name"].to_s : gem.to_s }.reject { |gem| gem == "" }
-      @required_assets = normalize_required_assets(@raw["required_assets"])
+      @required_assets = ProgramPackageMetadata.normalize_required_assets(@raw["required_assets"], @source)
       @execution = Execution::Spec.new(@raw["execution"], @source)
       @sources_default_encoding = Programs::ProgramPackageMetadata.normalize_sources_default_encoding(@raw["sources_default_encoding"])
       @main_language = normalize_main_language(@raw["main_language"])
@@ -728,20 +728,6 @@ module Programs
       return nil if text == "" || text == "0"
 
       text
-    end
-
-    def normalize_required_assets(value)
-      return {}.freeze if value == nil
-      value = { "sounds" => value } if value.is_a?(Array)
-      raise ProgramError, "Invalid required_assets in #{@source}" if !value.is_a?(Hash)
-      assets = {}
-      value.each do |type, names|
-        type = type.to_s.strip
-        raise ProgramError, "Empty required asset type in #{@source}" if type == ""
-        names = names.is_a?(Array) ? names : [names]
-        assets[type] = names.map { |name| name.to_s.strip }.reject { |name| name == "" }.uniq.freeze
-      end
-      assets.freeze
     end
 
     def normalize_main_language(value)

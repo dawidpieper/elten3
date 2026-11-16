@@ -4,6 +4,19 @@
 
 module Programs
   class PackageSources
+    SOUND_EXTENSIONS = %w[.ogg .opus .wav .wave .mp3 .flac .aac .m4a .wma .spx .webm].freeze
+
+    def self.sound?(relative)
+      relative.start_with?("Audio/") && SOUND_EXTENSIONS.include?(File.extname(relative).downcase)
+    end
+
+    def self.language_code(relative)
+      ext = File.extname(relative)
+      return unless relative.start_with?("locale/") && ext.downcase == ".mo"
+      code = File.basename(relative, ext)[0, 2]
+      code.upcase if code.match?(/\A[a-zA-Z]{2}\z/)
+    end
+
     def initialize(root, &accept_file)
       @root = File.expand_path(root)
       @accept_file = accept_file
@@ -37,10 +50,37 @@ module Programs
     end
 
     def files
-      @files ||= Dir.glob("**/*", base: @root).filter_map do |relative|
+      return @files if @files
+      @excluded_files = []
+      @files = Dir.glob("**/*", base: @root).filter_map do |relative|
         path = File.join(@root, relative)
-        path if File.file?(path) && !excluded?(relative) && (!@accept_file || @accept_file.call(path))
+        next unless File.file?(path) && (!@accept_file || @accept_file.call(path))
+        if excluded?(relative)
+          @excluded_files << relative
+          next
+        end
+        path
       end
+    end
+
+    def excluded_required_asset?(type, name)
+      return false if @rules.empty?
+      files
+      case type
+      when "files"
+        return @excluded_files.include?(name.tr("\\", "/").delete_prefix("./"))
+      when "sounds"
+        ext = File.extname(name).downcase
+        names = [name]
+        names << File.basename(name, ext) unless ext.empty?
+        matches = ->(path) { self.class.sound?(path) && names.include?(File.basename(path, File.extname(path).downcase)) }
+      when "languages"
+        code = name[0, 2].upcase
+        matches = ->(path) { self.class.language_code(path) == code }
+      else
+        return false
+      end
+      @excluded_files.any?(&matches) && @files.none? { |path| matches.call(path.delete_prefix(@root + "/")) }
     end
   end
 end

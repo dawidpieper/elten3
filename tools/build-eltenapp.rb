@@ -9,8 +9,6 @@ require_relative "../src/EAPI/ProgramSigning"
 require_relative "../src/eapi/program_package_metadata"
 
 MAGIC = "Elten3AppPackage".b
-SOUND_EXTENSIONS = %w[.ogg .opus .wav .wave .mp3 .flac .aac .m4a .wma .spx .webm].freeze
-LANGUAGE_EXTENSIONS = %w[.mo].freeze
 MANIFEST_BEGIN = /^\=begin[ \t]+Elten3AppInfo[ \t]*\r?\n/.freeze
 MANIFEST_END = /^\=end[ \t]+Elten3AppInfo[ \t]*$/m.freeze
 
@@ -70,14 +68,6 @@ def write_named_record(io, type, name, content)
   write_bytes(io, content)
 end
 
-def language_code(relative)
-  return nil if !relative.start_with?("locale/")
-  return nil if !LANGUAGE_EXTENSIONS.include?(File.extname(relative).downcase)
-  code = File.basename(relative, File.extname(relative))[0, 2].to_s
-  return nil if code !~ /\A[a-zA-Z]{2}\z/
-  code.upcase
-end
-
 options = {
   :sign => true,
   :certificate => Programs::ProgramSigning.default_certificate_path,
@@ -101,8 +91,8 @@ end
 sources = Programs::PackageSources.new(source_dir)
 main_file = manifest_file(source_dir, sources)
 metadata = extract_manifest(File.binread(main_file), main_file)
-metadata["main"] = normalize(main_file.delete_prefix(source_dir + File::SEPARATOR)) if metadata["main"].to_s == ""
 metadata = Programs::ProgramPackageMetadata.prepare(metadata, :source_dir => source_dir, :sources => sources,
+  :default_main => normalize(main_file.delete_prefix(source_dir + File::SEPARATOR)),
   :warning => ->(message) { warn "Warning: #{message}" })
 
 files = []
@@ -112,10 +102,10 @@ sources.files.each do |file|
   if ext == ".rb"
     content = Zstd.compress(File.binread(file).b, level: 19)
     files << [1, relative, content]
-  elsif relative.start_with?("Audio/") && SOUND_EXTENSIONS.include?(ext)
+  elsif Programs::PackageSources.sound?(relative)
     content = File.binread(file).b
     files << [2, relative, content]
-  elsif (code = language_code(relative)) != nil
+  elsif (code = Programs::PackageSources.language_code(relative)) != nil
     content = Zstd.compress(File.binread(file).b, level: 19)
     files << [3, code, content]
   end
