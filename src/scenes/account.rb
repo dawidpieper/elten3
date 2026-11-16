@@ -379,35 +379,38 @@ def load_notifications_settings
     
     class Scene_Account_Password
   def main
+    oldpassword = password = repeatpassword = nil
+    loop do
       oldpassword = ""
-  password = ""
-  repeatpassword = ""
-  while oldpassword == ""
-    oldpassword = input_text(p_("Account", "Enter your old password."),flags: EditBox::Flags::Password, text: "", escapable: true)
-  end
-  if oldpassword == nil
+      password = ""
+      repeatpassword = ""
+      while oldpassword == ""
+        oldpassword = input_text(p_("Account", "Enter your old password."),flags: EditBox::Flags::Password, text: "", escapable: true)
+      end
+      if oldpassword == nil
         $scene = Scene_Main.new
-    return
-  end
-    while password == ""
-    password = input_text(p_("Account", "Enter your new password."),flags: EditBox::Flags::Password,text: "",escapable: true)
-  end
-  if oldpassword == nil
-    $scene = Scene_Main.new
-    return
-  end
-    while repeatpassword == ""
-
-      repeatpassword = input_text(p_("Account", "Repeat new password."),flags: EditBox::Flags::Password,text: "",escapable: true)
-  end
-  if repeatpassword == nil
+        return
+      end
+      while password == ""
+        password = input_text(p_("Account", "Enter your new password."),flags: EditBox::Flags::Password,text: "",escapable: true)
+      end
+      if password == nil
         $scene = Scene_Main.new
-    return
-  end
-  if password != repeatpassword
-    alert(p_("Account", "The passwords do not match."))
-    main
-  end
+        return
+      end
+      while repeatpassword == ""
+        repeatpassword = input_text(p_("Account", "Repeat new password."),flags: EditBox::Flags::Password,text: "",escapable: true)
+      end
+      if repeatpassword == nil
+        $scene = Scene_Main.new
+        return
+      end
+      if password != repeatpassword
+        alert(p_("Account", "The passwords do not match."))
+        next
+      end
+      break
+    end
   begin
     EltenLink::Accounts.change_password(elten_link, old_password: oldpassword, new_password: password)
     alert(p_("Account", "Your password has been changed."))
