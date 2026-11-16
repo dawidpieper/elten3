@@ -98,8 +98,8 @@ rescue EltenLink::Error => e
     alert(e.message)
   end
   speech_wait
-  $scene = Scene_Loading.new
-  main
+  $scene = Scene_Registration.new
+  return
 else
   speech_wait
   $scene = Scene_Loading.new
