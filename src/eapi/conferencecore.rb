@@ -99,7 +99,7 @@ def push(key, frame)
 @mutex.synchronize do
 @frames[key]=frame
 while @frames.size>Limit
-oldest_key=@frames.keys.min
+oldest_key=@frames.each_key.first
 @frames.delete(oldest_key)
 end
 end
