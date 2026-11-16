@@ -951,9 +951,9 @@ sel.focus
     form = Form.new([lst_objects, btn_upload, lst_position, btn_ok, btn_cancel], index: 0, silent: false, quiet: true)
     can_upload = false
     form.hide(btn_upload)
-    refresh = lambda do |uploaded_name = nil|
+    update_list = lambda do |uploaded_name = nil, resources: nil|
       begin
-        resources = EltenLink::ConferenceResources.list(elten_link)
+        resources ||= EltenLink::ConferenceResources.list(elten_link)
       rescue EltenLink::Error => e
         Log.warning("Conference resources list failed: #{e.message}")
         alert(_("Error"))
@@ -976,11 +976,11 @@ sel.focus
         form.hide(btn_upload)
       end
     end
-    refresh.call
+    update_list.call
     upload = proc do
       name = upload_conference_object
       if name
-        refresh.call(name)
+        update_list.call(name)
         form.index = lst_objects
       end
       form.focus
@@ -993,8 +993,8 @@ sel.focus
         menu.option(p_("Conference", "Delete")) do
           begin
             EltenLink::ConferenceResources.delete(elten_link, obj['resid'])
+            update_list.call(resources: objs.reject { |resource| resource['resid'] == obj['resid'] })
             alert(p_("Conference", "Object deleted"))
-            refresh.call
           rescue EltenLink::Error => e
             Log.warning("Conference resource delete failed: #{e.message}")
             alert(_("Error"))
