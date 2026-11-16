@@ -100,6 +100,7 @@ module EltenAPI
       def stop
         ensure_state
         @stopped = true
+        cancel_feed_reply_request
         Hotkeys.stop
         NativeDialogs.close_all
         @jobs << [:stop]
@@ -129,6 +130,7 @@ module EltenAPI
 
       def reset_feeds
         ensure_state
+        cancel_feed_reply_request
         @feed_replies = @feed_reply = nil
         @feed_id = nil
         @feed_lasttext = nil
@@ -136,7 +138,10 @@ module EltenAPI
 
       def set_feed_id(id)
         ensure_state
-        @feed_replies = @feed_reply = nil if @feed_id != id.to_i
+        if @feed_id != id.to_i
+          cancel_feed_reply_request
+          @feed_replies = @feed_reply = nil
+        end
         @feed_id = id.to_i
       end
 
@@ -195,6 +200,8 @@ module EltenAPI
           reset_session
         when :message_result
           handle_message_result(job[1], job[2], job[3])
+        when :feed_replies_result
+          finish_feed_reply_request(*job.drop(1))
         when :message_submit
           start_message_submit(job[1])
         when :message_submit_result
@@ -292,6 +299,7 @@ module EltenAPI
           index = @categories.find_index { |category| @cards.include?(category.to_s) } || 0
         end
         index = (index + change.to_i) % @categories.size
+        cancel_feed_reply_request if @category == "feed" && @categories[index] != "feed"
         @category = @categories[index]
         if !category_available?
           if origin == index
@@ -463,8 +471,11 @@ module EltenAPI
         case action
         when :pagedown
           open_feed_replies
+        when :stop
+          cancel_feed_reply_request
         when :pageup
-          if @feed_replies
+          if @feed_replies || @feed_reply_request
+            cancel_feed_reply_request
             @feed_replies = @feed_reply = nil
             quick_audio_stop
             announce_feed(current_feed)
@@ -492,20 +503,45 @@ module EltenAPI
 
       def open_feed_replies
         feed = current_feed
-        return play_border if @feed_replies || !feed || feed.responses.to_i.zero?
+        return play_border if @feed_replies || @feed_reply_request || !feed || feed.responses.to_i.zero?
 
+        token = @feed_reply_request = EltenAPI::Tasks::CancellationToken.new
+        id = feed.id
         session = session_name
-        replies = EltenLink::Feeds.responses(elten_link, feed.id).select do |reply|
-          reply.id != feed.id && (!reply.message.to_s.empty? || !feed_audio_url(reply).empty?)
+        Thread.new do
+          Thread.current.report_on_exception = false
+          replies = error = nil
+          begin
+            replies = EltenLink::Feeds.responses(EltenLink::Client.new, id, cancellation_token: token)
+          rescue StandardError => e
+            error = e
+          ensure
+            @jobs << [:feed_replies_result, token, id, session, replies, error]
+          end
         end
-        return if @feed_id != feed.id || session_name != session
+      rescue ThreadError => error
+        finish_feed_reply_request(token, id, session, nil, error)
+      end
+
+      def cancel_feed_reply_request
+        @feed_reply_request&.cancel
+        @feed_reply_request = nil
+      end
+
+      def finish_feed_reply_request(token, id, session, replies, error)
+        return unless token.equal?(@feed_reply_request)
+        @feed_reply_request = nil
+        return unless @category == "feed" && @feed_id == id && session_name == session
+        if error
+          Log.warning("Invisible Interface feed replies: #{error.message}")
+          say(_("Error"))
+          return
+        end
+        replies = replies.select { |reply| reply.id != id && (!reply.message.to_s.empty? || !feed_audio_url(reply).empty?) }
         return play_border if replies.empty?
 
         @feed_replies = replies
         read_feed(:first)
-      rescue EltenLink::Error => e
-        Log.warning("Invisible Interface feed replies: #{e.message}")
-        say(_("Error"))
       end
 
       def read_feed(action)
@@ -531,6 +567,7 @@ module EltenAPI
           if @feed_replies
             @feed_reply = feed
           else
+            cancel_feed_reply_request if @feed_id != feed.id
             @feed_id = feed.id
             Scene_Main.feed_id = feed.id if defined?(Scene_Main)
             @feed_lasttext = feed.user.to_s + ": " + feed.message.to_s
