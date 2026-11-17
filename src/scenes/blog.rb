@@ -498,8 +498,9 @@ else
             @sel.focus
             break
           end
-          if (key_pressed?(:key_enter) or key_pressed?(:key_space)) and form.index == 2
-            selections = lst_users.multiselections()
+          if btn_mentionOK.pressed? || main_shortcut_pressed?(:enter)
+            selections = lst_users.multiselections
+            next if selections.empty?
             begin
               selected_users = selections.map { |index| users[index] }
               EltenLink::Blog.send_mentions(elten_link, users: selected_users, message: form.fields[1].text, blog: @post[@sel.index].owner, post_id: @post[@sel.index].id)
@@ -912,8 +913,9 @@ def context(menu)
         @form.focus
         break
       end
-      if (key_pressed?(:key_enter) or key_pressed?(:key_space)) and form.index == 2
-        selections = lst_users.multiselections()
+      if btn_mentionOK.pressed? || main_shortcut_pressed?(:enter)
+        selections = lst_users.multiselections
+        next if selections.empty?
         begin
           selected_users = selections.map { |index| users[index] }
           EltenLink::Blog.send_mentions(elten_link, users: selected_users, message: form.fields[1].text, blog: @post.owner, post_id: @post.id)
