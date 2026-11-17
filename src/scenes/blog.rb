@@ -288,6 +288,13 @@ class Scene_Blog_Posts
 
   def main
     @isowner = @id.is_a?(Integer) && (blogowners(@owner) || []).include?(Session.name)
+    resume = @resume_posts
+    @resume_posts = false
+    if resume && @sel && @id.is_a?(Integer)
+      update_post_rows
+      focus_blog_list
+      return browse_posts
+    end
     @mentions=[]
     if @id=="MENTIONED" or @id=="NEWMENTIONED"
       begin
@@ -338,13 +345,22 @@ focus_blog_list
 @sel.on(:move) {play_sound("file_audio", volume: 50, pitch: 50, pan: @sel.lpos) if @post[@sel.index]!=nil && (@post[@sel.index].audio || @post[@sel.index].audio_url.to_s!="")}
 @sel.trigger(:move)
 @sel.bind_context{|menu|context(menu)}
-loop do
-  loop_update
-  @sel.update
-  update
-  break if $scene != self
+    browse_posts
   end
-end
+
+  def resume_posts
+    @resume_posts = true
+  end
+
+  def browse_posts
+    loop do
+      loop_update
+      @sel.update
+      update
+      break if $scene != self
+    end
+  end
+
 def update
   if key_pressed?(:key_escape) or (key_pressed?(:key_left) and !key_held?(0x10))
     return return_to_blog_parent(@parent) if @parent
@@ -372,7 +388,7 @@ def update
     true
   end
 
-  def load_posts(page)
+  def load_posts(page, jump: false)
     id=@id
     id=0 if @id==-1
     owner = id.to_i.to_s == id.to_s ? @owner : Session.name
@@ -380,9 +396,14 @@ def update
     blogtemp = EltenLink::Blog.posts(elten_link, blog: owner, category_id: id, page: page, search: @search)
 rescue EltenLink::Error
   alert(_("Error"))
-  $scene = Scene_Main.new
-  return
+  $scene = Scene_Main.new unless jump
+  return false
 end
+if jump && blogtemp.posts.empty?
+  alert(p_("Blog", "There are no posts on this page."))
+  return false
+end
+@post = [] if jump
 first_new_index = @post.size
 for source in blogtemp.posts
   post=Struct_Blog_Post.new(source.id)
@@ -412,6 +433,13 @@ if @id == "NEWFOLLOWEDBLOGS" and LocalConfig["BlogPostsSortBy", SORT_POSTS_BY_BL
   first_new = @post.drop(first_new_index).max_by(&:date)
   @post = @post.sort_by { |p| p.date * -1 }
 end
+@more_posts = blogtemp.more
+update_post_rows
+@page = page
+first_new
+end
+
+  def update_post_rows
 @sel.rows=@post.map{|s|
 tmp=""
 tmp+=s.name
@@ -424,7 +452,7 @@ s.author,
 s.comments.to_s
 ]
 }
-if blogtemp.more
+if @more_posts
   @sel.rows.push([p_("Blog", "Load more"), nil, nil])
 end
 @sel.setcolumn(@sel.column)
@@ -433,8 +461,6 @@ new_status=ListBox.item_status("listbox_itemnew", p_("Blog", "New"), p_("Blog", 
 @post.each_with_index do |post, i|
   @sel.set_row_state(i, new_status) if post.unread
 end
-@page = page
-first_new
 end
 
   def bopen
@@ -469,6 +495,18 @@ end
     menu.option(p_("Blog", "Select")) {
       bopen
     }
+    if @id.is_a?(Integer)
+      menu.option(p_("Blog", "Go to page")) {
+        page = input_text(p_("Blog", "Page number"), flags: EditBox::Flags::Numbers, text: @page.to_s, escapable: true)
+        next if page.nil? || page.empty?
+        if page.to_i < 1
+          alert(p_("Blog", "Enter a page number greater than zero."))
+        elsif load_posts(page.to_i, jump: true)
+          @sel.index = 0
+          @sel.focus
+        end
+      }
+    end
     if @post.size>0 && @sel.index < @post.size
       if @isowner
     menu.option(p_("Blog", "Edit"), nil, "e") {
@@ -641,6 +679,10 @@ end
 @fields = []
 fdate=""
 comments_count = @posts.size - 1
+if @scene.is_a?(Scene_Blog_Posts) && !@posts.empty?
+  @post.comments = comments_count
+  @post.unread = false
+end
 for i in 0..@posts.size-1
 field_index=(i==0?i:(i+2))
 @fields[field_index] = EditBox.new(@posts[i].author,type: EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly|EditBox::Flags::HTML,text: format(@posts[i], i, comments_count),quiet: true)
@@ -771,6 +813,7 @@ if (key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form.index == @fo
 if @scene == nil
     $scene = Scene_Blog_Posts.new(@post.owner,@category,@categoryselindex,@postselindex, @search, @page)
   else
+    @scene.resume_posts if @scene.is_a?(Scene_Blog_Posts)
     $scene = @scene
     end
     end
