@@ -247,6 +247,7 @@ else
   speak(Session.greeting) if $silentstart != true
   end
 EltenAPI::NotificationService.synchronize_runtime_state
+Scene_Programs.start_login_update_check
 else
   case login_error&.code.to_s
   when "network_error", "timeout", "cancelled"

@@ -72,6 +72,7 @@ class Scene_Main
 
     loop do
       loop_update
+      Scene_Programs.finish_login_update_check if $scene == self
       refresh_program_ui_if_needed
       notifications_changed = Session.notifications_updated?
       if $main_notifications_changed == true || notifications_changed
