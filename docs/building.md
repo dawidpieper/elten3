@@ -89,7 +89,9 @@ Build on a matching host, or with a correctly configured cross-toolchain, using 
 ./tools/build-linux-x86.sh --jobs 4
 ```
 
-These scripts require `cmake`, `file`, a working C/C++ toolchain and the development dependencies needed to compile Ruby and native gems. They validate the resulting executable architecture and place the release under `build/release/linux/`. The x86 target is deprecated.
+These scripts require `cmake`, `file`, `ldd`, `patchelf`, a working C/C++ toolchain and the development dependencies needed to compile Ruby and native gems. They validate the resulting executable architecture and place the release under `build/release/linux/`. The x86 target is deprecated.
+
+`ldd` and `patchelf` bundle the shared libraries the Ruby runtime depends on and point every runtime object at those copies. The build stops if either tool is missing, or if any runtime object still depends on a library the package does not ship, rather than producing a release that only starts on the build host.
 
 `tools/build-linux.sh` assembles the broader Linux release and installer workflow once the required architecture-specific releases are available.
 

@@ -28,11 +28,35 @@ if(NOT DEFINED RUNTIME_DIR OR NOT IS_DIRECTORY "${RUNTIME_DIR}")
   message(FATAL_ERROR "RUNTIME_DIR is required and must exist: ${RUNTIME_DIR}")
 endif()
 
+# Both tools are required, not optional. Without ldd nothing is bundled, and
+# without patchelf the objects keep the RUNPATH the Ruby build gave them - an
+# absolute path into the build tree. glibc then ignores the launcher's DT_RPATH
+# for them, so on any machine but the build host libruby and the extensions
+# fail with "cannot open shared object file" for libcrypt, libssl, libffi and
+# the like. A warning in the build log is too easy to miss for a release that
+# only works on the machine that built it, so refuse to go on instead.
 find_program(LDD_EXECUTABLE ldd)
 if(NOT LDD_EXECUTABLE)
-  message(WARNING "ldd was not found; skipping runtime library bundling")
-  return()
+  message(FATAL_ERROR "ldd was not found; it is required to bundle the runtime's shared libraries")
 endif()
+find_program(PATCHELF_EXECUTABLE patchelf)
+if(NOT PATCHELF_EXECUTABLE)
+  message(FATAL_ERROR
+    "patchelf was not found; it is required so the packaged runtime finds its "
+    "bundled libraries instead of looking for them on the build host's paths. "
+    "Install patchelf from your distribution and build again.")
+endif()
+
+# True when the file starts with the ELF magic. The globs below also match
+# things that only look like libraries by name, which are not ours to patch.
+function(elten_is_elf path out_var)
+  file(READ "${path}" magic LIMIT 4 HEX)
+  if(magic STREQUAL "7f454c46")
+    set(${out_var} TRUE PARENT_SCOPE)
+  else()
+    set(${out_var} FALSE PARENT_SCOPE)
+  endif()
+endfunction()
 
 # Never bundle these. They are the C runtime and its companions: the loader
 # itself cannot be replaced from inside the process, and shipping a libc that
@@ -155,7 +179,7 @@ endforeach()
 list(LENGTH seen seen_count)
 message(STATUS "Bundled ${copied} host libraries into ${RUNTIME_DIR} (${seen_count} distinct sonames)")
 
-# Point every object at the directory it sits in, so it finds the copies above.
+# Point every object at the runtime root, so it finds the copies above.
 #
 # This has to be done here, with patchelf, rather than through LDFLAGS while
 # Ruby is built: $ORIGIN cannot survive that route intact, and it is mangled
@@ -167,38 +191,108 @@ message(STATUS "Bundled ${copied} host libraries into ${RUNTIME_DIR} (${seen_cou
 # glibc ignores an inherited DT_RPATH for any object carrying its own
 # DT_RUNPATH, and everything the Ruby build produces carries one.
 #
-# $ORIGIN/.. is included for extensions that live a level down (enc/, json/...)
-# while the shared libraries stay in the runtime root.
-find_program(PATCHELF_EXECUTABLE patchelf)
-if(NOT PATCHELF_EXECUTABLE)
-  message(WARNING
-    "patchelf was not found; the packaged runtime will keep looking for its "
-    "libraries in system directories instead of the bundled copies")
-  return()
-endif()
-
+# Extensions are stored under their require path, so they can sit any number of
+# levels below the root (enc/, digest/, json/ext/...) while the shared libraries
+# stay in the root itself. Each object therefore gets $ORIGIN plus the exact
+# relative path back up to the root; a fixed $ORIGIN/.. stops one level short
+# for json/ext/parser.so and anything else nested deeper.
+#
 # Re-glob: the copies made above are new files that need the same treatment,
 # since they depend on each other (libssl on libcrypto, brotli on brotlicommon).
 # The pattern has to reach past ".so": those copies are named after their soname,
 # so they end in ".so.3" and the like. Missed here, a bundled libssl carries no
 # RUNPATH and looks for its libcrypto in system directories - pairing our copy of
 # one with the host's copy of the other, which is the mismatch this file exists
-# to prevent. Anything matched that turns out not to be an ELF object simply
-# fails below and is reported.
+# to prevent.
 file(GLOB_RECURSE patch_targets "${RUNTIME_DIR}/*.so*")
 
 set(patched 0)
+set(runtime_objects "")
 foreach(object ${patch_targets})
+  elten_is_elf("${object}" is_elf)
+  if(NOT is_elf)
+    continue()
+  endif()
+  list(APPEND runtime_objects "${object}")
+
+  get_filename_component(object_dir "${object}" DIRECTORY)
+  file(RELATIVE_PATH relative_dir "${RUNTIME_DIR}" "${object_dir}")
+  set(rpath "$ORIGIN")
+  if(NOT relative_dir STREQUAL "")
+    string(REGEX REPLACE "[^/]+" ".." up_to_root "${relative_dir}")
+    string(APPEND rpath ":$ORIGIN/${up_to_root}")
+  endif()
+
   execute_process(
-    COMMAND "${PATCHELF_EXECUTABLE}" --set-rpath "$ORIGIN:$ORIGIN/.." "${object}"
+    COMMAND "${PATCHELF_EXECUTABLE}" --set-rpath "${rpath}" "${object}"
     RESULT_VARIABLE patch_result
     ERROR_VARIABLE patch_error
   )
-  if(patch_result EQUAL 0)
-    math(EXPR patched "${patched} + 1")
-  else()
-    message(WARNING "Cannot set RUNPATH on ${object}: ${patch_error}")
+  if(NOT patch_result EQUAL 0)
+    message(FATAL_ERROR "Cannot set RUNPATH on ${object}: ${patch_error}")
   endif()
+  math(EXPR patched "${patched} + 1")
 endforeach()
 message(STATUS "Set RUNPATH on ${patched} runtime objects")
 
+# Check the result the way the user's loader will see it: every library an
+# object asks for must either be one of the C runtime libraries excluded above,
+# which every system has, or be present in the runtime root under the name the
+# loader looks for. Anything else is a "cannot open shared object file" waiting
+# on a machine that happens not to have it - for instance when ldd could not
+# inspect a cross-built object, or when a soname from COLLIDING_SONAMES is not
+# actually shipped in bin/ for this architecture.
+set(provided_sonames "")
+foreach(object ${runtime_objects})
+  execute_process(
+    COMMAND "${PATCHELF_EXECUTABLE}" --print-soname "${object}"
+    OUTPUT_VARIABLE object_soname
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE soname_result
+    ERROR_QUIET
+  )
+  if(soname_result EQUAL 0 AND NOT object_soname STREQUAL "")
+    list(APPEND provided_sonames "${object_soname}")
+  endif()
+endforeach()
+
+set(unresolved "")
+foreach(object ${runtime_objects})
+  execute_process(
+    COMMAND "${PATCHELF_EXECUTABLE}" --print-needed "${object}"
+    OUTPUT_VARIABLE needed_output
+    RESULT_VARIABLE needed_result
+    ERROR_VARIABLE needed_error
+  )
+  if(NOT needed_result EQUAL 0)
+    message(FATAL_ERROR "Cannot read the dependencies of ${object}: ${needed_error}")
+  endif()
+  string(REPLACE "\n" ";" needed_list "${needed_output}")
+  foreach(needed ${needed_list})
+    if(needed STREQUAL "")
+      continue()
+    endif()
+    set(excluded FALSE)
+    foreach(pattern ${EXCLUDED_PATTERNS})
+      if(needed MATCHES "${pattern}")
+        set(excluded TRUE)
+        break()
+      endif()
+    endforeach()
+    if(excluded OR EXISTS "${RUNTIME_DIR}/${needed}" OR needed IN_LIST provided_sonames)
+      continue()
+    endif()
+    file(RELATIVE_PATH relative_object "${RUNTIME_DIR}" "${object}")
+    list(APPEND unresolved "${relative_object} needs ${needed}")
+  endforeach()
+endforeach()
+
+if(unresolved)
+  list(JOIN unresolved "\n  " unresolved_text)
+  message(FATAL_ERROR
+    "The packaged runtime depends on libraries it does not ship:\n  ${unresolved_text}\n"
+    "Build on a host where ldd can inspect these objects (a matching architecture "
+    "or a working cross-loader), or add the missing libraries to bin/ for this "
+    "architecture.")
+endif()
+message(STATUS "Verified the dependencies of ${patched} runtime objects")
