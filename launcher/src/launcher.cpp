@@ -900,6 +900,14 @@ begin
 rescue LoadError
 end
 
+# Since Ruby 4.0 Set is a core class, and subclassing it makes its C-level
+# `inherited` hook load set/subclass_compatible with rb_require. That never
+# reaches the embedded require above, finds nothing on disk, and the first
+# gem subclassing Set (concurrent-ruby, through tzinfo) stops startup with a
+# LoadError. Loading it here records the feature, so the hook finds it
+# provided.
+require 'set/subclass_compatible' if EltenEmbedded.resolve_rb('set/subclass_compatible')
+
 def __elten_launcher_trace(message)
   path = ::ELTEN_LAUNCHER_TRACE_PATH
   return if path == nil
