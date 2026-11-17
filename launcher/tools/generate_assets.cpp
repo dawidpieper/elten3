@@ -466,6 +466,57 @@ std::vector<fs::path> AppRubySources(const Options &options) {
   return files;
 }
 
+// The directories a bundled gem puts on the load path, read from the gemspec
+// RubyGems installed beside it. Nearly every gem uses "lib", but a few do not:
+// concurrent-ruby, which tzinfo requires, declares "lib/concurrent-ruby", so
+// `require "concurrent"` resolves to lib/concurrent-ruby/concurrent.rb. Assuming
+// "lib" embedded that file as "concurrent-ruby/concurrent.rb" and the packaged
+// application could not start.
+std::vector<std::string> GemRequirePaths(const fs::path &gemsVersionRoot, const std::string &gemDirectory) {
+  std::vector<std::string> paths;
+  fs::path gemspec = gemsVersionRoot / "specifications" / (gemDirectory + ".gemspec");
+  std::error_code ec;
+  if (fs::is_regular_file(gemspec, ec)) {
+    std::vector<unsigned char> bytes = ReadFile(gemspec);
+    std::string text(bytes.begin(), bytes.end());
+    std::size_t start = text.find("require_paths = [");
+    std::size_t end = start == std::string::npos ? std::string::npos : text.find(']', start);
+    if (end != std::string::npos) {
+      std::string list = text.substr(start, end - start);
+      for (std::size_t open = list.find('"'); open != std::string::npos; open = list.find('"', open + 1)) {
+        std::size_t close = list.find('"', open + 1);
+        if (close == std::string::npos) break;
+        std::string value = list.substr(open + 1, close - open - 1);
+        while (!value.empty() && value.back() == '/') value.pop_back();
+        if (!value.empty()) paths.push_back(value);
+        open = close;
+      }
+    }
+  }
+  if (paths.empty()) paths.push_back("lib");
+  // Longest first, so a file is keyed relative to the most specific directory.
+  std::sort(paths.begin(), paths.end(), [](const std::string &a, const std::string &b) {
+    return a.size() > b.size();
+  });
+  return paths;
+}
+
+// The require key of a file inside an installed gem (parts are the path below
+// lib/ruby: gems/<ruby version>/gems/<gem directory>/...), or an empty string
+// when the file is not on any of the gem's require paths.
+std::string GemRequireKey(const Options &options, const std::vector<std::string> &parts) {
+  if (parts.size() < 5 || parts[0] != "gems" || parts[2] != "gems") return "";
+  fs::path gemsVersionRoot = options.rubyRoot / "lib" / "ruby" / parts[0] / parts[1];
+  std::string inGem = JoinParts(parts, 4);
+  for (const std::string &requirePath : GemRequirePaths(gemsVersionRoot, parts[3])) {
+    std::string prefix = requirePath + "/";
+    if (inGem.size() > prefix.size() && inGem.compare(0, prefix.size(), prefix) == 0) {
+      return inGem.substr(prefix.size());
+    }
+  }
+  return "";
+}
+
 std::vector<fs::path> RubyLibRubySources(const Options &options) {
   fs::path rubyRoot = options.rubyRoot / "lib" / "ruby";
   std::vector<fs::path> all = RecursiveFiles(rubyRoot, {".rb"});
@@ -510,7 +561,7 @@ std::vector<fs::path> RubyLibRubySources(const Options &options) {
       if (parts.size() < 5 || parts[2] != "gems") continue;
       std::string gemName = gemNameFromDirectory(parts[3]);
       if (bundledGems.find(gemName) == bundledGems.end()) continue;
-      if (parts[4] != "lib") continue;
+      if (GemRequireKey(options, parts).empty()) continue;
     }
     files.push_back(path);
   }
@@ -523,8 +574,13 @@ std::vector<std::string> RubyLibKeys(const Options &options, const fs::path &pat
   std::vector<std::string> parts = Split(tail);
 
   if (parts.size() >= 4 && parts[0] == "gems") {
-    auto lib = std::find(parts.begin(), parts.end(), "lib");
-    if (lib != parts.end()) AddKey(keys, JoinParts(parts, static_cast<std::size_t>(lib - parts.begin()) + 1));
+    std::string gemKey = GemRequireKey(options, parts);
+    if (!gemKey.empty()) {
+      AddKey(keys, gemKey);
+    } else {
+      auto lib = std::find(parts.begin(), parts.end(), "lib");
+      if (lib != parts.end()) AddKey(keys, JoinParts(parts, static_cast<std::size_t>(lib - parts.begin()) + 1));
+    }
   } else if (parts.size() >= 2 && VersionPart(parts[0])) {
     AddKey(keys, JoinParts(parts, NativeArchPart(parts[1]) ? 2 : 1));
   } else if ((parts[0] == "site_ruby" || parts[0] == "vendor_ruby") && parts.size() >= 3) {
