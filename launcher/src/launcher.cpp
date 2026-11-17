@@ -540,41 +540,58 @@ module EltenEmbedded
       return false unless parent.is_a?(Module)
       return false unless parent.autoload?(const_name)
       parent.send(:remove_const, const_name)
-      parent.const_set(const_name, kind == 'module' ? Module.new : Class.new)
+      # A class is left for its own declaration to create: a placeholder would
+      # inherit from Object, and `class TimerSet < RubyExecutorService` would
+      # then fail with a superclass mismatch.
+      parent.const_set(const_name, Module.new) if kind == 'module'
       true
     rescue Exception
       false
     end
 
+    def defined_constant_path(parent, parts)
+      parts.each do |part|
+        name = part.to_sym
+        return nil if parent.autoload?(name)
+        return nil unless parent.const_defined?(name, false)
+        parent = parent.const_get(name, false)
+        return nil unless parent.is_a?(Module)
+      end
+      parent
+    rescue Exception
+      nil
+    end
+
     def prepare_autoload_constants_for_eval(file, code)
+      # Modules and classes declared earlier in the file, latest last. A plain
+      # `module Options` nested inside `module Concurrent` has to be looked up
+      # there as well as at the top level: concurrent-ruby registers
+      # Concurrent::Options as an autoload of the very file that defines it that
+      # way, and leaving the autoload pending makes the declaration re-require
+      # the file being loaded and fail with an uninitialized constant.
+      enclosing = []
       code.scan(/^\s*(class|module)\s+((?:[A-Z]\w*::)*[A-Z]\w*)/).each do |kind, path|
         parts = path.split('::')
         next if parts.empty?
 
-        parent = Object
-        parts[0...-1].each do |part|
-          name = part.to_sym
-          if parent.autoload?(name)
-            parent = nil
-            break
-          elsif parent.const_defined?(name, false)
-            parent = parent.const_get(name, false)
-          else
-            parent = nil
-            break
-          end
-        rescue Exception
-          parent = nil
+        const_name = parts[-1].to_sym
+        parents = if parts.size == 1
+          [*enclosing.reverse, Object]
+        else
+          [defined_constant_path(Object, parts[0...-1])]
+        end
+        parents.each do |parent|
+          next unless parent.is_a?(Module)
+          target = parent.autoload?(const_name)
+          next if target == nil
+          next unless same_feature_path?(target, file)
+
+          materialize_autoload_constant(parent, const_name, kind)
           break
         end
 
-        next unless parent.is_a?(Module)
-        const_name = parts[-1].to_sym
-        target = parent.autoload?(const_name)
-        next if target == nil
-        next unless same_feature_path?(target, file)
-
-        materialize_autoload_constant(parent, const_name, kind)
+        declared = parents.lazy.map { |parent| parent.is_a?(Module) ? defined_constant_path(parent, [parts[-1]]) : nil }.find { |value| value != nil }
+        enclosing << declared if declared != nil
       end
     end
 
