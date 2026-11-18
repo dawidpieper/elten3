@@ -2204,6 +2204,44 @@ form.focus
     }
     end
   
+  def edit_thread_tags(thread)
+    tags = forumtags(thread.forum)
+    if tags.empty?
+      alert(p_("Forum", "No tags are available in this forum."))
+      return false
+    end
+    title = thread.name.sub(/\A(?:\[[^\]\r\n]+\][ \t]*)+/) { "" }
+    prefix = thread.name.delete_suffix(title)
+    selections = {}
+    remaining = assign_thread_template_tags!(prefix.scan(/\[([^\]]+)\]/).flatten, tags, selections)
+    fields = tags.map do |id, label, *values|
+      index = values.index(selections[id.to_s])
+      ListBox.new([p_("Forum", "No tag value")] + values, header: label, index: index ? index + 1 : 0)
+    end
+    save = Button.new(_("Save"))
+    cancel = Button.new(_("Cancel"))
+    form = Form.new(fields + [save, cancel])
+    form.accept_button = save
+    form.cancel_button = cancel
+    saved = false
+    cancel.on(:press) { form.resume }
+    save.on(:press) do
+      updated = fields.map { |field| field.options[field.index] if field.index > 0 }
+      if updated != tags.map { |tag| selections[tag[0].to_s] }
+        name = ((updated.compact + remaining).map { |value| "[#{value}]" } + [title]).reject(&:empty?).join(" ")
+        if name.empty?
+          alert(p_("Forum", "Thread name cannot be empty."))
+          next
+        end
+        saved = forum_attempt(_("Saved")) { EltenLink::Forum.rename_thread(elten_link, thread_id: thread.id, name: name) }
+        next unless saved
+      end
+      form.resume
+    end
+    form.wait
+    saved
+  end
+
   def context_forums(menu)
     if @frmsel.options.size > 0
       menu.option(p_("Forum", "Open")) {
@@ -2809,6 +2847,13 @@ threadopen(@thrsel.index)
             end
           end
         }
+        m.option(p_("Forum", "Edit thread tags")) do
+          if edit_thread_tags(@sthreads[@thrsel.index])
+            getcache
+            @lastthreadindex = @thrsel.index
+            threadsmain(@forum)
+          end
+        end
         m.option(p_("Forum", "Delete thread"), nil, "-") {
           confirm(p_("Forum", "Do you really want to delete thread %{thrname}?")%{ :thrname => @sthreads[@thrsel.index].name }) do
             if forum_attempt(nil) {
