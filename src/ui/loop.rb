@@ -249,6 +249,7 @@ end
            play_sound("clock") if clock_event[0]
            speak(clock_event[1], stop: false, break_sequence: false) if clock_event[1] != nil
          end
+         EltenAPI::TaskTimer.update
        end
        EltenAPI::Conference.tick
        EltenAPI::InvisibleInterface.tick
@@ -386,6 +387,9 @@ if $agalarm==true and $alarmproc!=true
     play_sound("dialog_close")
     loop_update
     $alarmproc=false
+  end
+  if $alarmproc!=true && @@call==nil && EltenAPI::TaskTimer.prompt_pending?
+    EltenAPI::TaskTimer.show_prompt
   end
   if @@call != nil || (@@missedcalls_window != nil && @@missedcalls_window.active)
     process_quick_action_hotkeys(only: :donotdisturb)
