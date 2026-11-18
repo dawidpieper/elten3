@@ -32,7 +32,7 @@ module ForumSceneClient
     {
       "thread_delete" => p_("Forum", "Delete thread"),
       "thread_move" => p_("Forum", "Move thread"),
-      "thread_rename" => p_("Forum", "Rename thread"),
+      "thread_rename" => p_("Forum", "Change thread title or tags"),
       "thread_close" => p_("Forum", "Close thread"),
       "thread_open" => p_("Forum", "Open thread"),
       "thread_move_and_close" => p_("Forum", "Move thread and close it"),
@@ -4886,6 +4886,7 @@ form.wait
       thread_name: EditBox.new(p_("Forum", "Thread name"), text: @threadclass.name, quiet: true, max_length: 512),
       post_text: EditBox.new(p_("Forum", "Post content"), type: EditBox::Flags::MultiLine, text: post.post, quiet: true)
     }
+    input_fields[:thread_name].add_tip(p_("Forum", "To change tags, edit the values in square brackets at the start of the thread name."))
     chk_multiple_posts=CheckBox.new(p_("Forum", "Select multiple posts"))
     lst_posts=ListBox.new(report_posts.each_with_index.map { |candidate, index| "#{index+1}: #{candidate.author}: #{(candidate.transcription.to_s.strip!="" ? candidate.transcription : candidate.post)[0...5000]}" }, header: p_("Forum", "Posts"), index: reported_index, flags: ListBox::Flags::MultiSelection)
     lst_posts.require_multiselection_indices([reported_index])
