@@ -6,6 +6,43 @@ require "cgi"
 
 module EltenAPI
   module InvisibleInterface
+    # Collapse only adjacent repetitions of one global shortcut while the
+    # Invisible Interface worker is busy. Alternating shortcuts and non-hotkey
+    # jobs retain their exact order.
+    class HotkeyJobQueue
+      def initialize
+        @jobs = []
+        @mutex = Mutex.new
+        @ready = ConditionVariable.new
+      end
+
+      def <<(job)
+        @mutex.synchronize do
+          tail = @jobs[-1]
+          return self if same_hotkey?(tail, job)
+          @jobs << job
+          @ready.signal
+        end
+        self
+      end
+
+      def pop(non_block=false)
+        @mutex.synchronize do
+          raise ThreadError, "queue empty" if non_block && @jobs.empty?
+          @ready.wait(@mutex) while @jobs.empty?
+          @jobs.shift
+        end
+      end
+
+      private
+
+      def same_hotkey?(first, second)
+        first.is_a?(Array) && second.is_a?(Array) &&
+          first[0] == :hotkey && second[0] == :hotkey &&
+          first[1].to_i == second[1].to_i
+      end
+    end
+
     class CustomCategory
       attr_accessor :name, :available_proc, :onetimer
 
@@ -155,7 +192,7 @@ module EltenAPI
       def ensure_state
         return if @state_ready == true
         @state_ready = true
-        @jobs = Queue.new
+        @jobs = HotkeyJobQueue.new
         @ui_events = Queue.new
         @categories = default_categories
         @category = nil
@@ -488,13 +525,13 @@ module EltenAPI
         @feed_id = feeds.last.id if @feed_id == nil || @feed_id.to_i == 0
         feed = case action
         when :prev
-          feeds.select { |f| f.id < @feed_id.to_i && f.message.to_s != "" }.max_by { |f| f.id }
+          feeds.select { |f| f.id.to_i < @feed_id.to_i }.max_by { |f| f.id.to_i }
         when :next
-          feeds.select { |f| f.id > @feed_id.to_i && f.message.to_s != "" }.min_by { |f| f.id }
+          feeds.select { |f| f.id.to_i > @feed_id.to_i }.min_by { |f| f.id.to_i }
         when :first
-          feeds.select { |f| f.message.to_s != "" }.min_by { |f| f.id }
+          feeds.min_by { |f| f.id.to_i }
         when :last
-          feeds.select { |f| f.message.to_s != "" }.max_by { |f| f.id }
+          feeds.max_by { |f| f.id.to_i }
         end
         if feed != nil
           quick_audio_stop
@@ -536,14 +573,27 @@ module EltenAPI
       end
 
       def feed_values
-        Session.feeds.values.compact.select { |feed| feed.respond_to?(:id) }.sort_by { |feed| feed.id.to_i }
+        Session.feeds.values.compact.select { |feed| navigable_feed?(feed) }.sort_by { |feed| feed.id.to_i }
       rescue Exception
         []
       end
 
       def current_feed
-        return nil if @feed_id == nil
-        feed_values.find { |feed| feed.id.to_i == @feed_id.to_i }
+        return nil if @feed_id == nil || @feed_id.to_i == 0
+        feeds = feed_values
+        feed = feeds.find { |current| current.id.to_i == @feed_id.to_i }
+        feed ||= feeds.select { |current| current.id.to_i < @feed_id.to_i }.max_by { |current| current.id.to_i }
+        feed ||= feeds.first
+        if feed != nil && feed.id.to_i != @feed_id.to_i
+          @feed_id = feed.id
+          Scene_Main.feed_id = feed.id if defined?(Scene_Main)
+        end
+        feed
+      end
+
+      def navigable_feed?(feed)
+        return false if !feed.respond_to?(:id) || feed.id.to_i <= 0
+        feed.message.to_s != "" || feed_audio_url(feed) != ""
       end
 
       def feed_lasttext
