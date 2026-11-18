@@ -100,19 +100,34 @@ Bass::BASS_ChannelSetAttribute.call(stream, 2, volume.to_f/100.0)
                       def call_sound_start(ringtone)
                         call_sound_stop
                         return if EltenAPI::UI.calls_muted?
+                        volume = readconfig("SoundCard", "RingtoneVolume", "100").to_i.clamp(0, 100)
+                        return if volume == 0
                         voice = ringtone || "ringing"
                         return if Configuration.soundthemeactivation == false && !FileTest.exists?(voice)
                         sound = getsound(voice)
                         file = sound == nil ? voice : nil
                         return if sound == nil && !FileTest.exists?(file)
-                        $callplayer = Sound.new(file, loop: true, stream: sound)
+                        $callplayer = open_call_sound(file, sound)
                         if $callplayer != nil
-                          $callplayer.volume = Configuration.volume.to_f / 200.0
+                          $callplayer.volume = Configuration.volume.to_f / 200.0 * volume / 100.0
                           $callplayer.play
                         end
                       rescue Exception => e
                         Log.error("Call sound: #{e.class}: #{e.message}")
-                        play_sound(voice || "ringing") rescue nil
+                        play_sound(voice || "ringing", volume: volume || 100) rescue nil
+                      end
+
+                      def open_call_sound(file, sound)
+                        name = readconfig("SoundCard", "RingtoneDevice", "")
+                        unless name.empty?
+                          begin
+                            device = Sound.output_devices.find{|output| output.enabled? && output.name == name}
+                            return Sound.new(file, loop: true, stream: sound, output_device: device) if device
+                          rescue RuntimeError => e
+                            Log.warning("Call sound output device: #{e.message}")
+                          end
+                        end
+                        Sound.new(file, loop: true, stream: sound)
                       end
 
                       def call_sound_stop

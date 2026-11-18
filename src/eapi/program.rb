@@ -1291,20 +1291,20 @@ module Programs
 
     def read_json(path, default: nil)
       file = data_path(path)
-      json_file_monitor(file).synchronize { read_json_file(file) { default } }
+      with_json_file_monitor(file) { read_json_file(file) { default } }
     rescue Exception
       default
     end
 
     def write_json(path, data)
       file = data_path(path)
-      json_file_monitor(file).synchronize { write_json_file(file, data) }
+      with_json_file_monitor(file) { write_json_file(file, data) }
     end
 
     def update_json(path, default: nil)
       raise ArgumentError, "update_json requires a block" if !block_given?
       file = data_path(path)
-      json_file_monitor(file).synchronize do
+      with_json_file_monitor(file) do
         value = read_json_file(file) { duplicate_json_value(default) }
         yield value
         write_json_file(file, value)
@@ -1523,9 +1523,22 @@ module Programs
 
     private
 
-    def json_file_monitor(file)
-      @json_file_monitors_guard.synchronize do
-        @json_file_monitors[file] ||= Monitor.new
+    def with_json_file_monitor(file)
+      monitor = @json_file_monitors_guard.synchronize do
+        entry = (@json_file_monitors[file] ||= [Monitor.new, 0])
+        entry[1] += 1
+        entry[0]
+      end
+      monitor.synchronize { yield }
+    ensure
+      if monitor != nil
+        @json_file_monitors_guard.synchronize do
+          entry = @json_file_monitors[file]
+          if entry != nil && entry[0].equal?(monitor)
+            entry[1] -= 1
+            @json_file_monitors.delete(file) if entry[1] == 0
+          end
+        end
       end
     end
 
@@ -1782,12 +1795,17 @@ module Programs
 
     def unregister_runtime(runtime, reason = :unload)
       return if runtime == nil
+      classes = @@bypaths[runtime.entry_id] || []
+      classes.each do |program|
+        program.close_app_cache if program.respond_to?(:close_app_cache)
+      end
       if defined?(EltenAPI::Scheduler)
         EltenAPI::Scheduler.unregister_program_runtime(runtime, reason,
           :remove_state => reason.to_sym == :uninstall)
       end
       runtime.close_managed_resources if runtime.respond_to?(:close_managed_resources)
       runtime.close_sound_pool if runtime.respond_to?(:close_sound_pool)
+      MediaFinders.unregister_owner(runtime) if defined?(MediaFinders) && MediaFinders.respond_to?(:unregister_owner)
       MediaEncoders.unregister_owner(runtime) if defined?(MediaEncoders) && MediaEncoders.respond_to?(:unregister_owner)
       Extensions.unregister_runtime(runtime, reason) if defined?(Extensions)
       remove_program_locale(runtime) if respond_to?(:remove_program_locale, true)
@@ -2218,14 +2236,17 @@ module Programs
 
     def initialize_program_class(cls)
       return if !cls.is_a?(Class)
+      runtime = runtime_for(cls)
       Thread.new do
         begin
-          cls.init
-          user_menu = cls.respond_to?(:user_menu_options) ? cls.user_menu_options : {}
-          if user_menu.is_a?(Hash) && !user_menu.empty?
-            $usermenuextra = {} if $usermenuextra == nil
-            user_menu.each do |key, value|
-              $usermenuextra[key] = [cls] + Array(value)
+          with_runtime(runtime) do
+            cls.init
+            user_menu = cls.respond_to?(:user_menu_options) ? cls.user_menu_options : {}
+            if user_menu.is_a?(Hash) && !user_menu.empty?
+              $usermenuextra = {} if $usermenuextra == nil
+              user_menu.each do |key, value|
+                $usermenuextra[key] = [cls] + Array(value)
+              end
             end
           end
         rescue Exception => e
@@ -2235,6 +2256,7 @@ module Programs
     end
 
     def unregister(program)
+      program.close_app_cache if program.is_a?(Class) && program.respond_to?(:close_app_cache)
       i = 0
       while i < @@listeners.size
         if @@listeners[i].cls == program
@@ -4021,6 +4043,14 @@ class Program
   def self.app_cache
     @appcache = FileCache.new(cache_path("cache.dat")) if @appcache == nil
     @appcache
+  end
+
+  def self.close_app_cache
+    return false if @appcache == nil
+    cache = @appcache
+    cache.close
+    @appcache = nil
+    true
   end
 
   def signaled(_user, _packet)

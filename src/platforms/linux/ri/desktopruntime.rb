@@ -28,6 +28,9 @@ module LinuxWindowNative
   # Virtual keys that can produce an inserted character; only these get a
   # translated character attached from SDL_TEXTINPUT (mirrors osx TEXT_VIRTUAL_KEYS).
   TEXT_VIRTUAL_KEYS = [0x20, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF, 0xC0, 0xDB, 0xDC, 0xDD, 0xDE]
+  # Match macOS's bounded native event backlog while the interaction loop is stalled.
+  MAX_KEY_EVENT_QUEUE = 1024
+  MAX_CHARACTER_QUEUE = 1024
 
   class << self
     def available?
@@ -289,6 +292,7 @@ module LinuxWindowNative
     def queue_key_event(vk, state)
       @key_events ||= []
       @key_events << [vk, state]
+      @key_events.shift(@key_events.size - MAX_KEY_EVENT_QUEUE) if @key_events.size > MAX_KEY_EVENT_QUEUE
     end
 
     def clear_keyboard_state
@@ -322,6 +326,11 @@ module LinuxWindowNative
       return if text == ""
       @char_queue ||= []
       text.each_char { |char| @char_queue << char }
+      overflow = @char_queue.size - MAX_CHARACTER_QUEUE
+      if overflow > 0
+        @char_queue.shift(overflow)
+        @char_frame_prefix = [@char_frame_prefix.to_i - overflow, 0].max
+      end
     rescue Exception
     end
 

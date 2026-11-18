@@ -366,10 +366,10 @@ module EltenLink
     end
 
     class << self
-      def list(client, os: nil)
+      def list(client, os: nil, cancellation_token: nil)
         prm = {}
         prm["os"] = os if os != nil
-        data = client.api_data("GET", "/api/v1/apps", prm)
+        data = client.api_data("GET", "/api/v1/apps", prm, cancellation_token: cancellation_token)
         data["apps"].to_a.map { |row| package_from(row) }
       end
 

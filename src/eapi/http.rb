@@ -1342,7 +1342,10 @@ module EltenAPI
 
       def stream_http_body(io, headers, file, data=nil, block=nil, cancellation_token=nil)
         transfer = header_value(headers, "Transfer-Encoding").to_s.downcase
-        total = header_value(headers, "Content-Length").to_i
+        length = header_value(headers, "Content-Length")
+        expected_length = transfer.include?("chunked") || length == nil ? nil : Integer(length, 10)
+        raise "Invalid Content-Length" if expected_length != nil && expected_length < 0
+        progress_total = length.to_i
         downloaded = 0
         last_progress = Time.now.to_f
         if transfer.include?("chunked")
@@ -1354,22 +1357,25 @@ module EltenAPI
             file.write(chunk)
             downloaded += chunk.bytesize
             read_exact_body(io, 2)
-            if total > 0 && Time.now.to_f - last_progress > 5
+            if progress_total > 0 && Time.now.to_f - last_progress > 5
               last_progress = Time.now.to_f
-              safe_call(block, ERDownloadProgress.new(downloaded, total), data)
+              safe_call(block, ERDownloadProgress.new(downloaded, progress_total), data)
             end
           end
-        elsif total > 0
-          while downloaded < total
+        elsif expected_length != nil
+          while downloaded < expected_length
             raise_if_cancelled!(cancellation_token, data)
-            chunk = read_partial(io, [16_384, total - downloaded].min)
+            chunk = read_partial(io, [16_384, expected_length - downloaded].min)
             break if chunk == nil || chunk.empty?
             file.write(chunk)
             downloaded += chunk.bytesize
             if Time.now.to_f - last_progress > 5
               last_progress = Time.now.to_f
-              safe_call(block, ERDownloadProgress.new(downloaded, total), data)
+              safe_call(block, ERDownloadProgress.new(downloaded, expected_length), data)
             end
+          end
+          if downloaded != expected_length
+            raise EOFError, "Incomplete HTTP response body: expected #{expected_length} bytes, received #{downloaded}"
           end
         else
           loop do

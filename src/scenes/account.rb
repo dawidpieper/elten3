@@ -4,6 +4,8 @@
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
 
+require "fileutils"
+
 class Scene_Account
   WHATSNEW_DISABLE_LIST = 1
   WHATSNEW_DISABLE_PC = 2
@@ -206,6 +208,7 @@ location=currentconfig("location")
 location_a={}
 countries=[""]+Lists.locations.map {|c| location_a=c if c['geonameid']==location.to_i;c['country']}.uniq.polsort
 subcountries=[]
+subcountry_names=[]
 cities=[]
 ind=[-1, -1, -1]
 @form.fields[6].options=countries
@@ -216,8 +219,16 @@ if ind[0]==-1
 @form.fields[6].on(:move) {
             subcountries=[""]+Lists.locations.map {|c| (c['country']==countries[@form.fields[6].index])?(c['subcountry']):(nil)}.uniq
             subcountries.delete(nil)
-            subcountries.polsort!
-                        @form.fields[7].options = subcountries
+            subdivisions=(Lists.location_subdivisions||{})[Configuration.language.to_s]||{}
+            subcountry_pairs=subcountries.map {|subcountry|
+              location=Lists.locations.find {|c| c['country']==countries[@form.fields[6].index] and c['subcountry']==subcountry}
+              code=location ? location['subcountry_code'] : nil
+              [subcountry, subdivisions[code]||subcountry]
+            }
+            subcountry_pairs.sort! {|a,b| polsorter(a[1],b[1])}
+            subcountries=subcountry_pairs.map {|pair| pair[0]}
+            subcountry_names=subcountry_pairs.map {|pair| pair[1]}
+                        @form.fields[7].options = subcountry_names
             if ind[1]==-1
               ind[1]=subcountries.find_index(location_a['subcountry'])||0
               @form.fields[7].index=ind[1]
@@ -368,35 +379,38 @@ def load_notifications_settings
     
     class Scene_Account_Password
   def main
+    oldpassword = password = repeatpassword = nil
+    loop do
       oldpassword = ""
-  password = ""
-  repeatpassword = ""
-  while oldpassword == ""
-    oldpassword = input_text(p_("Account", "Enter your old password."),flags: EditBox::Flags::Password, text: "", escapable: true)
-  end
-  if oldpassword == nil
+      password = ""
+      repeatpassword = ""
+      while oldpassword == ""
+        oldpassword = input_text(p_("Account", "Enter your old password."),flags: EditBox::Flags::Password, text: "", escapable: true)
+      end
+      if oldpassword == nil
         $scene = Scene_Main.new
-    return
-  end
-    while password == ""
-    password = input_text(p_("Account", "Enter your new password."),flags: EditBox::Flags::Password,text: "",escapable: true)
-  end
-  if oldpassword == nil
-    $scene = Scene_Main.new
-    return
-  end
-    while repeatpassword == ""
-
-      repeatpassword = input_text(p_("Account", "Repeat new password."),flags: EditBox::Flags::Password,text: "",escapable: true)
-  end
-  if repeatpassword == nil
+        return
+      end
+      while password == ""
+        password = input_text(p_("Account", "Enter your new password."),flags: EditBox::Flags::Password,text: "",escapable: true)
+      end
+      if password == nil
         $scene = Scene_Main.new
-    return
-  end
-  if password != repeatpassword
-    alert(p_("Account", "The passwords do not match."))
-    main
-  end
+        return
+      end
+      while repeatpassword == ""
+        repeatpassword = input_text(p_("Account", "Repeat new password."),flags: EditBox::Flags::Password,text: "",escapable: true)
+      end
+      if repeatpassword == nil
+        $scene = Scene_Main.new
+        return
+      end
+      if password != repeatpassword
+        alert(p_("Account", "The passwords do not match."))
+        next
+      end
+      break
+    end
   begin
     EltenLink::Accounts.change_password(elten_link, old_password: oldpassword, new_password: password)
     alert(p_("Account", "Your password has been changed."))
@@ -890,14 +904,18 @@ if !state.verified
     alert(_("Error"))
     return $scene=Scene_Main.new
   end
-  code=input_text(p_("Account", "The verification code has been sent to you via E-mail. Please type it here."))
+  code=input_mail_event_verification_code
+  if code==nil
+    $scene=Scene_Main.new
+    return
+  end
   begin
     EltenLink::Accounts.verify_mail_events(elten_link, @password, code: code)
   rescue EltenLink::Error
     alert(_("Error"))
     return $scene=Scene_Main.new
   else
-    return main
+    return
   end
   }
   $scene=Scene_Main.new if $scene==self
@@ -917,13 +935,14 @@ e=1 if enb==0
 begin
   EltenLink::Accounts.set_mail_events(elten_link, @password, enabled: e == 1)
   if e==0
-    code=input_text(p_("Account", "The verification code has been sent to you via E-mail. Please type it here."))
+    code=input_mail_event_verification_code
+    return if code==nil
     EltenLink::Accounts.set_mail_events(elten_link, @password, enabled: false, code: code)
   end
 rescue EltenLink::Error
   alert(_("Error"))
   end
-return main
+return
       when 1
         $scene=Scene_Main.new
       end
@@ -931,6 +950,17 @@ return main
   break if $scene!=self
 end  
 end
+    end
+
+    private
+
+    def input_mail_event_verification_code
+      loop do
+        code=input_text(p_("Account", "The verification code has been sent to you via E-mail. Please type it here."), text: "", escapable: true)
+        return nil if code==nil
+        code=code.delete("\r\n ")
+        return code if code!=""
+      end
     end
   end
   
@@ -1063,11 +1093,28 @@ nm=sprintf(Session.name+"_%04d%02d%02d%02d%02d.zip", tm.year, tm.month, tm.day, 
 fl=EltenPath.join(tr_path.selected, edt_filename.text)
 fl+=".zip" if File.extname(fl).downcase!=".zip"
 url = EltenLink::Accounts.export_download_url(export_file)
-download_file(url, fl, use_waiting: true, can_cancel: true, override: false) 
-alert(p_("Account", "Data export saved"))
+if download_export(url, fl)
+  alert(p_("Account", "Data export saved"))
         form.resume
+end
         }
 form.wait
           dialog_close
+end
+def download_export(url, destination)
+  temporary = "#{destination}.download-#{$$}-#{Thread.current.object_id}"
+  FileUtils.rm_f(temporary)
+  return false unless download_file(url, temporary, use_waiting: true, can_cancel: true, override: true)
+  if FileTest.exists?(destination) && !confirm(p_("EAPI_Network", "The file already exists. Do you want to overwrite it?"))
+    return false
+  end
+  FileUtils.mv(temporary, destination, force: true)
+  true
+rescue Exception => e
+  Log.warning("Account export download failed: #{e.class}: #{e.message}")
+  alert(_("Error"))
+  false
+ensure
+  FileUtils.rm_f(temporary) if temporary != nil
 end
     end
