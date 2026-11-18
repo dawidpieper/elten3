@@ -8,23 +8,30 @@ require "fileutils"
 require "tmpdir"
 
 class Scene_Programs
-  PROGRAM_LANGUAGE_FILTER_KEY = "ProgramsLanguageFilter"
-  PROGRAM_LANGUAGE_FILTER_KNOWN_OR_ENGLISH = "known_or_english"
-  PROGRAM_LANGUAGE_FILTER_KNOWN = "known"
-  PROGRAM_LANGUAGE_FILTER_ALL = "all"
+  PROGRAM_LANGUAGE_FILTER_KEY = ProgramCatalogue::LANGUAGE_FILTER_KEY
+  PROGRAM_LANGUAGE_FILTER_KNOWN_OR_ENGLISH = ProgramCatalogue::LANGUAGE_FILTER_KNOWN_OR_ENGLISH
+  PROGRAM_LANGUAGE_FILTER_KNOWN = ProgramCatalogue::LANGUAGE_FILTER_KNOWN
+  PROGRAM_LANGUAGE_FILTER_ALL = ProgramCatalogue::LANGUAGE_FILTER_ALL
 
-  def initialize(initial_action=nil, close_after_updates: false)
+  def initialize(initial_action=nil, close_after_updates: false, selected_program: nil)
     @category=initial_action==:updates ? :updates : nil
+    @selected_program=selected_program&.downcase
+    @category=:recent if @selected_program!=nil
     @close_after_updates=close_after_updates
     @update_installed=false
     @author=nil
     @positions={}
+    @positions[[:recent, nil]]={key: @selected_program} if @selected_program!=nil
     @programs=[]
     @catalogue_available=false
   end
 
   def main
     refresh_programs
+    if @selected_program!=nil && !category_programs.any?{|program|program_uuid(program)==@selected_program}
+      alert(p_("Programs", "This program is no longer available in the current catalogue view.")) if @catalogue_available
+      @category=nil
+    end
     build_view(announce_header: true)
     loop do
       loop_update
@@ -527,32 +534,11 @@ class Scene_Programs
      end
 
      def server_program_language_filter
-       mode=LocalConfig[PROGRAM_LANGUAGE_FILTER_KEY, PROGRAM_LANGUAGE_FILTER_KNOWN_OR_ENGLISH, type: :string]
-       [PROGRAM_LANGUAGE_FILTER_KNOWN_OR_ENGLISH, PROGRAM_LANGUAGE_FILTER_KNOWN, PROGRAM_LANGUAGE_FILTER_ALL].include?(mode) ? mode : PROGRAM_LANGUAGE_FILTER_KNOWN_OR_ENGLISH
+       ProgramCatalogue.language_filter
      end
 
      def filter_server_programs(programs)
-       mode=server_program_language_filter
-       return Array(programs) if mode==PROGRAM_LANGUAGE_FILTER_ALL
-       known=Session.languages.to_s.split(",").filter_map{|language|normalize_server_program_language(language)}.uniq
-       known.push("en") if mode==PROGRAM_LANGUAGE_FILTER_KNOWN_OR_ENGLISH && !known.include?("en")
-       Array(programs).select do |program|
-         installed_program_for(program)!=nil || !(server_program_languages(program)&known).empty?
-       end
-     end
-
-     def server_program_languages(program)
-       languages=[]
-       if program.respond_to?(:supported_languages)
-         languages.concat(Array(program.supported_languages))
-       end
-       languages.push(program.main_language) if program.respond_to?(:main_language)
-       languages.filter_map{|language|normalize_server_program_language(language)}.uniq
-     end
-
-     def normalize_server_program_language(language)
-       match=/\A([a-zA-Z]{2})(?:[-_][a-zA-Z]{2})?\z/.match(language.to_s.strip)
-       match==nil ? nil : match[1].downcase
+       ProgramCatalogue.filter_by_language(programs) { |program| installed_program_for(program)!=nil }
      end
 
      def server_program_language_filter_menu(menu, &on_change)
@@ -686,8 +672,7 @@ class Scene_Programs
      end
 
      def remote_program_platform_compatible?(program)
-       platforms=Array(program.platforms)
-       !(platforms & ["all", "universal", "*", Programs.platform_family, platform_target]).empty?
+       ProgramCatalogue.platform_compatible?(program)
      end
 
      def remote_program_api_compatible?(program)

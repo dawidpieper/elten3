@@ -329,6 +329,7 @@ def make_window
           notification_types
         )
         make_setting(p_("Settings", "Disable feed notifications"), :bool, "Interface", "DisableFeedNotifications")
+        make_setting(p_("Settings", "Notify me about new programs in the program centre"), :bool, "MainWindow", "NotifyNewPrograms")
         make_setting(p_("Settings", "Reset quick actions"), :custom, Proc.new {
           confirm(p_("Settings", "Are you sure you want to restore default quick actions?")) {
             begin
