@@ -10,7 +10,7 @@ module EltenAPI
             @@hotkey_actions=nil
         @@addprocs = []
     EMPTY_HOTKEY_ACTIONS = [].freeze
-    HOTKEY_KEYS = (1..11).flat_map { |key| [key, -key, key + 12, -(key + 12)] }.freeze
+    HOTKEY_KEYS = (1..12).flat_map { |key| [key, -key, key + 12, -(key + 12)] }.freeze
     class QuickAction
       attr_accessor :label, :key, :show
       attr_reader :action, :params
@@ -20,11 +20,7 @@ module EltenAPI
       def detail
         l=@label
         if @key!=0
-          l+=" ("
-          l+=KeyboardScheme.modifier_name+"+" if @key.abs>12
-          l+="SHIFT+" if @key<0
-          l+="F"+(@key.abs%12).to_s
-          l+=")"
+          l+=" ("+QuickActions.hotkey_label(@key)+")"
           end
         return l
         end
@@ -71,6 +67,18 @@ module EltenAPI
         when :restart_normal_mode
           if GlobalMenu.developer_mode? && restart_to_normal_mode == false
             alert(p_("MainMenu", "Cannot restart in normal mode."))
+          end
+        when :restart
+          return if $resetting==true
+          begin
+            $resetting=true
+            if confirm(p_("EAPI_UI", "Do you want to restart Elten?"))
+              play_sound("logout")
+              $restart=true
+              $scene=Scene_Loading.new
+            end
+          ensure
+            $resetting=false
           end
         when :context
                    $opencontextmenu=true if !GlobalMenu.opened?
@@ -239,6 +247,7 @@ end
       else
         load_defaults
       end
+      migrate_restart_action
     rescue Exception => e
       Log.error("Quick actions load failed: #{e.class}: #{e.message}") if defined?(Log)
       @@actions=[]
@@ -285,6 +294,18 @@ end
       File.delete(legacy_data_path) if FileTest.exist?(legacy_data_path)
     rescue Exception => e
       Log.error("Quick actions legacy delete failed: #{e.class}: #{e.message}") if defined?(Log)
+    end
+    def migrate_restart_action
+      return if LocalConfig["QuickActionsRestartMigrated", type: :bool]
+      if !@@actions.any? { |action| action.action==:restart || action.key==12 }
+        action=register(:restart, p_("EAPI_QuickActions", "Restart Elten"), [], 12, false)
+        if !save_actions
+          @@actions.delete(action)
+          invalidate_hotkey_cache
+          return
+        end
+      end
+      LocalConfig["QuickActionsRestartMigrated"] = true
     end
     def reset_defaults
       File.delete(data_path) if FileTest.exist?(data_path)
@@ -339,6 +360,7 @@ end
       [:volumeup, p_("EAPI_QuickActions", "Volume up"), [], 6, false],
       [:donotdisturb, p_("EAPI_QuickActions", "Switch \"Do not disturb\" mode"), [], -2, false],
       [:feed, p_("EAPI_QuickActions", "Publish to a feed"), [], 4, false],
+      [:restart, p_("EAPI_QuickActions", "Restart Elten"), [], 12, false],
       ]
       a.unshift(whatsnew_action) if defaults!=true
       a.delete_if{|action| action[0]==:tray} if !tray_supported?

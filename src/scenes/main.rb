@@ -582,7 +582,7 @@ def accontext(menu)
   menu.option(p_("Main", "Change keyboard shortcut"), nil, "k") {
   s=[p_("Main", "None")]
   k=[0]
-  for i in 1..11
+  for i in 1..12
     s.push("F"+i.to_s)
     k.push(i)
     s.push("SHIFT+F"+i.to_s)
