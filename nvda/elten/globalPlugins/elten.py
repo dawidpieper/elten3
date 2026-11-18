@@ -262,7 +262,7 @@ def elten_command(ac):
 					if(speech.isBlank(texts[i])): continue
 					if(i<len(indexes)): v.append(EltenIndexCallback(indexes[i], indid))
 					if(i<len(indexes) and i>0 and texts[i-1]!="" and texts[i-1][-1]=="\n") and speech.commands is not None and text_added:
-						v.append(speech.commands.EndUtteranceCommand())
+						v.append(speech.commands.BreakCommand(time=70))
 						text_added = False
 				else:
 					eltenindexid=indid
