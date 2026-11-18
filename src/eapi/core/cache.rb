@@ -48,14 +48,30 @@ end
 class FileCache
   attr_reader :file
 @@caches=[]
+@@caches_mutex=Mutex.new
 def self.get_caches
-  return @@caches
+  @@caches_mutex.synchronize { @@caches.dup }
+end
+def self.register(cache)
+  @@caches_mutex.synchronize do
+    existing=@@caches.find{|registered|registered.file==cache.file}
+    @@caches.push(cache)
+    existing
   end
+end
+private_class_method :register
+def self.unregister(cache)
+  @@caches_mutex.synchronize do
+    @@caches.delete_if{|registered|registered.equal?(cache)}
+  end
+end
+private_class_method :unregister
 def initialize(file)
 @file=file
-a=@@caches.find{|c|c.file==@file}
+@close_mutex=Mutex.new
+@closed=false
+a=self.class.__send__(:register, self)
 @current=a.current if a !=nil
-@@caches.push(self)
 end
     def current
       @current||=nil
@@ -78,6 +94,16 @@ end
       c.delete(entry) if del
       end
     File.binwrite(@file, Marshal.dump(c))
+  end
+
+  def close
+    @close_mutex.synchronize do
+      return false if @closed
+      save
+      self.class.__send__(:unregister, self)
+      @closed=true
+      true
+    end
   end
 
   def get(entry, totime=-1, &b)
