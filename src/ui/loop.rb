@@ -83,6 +83,17 @@ rescue Exception => error
   Log.error("Local notification dispatch failed: #{error.class}: #{error.message}")
 end
 
+def dispatch_program_catalogue(event)
+  added = ProgramCatalogue.accept_snapshot(event["session"], event["programs"])
+  return if added.empty? || EltenAPI::UI.notifications_muted?
+  text = if added.size == 1
+    p_("Notifications", "New program: %{name}") % { name: added.first["name"] }
+  else
+    p_("Notifications", "%{count} new programs are available in the program centre") % { count: added.size }
+  end
+  dispatch_notification({ "func" => "notif", "alert" => text, "sound" => "new" })
+end
+
 def dispatch_parallel_scene_events
   return unless Thread.current.equal?($currentthread) && !Thread.current.equal?($mainthread)
   scene = Thread.current.thread_variable_get(:elten_scene)
@@ -223,6 +234,8 @@ end
                Session.feeds[feed.id]=feed
              end
              Session.feeds_update
+           elsif d['func']=="program_catalogue"
+             dispatch_program_catalogue(d)
            elsif d['func']=="notifications"
              $main_notifications_changed = true
              Session.notifications_update

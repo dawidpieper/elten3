@@ -61,6 +61,7 @@ module EltenAPI
   Configuration.keyboardscheme = load_configuration_choice("Interface", "KeyboardScheme", [:default, :windows, :macos], :default)
   Configuration.macoscharacternavigation = load_configuration_choice("Interface", "MacOSCharacterNavigation", [:default, :disabled, :enabled], :default)
   Configuration.disablefeednotifications = load_configuration_boolean("Interface", "DisableFeedNotifications", false)
+  Configuration.notifynewprograms = load_configuration_boolean("MainWindow", "NotifyNewPrograms", false)
   Configuration.maintabs = load_configuration_list("MainWindow", "Tabs", [:notifications, :feed, :actions], [:notifications, :feed, :actions])
   Configuration.showemptynotifications = load_configuration_boolean("MainWindow", "ShowNotificationsWhenEmpty", false)
   Configuration.mainnotificationfocus = load_configuration_choice("MainWindow", "NotificationFocus", [:keep_current, :new_notifications, :unread_notifications], :new_notifications)
