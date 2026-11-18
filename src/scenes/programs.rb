@@ -259,6 +259,15 @@ class Scene_Programs
   end
 
   def installed_context(menu, program)
+    program_class = program_scene_class(program)
+    if program_class != nil && Programs.runtime_registered?(program_class.app_runtime)
+      if program_class.respond_to?(:program_settings)
+        menu.option(p_("Programs", "Settings")) { invoke_program_action(program, :program_settings) }
+      end
+      if program_class.respond_to?(:program_changelog)
+        menu.option(p_("Programs", "Changelog")) { show_program_changelog(program) }
+      end
+    end
     if program_loaded?(program)
       menu.option(p_("Programs", "Unload")) {
         case selector([p_("Programs", "Unload for this session only"), p_("Programs", "Unload and do not load automatically"), _("Cancel")], header: p_("Programs", "Unload program %{name}")%{name: program.name}, cancel_index: 2)
@@ -360,6 +369,35 @@ class Scene_Programs
        @refresh=true
        true
      end
+
+  def invoke_program_action(program, action)
+    program_class = program_scene_class(program)
+    return if program_class == nil || !program_class.respond_to?(action)
+    runtime = program_class.app_runtime
+    return if !Programs.runtime_registered?(runtime)
+    begin
+      Programs.with_runtime(runtime) do
+        result = program_class.public_send(action)
+        yield(result) if block_given?
+      end
+    rescue StandardError, ScriptError => error
+      Programs.report_execution_error(program_class, error, runtime: runtime)
+    end
+    @sel.focus if $scene.equal?(self)
+  end
+
+  def show_program_changelog(program)
+    invoke_program_action(program, :program_changelog) do |text|
+      if text != nil && !text.is_a?(String)
+        raise Programs::ProgramError, "program_changelog must return a String or nil"
+      end
+      if text == nil || text.strip.empty?
+        alert(p_("Programs", "No changelog available."))
+      else
+        display_text(text, header: p_("Programs", "Changelog: %{name}") % {name: program.name}, markdown: true)
+      end
+    end
+  end
 
   def show_program_details(program)
     installed=installed_program_for(program)

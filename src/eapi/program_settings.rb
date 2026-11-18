@@ -298,8 +298,10 @@ module Programs
       def show(runtime, title: "", &definition)
         raise Programs::ProgramError, "Program settings require a loaded application runtime" if runtime == nil || !Programs.runtime_registered?(runtime)
         raise Programs::ProgramError, "Program settings definition is required" if !definition.is_a?(Proc)
-        if defined?($mainthread) && $mainthread != nil && Thread.current != $mainthread
-          raise Programs::ProgramError, "Program settings can be shown only on Elten's main thread"
+        owner = $currentthread if defined?($currentthread)
+        owner ||= $mainthread if defined?($mainthread)
+        if owner != nil && Thread.current != owner
+          raise Programs::ProgramError, "Program settings can be shown only on Elten's active interaction thread"
         end
 
         store = Store.new(runtime)
