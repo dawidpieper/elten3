@@ -303,6 +303,20 @@ class Scene_Forum
     @thrsel.set_row_state(index, forum_new_status) if thread.readposts < thread.posts and (list_id != -2 and list_id != -4 and list_id != -6 and list_id != -7)
   end
 
+  def latest_activity_by
+    activity = Hash.new(0)
+    @threads.each do |thread|
+      next unless thread.forum
+      id = yield(thread.forum)
+      activity[id] = thread.lastupdate if thread.lastupdate > activity[id]
+    end
+    activity
+  end
+
+  def activity_date(timestamp)
+    format_localized_date(Time.at(timestamp), include_weekday: false) if timestamp.positive?
+  end
+
   def forum_row_title(forum, group=@group)
     name_parts = [forum.fullname]
     if group == -5
@@ -486,10 +500,11 @@ end
     knownlanguages = (Session.languages||"").split(",").map{|lg|lg.upcase}
     pinned=[]
         pinned=LocalConfig["ForumGroupsPinned", [], type: :array_of_numerics] if holds_premiumpackage("courier")
+    return $scene = Scene_Main.new if @groups == nil || @forums == nil || @threads == nil
+    @group_last_update = latest_activity_by { |forum| forum.group.id }
     case type
     when 0
       @grpindex.delete_at(-1) while @grpindex.size > 1
-      return $scene = Scene_Main.new if @groups == nil || @forums == nil || @threads == nil
       @sgroups = []
       spgroups = []
       sgloc = false
@@ -509,15 +524,9 @@ end
         end
       end
             @sgroups += spgroups
-            sorts=(0..@groups.map{|g|g.id}.max||0).to_a.map{0}
-      for t in @threads
-        g=t.forum.group.id
-        sorts[g]=t.lastupdate if sorts[g]<t.lastupdate
-          end
-          
       @sgroups.sort! { |a, b|
       if forum_sort==SORT_DEFAULT
-        x,y=sorts[a.id],sorts[b.id]
+        x,y=@group_last_update[a.id],@group_last_update[b.id]
         x=1.0/0.0 if pinned.include?(a.id)
         y=1.0/0.0 if pinned.include?(b.id)
         y <=> x
@@ -586,13 +595,8 @@ end
           @sgroups.push(g)
         end
       end
-      sorts=(0..@groups.map{|g|g.id}.max||0).to_a.map{0}
-      for t in @threads
-        g=t.forum.group.id
-        sorts[g]=t.lastupdate if sorts[g]<t.lastupdate
-          end
       @sgroups.sort! { |a, b|
-      x,y=sorts[a.id],sorts[b.id]
+      x,y=@group_last_update[a.id],@group_last_update[b.id]
               y<=>x
       }
       @grpheadindex = 0
@@ -750,6 +754,10 @@ end
       end
     end
         @grpsetindex = nil
+    grpselh << p_("Forum", "Last activity")
+    @sgroups.each_with_index do |group, i|
+      grpselt[@grpheadindex + i] << activity_date(@group_last_update[group.id])
+    end
     @grpsel = TableBox.new(grpselh, grpselt, index: @grpindex[type], header: p_("Forum", "Forum"))
     @grpsel.trigger(:move)
     @grpsel.column = LocalConfig["ForumColumnGroup", type: :numeric] if LocalConfig["ForumColumnGroup", type: :numeric] != nil
@@ -823,7 +831,7 @@ return result
         else
            forumsmain(g.id) if g.role == 1 or g.role == 2 or g.public
          end
-         @grpsel.rows[@grpsel.index][-1]=(g.posts-g.readposts).to_s
+         @grpsel.rows[@grpsel.index][-2]=(g.posts-g.readposts).to_s
       else
         alert(p_("Forum", "You cannot access this group."))
       end
@@ -938,6 +946,8 @@ return result
           t = Time.at(g.created)
           s += p_("Forum", "Founded on") + ": " + format_date(t, true) + "\n"
         end
+        last_activity = activity_date(@group_last_update[g.id])
+        s += p_("Forum", "Last activity") + ": " + last_activity + "\n" if last_activity
         acs = forum_fetch([], nil) { EltenLink::Forum.group_most_active_members(elten_link, group_id: g.id) }
         s += p_("Forum", "The most active members") + ": " + acs.map { |x| x.to_s.delete("\r\n") }.join(", ") + "\n" if acs.size > 0
         s += "\r\n\n"
@@ -1061,7 +1071,7 @@ if (((@sgroups[@grpsel.index - @grpheadindex].role==1 || (@sgroups[@grpsel.index
               f.readposts=f.posts if f.group.id==@sgroups[@grpsel.index-@grpheadindex].id
               end
             @sgroups[@grpsel.index-@grpheadindex].readposts = @sgroups[@grpsel.index-@grpheadindex].posts
-            @grpsel.rows[@grpsel.index][-1]="0"
+            @grpsel.rows[@grpsel.index][-2]="0"
             @grpsel.reload
             alert(p_("Forum", "The group has been marked as read."))
           end
@@ -2040,15 +2050,10 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
         @sforums.push(f) if f.followed
       end
     end
+    forum_last_update = latest_activity_by { |forum| forum.id }
     if forum_sort == SORT_DEFAULT
       forum_order = {}
       @sforums.each_with_index { |forum, i| forum_order[forum.id] = i }
-      forum_last_update = Hash.new(0)
-      for thread in @threads
-        forum = thread.forum
-        next if forum == nil || !forum_order.key?(forum.id)
-        forum_last_update[forum.id] = thread.lastupdate if forum_last_update[forum.id] < thread.lastupdate
-      end
       @sforums.sort! { |a, b|
         result = forum_last_update[b.id] <=> forum_last_update[a.id]
         result = forum_order[a.id] <=> forum_order[b.id] if result == 0
@@ -2066,10 +2071,11 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
     for forum in @sforums
       ftm = [forum_row_title(forum, group)]
       ftm += [forum.threads.to_s, forum.posts.to_s, (forum.posts - forum.readposts).to_s, forum.description]
+      ftm << activity_date(forum_last_update[forum.id])
       frmselt.push(ftm)
     end
     @frmindex = 0 if @frmindex == nil
-    frmselh = [nil, p_("Forum", "Threads"), p_("Forum", "posts"), p_("Forum", "Unread"), nil]
+    frmselh = [nil, p_("Forum", "Threads"), p_("Forum", "posts"), p_("Forum", "Unread"), nil, p_("Forum", "Last activity")]
     @frmsel = TableBox.new(frmselh, frmselt, index: @frmindex, header: p_("Forum", "Select forum"))
     @sforums.each_with_index do |forum, i|
       apply_forum_row_states(i, forum)
@@ -2628,7 +2634,8 @@ break
       tmp[2]=thread.posts.to_s
       tmp[3]=(thread.posts - thread.readposts).to_s
       tmp[4]="(#{thread.forum.fullname}, #{thread.forum.group.name})" if id==-11
-            tmp
+      tmp << activity_date(thread.lastupdate)
+      tmp
     }
     index=@sthreads.index(setindex)||0 if index==nil
     if !(@pre==nil&&@preparam!=nil)
@@ -2639,6 +2646,7 @@ break
     header = "" if id == -2 or id == -4 or id == -6 or id == -7
     thrselh = [nil, p_("Forum", "Author"), p_("Forum", "posts"), p_("Forum", "Unread")]
     thrselh[4]=nil if id==-11
+    thrselh << p_("Forum", "Last activity")
     @thrsel = TableBox.new(thrselh, thrselt, index: index, header: header, quiet: true, flags: ListBox::Flags::Tagged)
     @sthreads.each_with_index do |thread, i|
       apply_thread_row_states(i, thread, id)
