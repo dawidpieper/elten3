@@ -65,7 +65,7 @@ module EltenAPI
         when :latest_notification
           Scene_Notifications.new.open_latest unless GlobalMenu.opened?
         when :restart_developer_mode
-          unless GlobalMenu.developer_mode? || restart_to_developer_mode
+          if !GlobalMenu.developer_mode? && restart_to_developer_mode == false
             alert(p_("MainMenu", "Cannot restart in developer mode."))
           end
         when :context

@@ -269,6 +269,8 @@ def make_window
             make_setting(p_("Settings", "Keyboard scheme"), [p_("Settings", "Default"), p_("Settings", "Windows"), p_("Settings", "macOS")], "Interface", "KeyboardScheme", ["default", "windows", "macos"])
             make_setting(p_("Settings", "Use macOS-style character navigation in text fields"), [p_("Settings", "System Default"), p_("Settings", "Disable"), p_("Settings", "Enable")], "Interface", "MacOSCharacterNavigation", ["default", "disabled", "enabled"])
             make_setting(p_("Settings", "Manage keyboard shortcuts"), :custom, Proc.new { insert_scene(Scene_KeyboardShortcuts.new) })
+            make_setting(p_("Settings", "Confirm restart"), :bool, "Interface", "ConfirmRestart")
+            make_setting(p_("Settings", "Confirm restart in developer mode"), :bool, "Interface", "ConfirmDeveloperRestart")
             on_load {
             @form.fields[1].on(:change) {
             if @form.fields[1].checked

@@ -60,6 +60,8 @@ module EltenAPI
   Configuration.listtype = load_configuration_choice("Interface", "ListType", [:linear, :circular], :linear)
   Configuration.keyboardscheme = load_configuration_choice("Interface", "KeyboardScheme", [:default, :windows, :macos], :default)
   Configuration.macoscharacternavigation = load_configuration_choice("Interface", "MacOSCharacterNavigation", [:default, :disabled, :enabled], :default)
+  Configuration.confirmrestart = load_configuration_boolean("Interface", "ConfirmRestart", true)
+  Configuration.confirmdeveloperrestart = load_configuration_boolean("Interface", "ConfirmDeveloperRestart", false)
   Configuration.disablefeednotifications = load_configuration_boolean("Interface", "DisableFeedNotifications", false)
   Configuration.maintabs = load_configuration_list("MainWindow", "Tabs", [:notifications, :feed, :actions], [:notifications, :feed, :actions])
   Configuration.showemptynotifications = load_configuration_boolean("MainWindow", "ShowNotificationsWhenEmpty", false)
