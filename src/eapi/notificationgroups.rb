@@ -42,6 +42,7 @@ module NotificationGroups
 
   @@virtual_notification_revoked = {}
   @@virtual_notification_groups = []
+  @@missed_call_groups = {}
   @@virtual_notification_seen_at = {}
   @@virtual_notification_mutex = Mutex.new
 
@@ -67,8 +68,42 @@ module NotificationGroups
 
   def self.virtual_notification_groups
     @@virtual_notification_mutex.synchronize do
-      @@virtual_notification_groups.map(&:dup)
+      (@@virtual_notification_groups + @@missed_call_groups.values).map(&:dup)
     end
+  end
+
+  def self.add_missed_call(caller)
+    return if caller.to_s.empty?
+    helper = Object.new.extend(NotificationGroups)
+    key = "virtual:missed_call:#{caller.to_s.downcase}"
+    @@virtual_notification_mutex.synchronize do
+      previous = @@missed_call_groups.delete(key)
+      count = if previous && !@@virtual_notification_revoked[key]
+        previous.payload["count"].to_i + 1
+      else
+        1
+      end
+      @@virtual_notification_revoked.delete(key)
+      @@missed_call_groups[key] = NotificationGroup.new(
+        key: key,
+        cat: "calls",
+        category: helper.send(:p_, "EAPI_UI", "Unanswered calls"),
+        date: Time.now.to_i,
+        revoked: false,
+        ids: [],
+        payload: { "count" => count },
+        payloads: [],
+        fallback_text: helper.send(:p_, "Notifications", "Missed call from %{user}") % { user: caller },
+        virtual: true,
+        action: Proc.new { helper.send(:insert_scene, Scene_CallHistory.new, true) }
+      )
+      while @@missed_call_groups.size > NOTIFICATION_HISTORY_LIMIT
+        oldest_key, = @@missed_call_groups.shift
+        @@virtual_notification_revoked.delete(oldest_key)
+      end
+    end
+    $main_notifications_changed = true
+    Session.notifications_update
   end
 
   def self.refresh_virtual_notifications(updates)
@@ -82,7 +117,17 @@ module NotificationGroups
   end
 
   def self.clear_virtual_notifications
-    store_virtual_notification_groups([])
+    had_calls = @@virtual_notification_mutex.synchronize do
+      present = !@@missed_call_groups.empty?
+      @@missed_call_groups.each_key { |key| @@virtual_notification_revoked.delete(key) }
+      @@missed_call_groups.clear
+      present
+    end
+    changed = store_virtual_notification_groups([])
+    if had_calls && !changed
+      $main_notifications_changed = true
+      Session.notifications_update
+    end
   end
 
   def self.store_virtual_notification_groups(groups)
