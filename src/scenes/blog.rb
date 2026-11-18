@@ -235,7 +235,12 @@ if !confirm(p_("Blog", "You do not have a blog. Do you want to create one?"))
   return
 end
 end
-name = input_text(p_("Blog", "Type a blog name"),flags: 0,text: "",escapable: true)
+name = ""
+loop do
+  name = input_text(p_("Blog", "Type a blog name"),flags: 0,text: name,escapable: true)
+  break if name == nil || !name.strip.empty?
+  alert(p_("Blog", "The blog name cannot be empty."))
+end
 if name == nil
     $scene = @scene
   return
