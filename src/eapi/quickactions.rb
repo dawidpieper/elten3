@@ -68,6 +68,10 @@ module EltenAPI
           unless GlobalMenu.developer_mode? || restart_to_developer_mode
             alert(p_("MainMenu", "Cannot restart in developer mode."))
           end
+        when :restart_normal_mode
+          if GlobalMenu.developer_mode? && restart_to_normal_mode == false
+            alert(p_("MainMenu", "Cannot restart in normal mode."))
+          end
         when :context
                    $opencontextmenu=true if !GlobalMenu.opened?
         when :lastspeech
@@ -352,6 +356,7 @@ end
 [:alarm, p_("EAPI_QuickActions", "Add alarm"), [], 0, false],
         ]
         a << [:restart_developer_mode, p_("EAPI_QuickActions", "Restart in developer mode"), [], 0, false] unless GlobalMenu.developer_mode?
+        a << [:restart_normal_mode, p_("EAPI_QuickActions", "Restart in normal mode"), [], 0, false] if GlobalMenu.developer_mode?
         for ac in @@addprocs
           a.push([ac[1], ac[2]])
           end
