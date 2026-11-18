@@ -311,7 +311,7 @@ espeech(p_("EAPI_Form", "End of line"))
               e=line_ending
                             if b==0
                 play_sound("border")
-                espeech(e>0?(text_range(0,e-1)):"")
+                espeech(e>0?(spoken_line(0,e-1)):"")
               else
                                 l=@vindex-b
                 em=line_ending(b-1)
@@ -320,7 +320,7 @@ espeech(p_("EAPI_Form", "End of line"))
                 l=0 if e-b<=1
                 l=line_ending(bm-1)-bm-1 if raw_key_held?(:key_shift)
                                 @vindex=bm+l
-                espeech(em>0?(text_range(bm,em-1)):"")
+                espeech(em>0?(spoken_line(bm,em-1)):"")
                 end
               end
             elsif key_pressed?(:key_down) and !raw_key_held?(:key_insert) && !navigation_modifier_held?
@@ -334,7 +334,7 @@ espeech(p_("EAPI_Form", "End of line"))
               e=line_ending
               if e==text_len
                 play_sound("border")
-                espeech(text_range(b,e-1))
+                espeech(spoken_line(b,e-1))
               else
                 l=@vindex-b
                 ep=line_ending(e+1)
@@ -343,25 +343,25 @@ espeech(p_("EAPI_Form", "End of line"))
                 l=0 if e-b<=1
                 l=line_ending(@vindex+1)-bp if raw_key_held?(:key_shift)
                                 @vindex=bp+l
-                espeech(text_range(bp,ep-1))
+                espeech(spoken_line(bp,ep-1))
                 end
               end
         end
                                                         if key_pressed?(:key_page_up) && !modifier_held?(:command)
                     if line_beginning==0
                 play_sound("border")
-                espeech(text_range(0,line_ending-1))
+                espeech(spoken_line(0,line_ending-1))
               else
                 @vindex=move_page_lines(-15)
-                espeech(text_range(line_beginning,line_ending-1))
+                espeech(spoken_line(line_beginning,line_ending-1))
                 end
             elsif key_pressed?(:key_page_down) && !modifier_held?(:command)
               if line_ending==text_len
                 play_sound("border")
-                                espeech(text_range(line_beginning,line_ending-1))
+                                espeech(spoken_line(line_beginning,line_ending-1))
               else
                 @vindex=move_page_lines(15)
-                espeech(text_range(line_beginning,line_ending-1))
+                espeech(spoken_line(line_beginning,line_ending-1))
                 end
               end
               lastcheck=get_check(true)
@@ -420,7 +420,7 @@ espeech(p_("EAPI_Form", "End of line"))
           def ctrlupdate
 
   read_text(@index) if @index<text_len and (((key_held?(0x2d) and key_pressed?(:key_down)))) and (@audiotext==nil or @index>0)
-  espeech(text_range(line_beginning,line_ending)) if key_held?(0x2d) and key_pressed?(:key_up)
+  espeech(spoken_line(line_beginning,line_ending)) if key_held?(0x2d) and key_pressed?(:key_up)
   esay
 end
 def clear_sounds
@@ -569,7 +569,7 @@ def context(menu, submenu=false)
   read_text(@index) if @index<text_len
   }
   menu.option(p_("EAPI_Form", "Read line"), nil, "L") {
-  espeech(text_range(line_beginning,line_ending))
+  espeech(spoken_line(line_beginning,line_ending))
   }
   if defined?(SpeechToFile) && SpeechToFile.available?
     menu.option(p_("EAPI_Form", "Read to file")) {
@@ -1025,6 +1025,21 @@ def line_ending(index=@vindex, absolute=false)
   ind=ls[ln+1]-1
     return ind
   end
+  def markdown_link_starts(from, to)
+    return [] if (@flags & Flags::MarkDown) == 0 || from > to
+    @elements.filter_map do |element|
+      [element.from, from].max if element.type == Element::Link && element.from <= to && element.to >= from
+    end.uniq.sort
+  end
+
+  def spoken_line(from, to)
+    line = text_range(from, to)
+    markdown_link_starts(from, to).reverse_each do |position|
+      line.insert(position - from, p_("EAPI_Form", "Link") + " ")
+    end
+    line
+  end
+
   def announce_navigation_position
     if text_len==0
       espeech("")
@@ -1032,7 +1047,7 @@ def line_ending(index=@vindex, absolute=false)
     end
     beginning=line_beginning(@vindex, true)
     ending=line_ending(@vindex, true)
-    espeech(ending>beginning ? text_range(beginning,ending-1) : "")
+    espeech(ending>beginning ? spoken_line(beginning,ending-1) : "")
   end
   def announce_navigation_character(end_of_line=false)
     character=text_char(@vindex)
@@ -1628,6 +1643,8 @@ def value
         next if callback_index<index || callback_index>=limit_end
         breaks[callback_index]=text_byte_offset(callback_index)
       end
+      links = markdown_link_starts(index, limit_end - 1).to_h { |position| [position, true] }
+      links.each_key { |position| breaks[position] = text_byte_offset(position) }
       initial_callbacks=(@speak_callbacks||{})[fragment_char]
       if head!=nil && head!="" && initial_callbacks!=nil && initial_callbacks.size>0
         commands.push(head.to_s+"\n")
@@ -1635,12 +1652,12 @@ def value
       end
       breaks.sort.each do |break_char, break_byte|
         next if break_char <= fragment_char || break_char >= limit_end
-        append_read_text_fragment(commands, fragment_char, fragment_byte, break_byte, head)
+        append_read_text_fragment(commands, fragment_char, fragment_byte, break_byte, head, links[fragment_char])
         head = ""
         fragment_char = break_char
         fragment_byte = break_byte
       end
-      append_read_text_fragment(commands, fragment_char, fragment_byte, end_byte, head)
+      append_read_text_fragment(commands, fragment_char, fragment_byte, end_byte, head, links[fragment_char])
       cmd = SpeechCommands::CustomCommand.new(limit_end) {|pos|@index=pos if @text_generation==text_generation}
         commands.push(cmd)
 
@@ -1648,10 +1665,11 @@ def value
         seq.run
       end
 
-      def append_read_text_fragment(commands, position, byte_from, byte_to, head="")
+      def append_read_text_fragment(commands, position, byte_from, byte_to, head="", link=false)
         fragment = @text.byteslice(byte_from, byte_to - byte_from).to_s
         fragment.force_encoding(@text.encoding)
         fragment = fragment.encode(Encoding::UTF_8, invalid: :replace, undef: :replace)
+        fragment = p_("EAPI_Form", "Link") + " " + fragment if link
         fragment = head.to_s + "\n" + fragment if head!=nil && head!=""
         text_generation=@text_generation
         cmd = SpeechCommands::CustomCommand.new(position) {|pos|@index=pos if pos!=0 && @text_generation==text_generation}
