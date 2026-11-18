@@ -23,7 +23,7 @@ class Scene_Ban_Ban
         end
     end
 sel = [p_("Ban", "A day"),p_("Ban", "Three days"),p_("Ban", "A week"),p_("Ban", "2 weeks"),p_("Ban", "30 days"),p_("Ban", "90 days"), p_("Ban", "180 days"),p_("Ban", "A year"), p_("Ban", "5 years")]
-@form=Form.new([ListBox.new(sel,header: p_("Ban", "Ban time")),EditBox.new(p_("Ban", "The reason")),EditBox.new(p_("Ban", "An additional message to the user"),type: EditBox::Flags::MultiLine),CheckBox.new(p_("Ban", "Ban IP address")),Button.new(p_("Ban", "Ban")),Button.new(_("Cancel"))])
+@form=Form.new([ListBox.new(sel,header: p_("Ban", "Global ban duration for %{user}") % { user: user }),EditBox.new(p_("Ban", "The reason")),EditBox.new(p_("Ban", "An additional message to the user"),type: EditBox::Flags::MultiLine),CheckBox.new(p_("Ban", "Ban IP address")),Button.new(p_("Ban", "Ban globally")),Button.new(_("Cancel"))])
 loop do
   loop_update
   @form.update
