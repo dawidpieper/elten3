@@ -2210,33 +2210,35 @@ form.focus
     }
     end
   
-  def edit_thread_tags(thread)
-    tags = forumtags(thread.forum)
-    if tags.empty?
-      alert(p_("Forum", "No tags are available in this forum."))
-      return false
-    end
+  def edit_thread_title_and_tags(thread, focus_tags: false)
+    tags = forum_fetch(nil) { EltenLink::Forum.list_forum_tags(elten_link, forumid: thread.forum.id) }
+    return false if tags == nil
+    tags = tags.map { |tag| [tag.id, tag.label] + tag.taglist.split(",") }
     title = thread.name.sub(/\A(?:\[[^\]\r\n]+\][ \t]*)+/) { "" }
     prefix = thread.name.delete_suffix(title)
     selections = {}
     remaining = assign_thread_template_tags!(prefix.scan(/\[([^\]]+)\]/).flatten, tags, selections)
+    title = selections.empty? ? thread.name : (remaining.map { |value| "[#{value}]" } + [title]).reject(&:empty?).join(" ")
+    name_field = EditBox.new(p_("Forum", "Thread name"), text: title)
     fields = tags.map do |id, label, *values|
       index = values.index(selections[id.to_s])
       ListBox.new([p_("Forum", "No tag value")] + values, header: label, index: index ? index + 1 : 0)
     end
     save = Button.new(_("Save"))
     cancel = Button.new(_("Cancel"))
-    form = Form.new(fields + [save, cancel])
+    form = Form.new([name_field] + fields + [save, cancel], index: focus_tags && !fields.empty? ? 1 : 0)
     form.accept_button = save
     form.cancel_button = cancel
     saved = false
     cancel.on(:press) { form.resume }
     save.on(:press) do
       updated = fields.map { |field| field.options[field.index] if field.index > 0 }
-      if updated != tags.map { |tag| selections[tag[0].to_s] }
-        name = ((updated.compact + remaining).map { |value| "[#{value}]" } + [title]).reject(&:empty?).join(" ")
-        if name.empty?
+      if name_field.text != title || updated != tags.map { |tag| selections[tag[0].to_s] }
+        name = (updated.compact.map { |value| "[#{value}]" } + [name_field.text]).reject(&:empty?).join(" ")
+        if name.strip.empty?
           alert(p_("Forum", "Thread name cannot be empty."))
+          form.index = name_field
+          form.focus
           next
         end
         saved = forum_attempt(_("Saved")) { EltenLink::Forum.rename_thread(elten_link, thread_id: thread.id, name: name) }
@@ -2843,20 +2845,14 @@ threadopen(@thrsel.index)
           end
         }
         m.option(p_("Forum", "Rename"), nil, "e") {
-          name = input_text(p_("Forum", "Type a new thread name"), flags: 0, text: @sthreads[@thrsel.index].name, escapable: true)
-          if name != nil
-            if forum_attempt(nil) {
-              EltenLink::Forum.rename_thread(elten_link, thread_id: @sthreads[@thrsel.index].id, name: name)
-            }
-              alert(p_("Forum", "The thread name has been changed."))
-              getcache
-              @lastthreadindex = @thrsel.index
-              threadsmain(@forum)
-            end
+          if edit_thread_title_and_tags(@sthreads[@thrsel.index])
+            getcache
+            @lastthreadindex = @thrsel.index
+            threadsmain(@forum)
           end
         }
         m.option(p_("Forum", "Edit thread tags")) do
-          if edit_thread_tags(@sthreads[@thrsel.index])
+          if edit_thread_title_and_tags(@sthreads[@thrsel.index], focus_tags: true)
             getcache
             @lastthreadindex = @thrsel.index
             threadsmain(@forum)
