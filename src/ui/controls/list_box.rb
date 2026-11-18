@@ -871,8 +871,8 @@ super
 @selected_now=false
 mark_item_audio_active(self.index) if item_audio?(self.index)
 position_action = keyboard_action_pressed?(:list_position, :list_count)
-speak((@index+1).to_s) if position_action == :list_position
-speak(@options.size.to_s) if position_action == :list_count
+speak(visible_position(@index).to_s) if position_action == :list_position
+speak(visible_count.to_s) if position_action == :list_count
     oldindex = self.index
       options = @options
 if options.empty? && @empty_label!=nil && (key_pressed?(:key_up) || key_pressed?(:key_down))
@@ -1193,6 +1193,12 @@ self.index = 0 if @border == false
 end
 def enable_item(id)
   @grayed[id]=false
+end
+def visible_count
+  (0...@options.size).count { |id| !hidden?(id) }
+end
+def visible_position(id)
+  (0..id).count { |visible_id| !hidden?(visible_id) }
 end
 def hidden?(id)
   return false if id<0 || id>=@options.size
