@@ -4731,10 +4731,25 @@ end
 btn_mentionOK.on(:press) {
 if lst_users.multiselections.size > 0
 selections = lst_users.multiselections()
-sent = forum_attempt(nil) {
+sent = begin
   selected_users = selections.map { |index| users[index] }
   EltenLink::Forum.create_mentions(elten_link, users: selected_users, message: edt_message.text, thread_id: thread, post_id: post)
-}
+  true
+rescue EltenLink::Error => error
+  log_forum_error(error)
+  unless error.code.to_s == "cancelled"
+    message = case error.code.to_s
+    when "forum.mention_not_allowed"
+      p_("Forum", "A selected user cannot receive this mention. All selected users must have access to the thread and have added you to their contacts.")
+    when "network_error", "timeout"
+      p_("Forum", "The server could not confirm whether the mentions were sent. Check your connection before trying again.")
+    else
+      p_("Forum", "Could not send the mentions: %{error}") % { error: error.message }
+    end
+    alert(message)
+  end
+  false
+end
 if sent
 alert(np_("Forum", "The mention has been sent.", "The mentions have been sent.", selections.size))
 form.resume
