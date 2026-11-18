@@ -26,12 +26,12 @@ module EltenLink
   class Task
     attr_accessor :id, :project_id, :creator, :name, :description, :creationtime,
                   :plantime, :completed, :completiontime, :performer, :parent,
-                  :children_count, :children
+                  :children_count, :children, :frequency
 
     def initialize(id: 0, project_id: 0, creator: nil, name: "", description: "",
                    creationtime: nil, plantime: nil, completed: false,
                    completiontime: nil, performer: nil, parent: 0,
-                   children_count: 0, children: [])
+                   children_count: 0, children: [], frequency: 0)
       @id = id.to_i
       @project_id = project_id.to_i
       @creator = creator.to_s
@@ -45,6 +45,8 @@ module EltenLink
       @parent = parent.to_i
       @children_count = children_count.to_i
       @children = children.to_a
+      @frequency = frequency.to_i
+      @frequency = 0 if @frequency < -1
     end
 
     def completed?
@@ -57,6 +59,10 @@ module EltenLink
 
     def overdue?(now=Time.now)
       !completed? && due? && @plantime.to_i < now.to_i
+    end
+
+    def recurring?
+      @frequency != 0
     end
 
     def composite?
@@ -205,7 +211,7 @@ module EltenLink
         task_from(data)
       end
 
-      def create(client, project:, name:, description: "", plantime: nil, performer: nil, parent: 0)
+      def create(client, project:, name:, description: "", plantime: nil, performer: nil, parent: 0, frequency: 0)
         data = client.api_data(
           "POST",
           "/api/v1/tasks",
@@ -215,13 +221,14 @@ module EltenLink
             "description" => description,
             "plantime" => time_to_i(plantime),
             "performer" => performer,
-            "parent" => task_id(parent)
+            "parent" => task_id(parent),
+            "frequency" => frequency.to_i
           }
         )
         data["id"].to_i
       end
 
-      def update(client, task, project:, name:, description:, plantime:, performer:, parent:)
+      def update(client, task, project:, name:, description:, plantime:, performer:, parent:, frequency: 0)
         client.api_data(
           "PATCH",
           "/api/v1/tasks/#{task_id(task)}",
@@ -231,7 +238,8 @@ module EltenLink
             "description" => description,
             "plantime" => time_to_i(plantime),
             "performer" => performer,
-            "parent" => task_id(parent)
+            "parent" => task_id(parent),
+            "frequency" => frequency.to_i
           }
         )
         true
@@ -279,7 +287,8 @@ module EltenLink
           performer: row["performer"],
           parent: row["parent"],
           children_count: row["children_count"] || children.length,
-          children: children
+          children: children,
+          frequency: row["frequency"]
         )
       end
 
