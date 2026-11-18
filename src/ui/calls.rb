@@ -13,19 +13,36 @@ class CallWindow
         @id, @caller, @channel, @password = id, caller, channel, password
         @ringtone = ringtone || "ringing"
         @ringing = nil
+        @visible = false
         @handled = false
-        @form = Form.new([
-        @st_caller = Static.new(p_("EAPI_UI", "%{user} is calling you")%{:user=>@caller}),
-        @btn_answer = Button.new(p_("EAPI_UI", "Answer")),
-        @btn_reject = Button.new(p_("EAPI_UI", "Reject"))
-        ])
+        @form = nil
       end
       def update
+        # Form construction pumps the UI before @form has been assigned.
+        return false if @building_form
         ringing = !EltenAPI::UI.calls_muted?
         if !handled? && @ringing != ringing
           ringing ? call_sound_start(@ringtone) : EltenAPI::UI.call_sound_stop
           @ringing = ringing
         end
+        unless ringing
+          @visible = false
+          return false
+        end
+        if @form == nil
+          @building_form = true
+          begin
+            @form = Form.new([
+              @st_caller = Static.new(p_("EAPI_UI", "%{user} is calling you")%{:user=>@caller}),
+              @btn_answer = Button.new(p_("EAPI_UI", "Answer")),
+              @btn_reject = Button.new(p_("EAPI_UI", "Reject"))
+            ], quiet: true)
+          ensure
+            @building_form = false
+          end
+        end
+        $focus = true unless @visible
+        @visible = true
         @form.update
           if @btn_reject.pressed?
             @handled = true
@@ -36,6 +53,7 @@ class CallWindow
             cancel
             voicecall(@channel, @password)
             end
+          true
         end
         def handled?
           @handled == true
@@ -79,6 +97,11 @@ def active
   @callers.size>0
   end
 def update
+  if EltenAPI::UI.calls_muted?
+    @callers.each { |caller| NotificationGroups.add_missed_call(caller) }
+    clear_callers
+    return
+  end
   @form.update
 end
 def add_caller(caller)
@@ -97,6 +120,16 @@ def focus
   @form.focus
   end
       end
+
+def show_missed_call(caller)
+  return if caller == nil
+  if EltenAPI::UI.calls_muted?
+    NotificationGroups.add_missed_call(caller)
+  else
+    @@missedcalls_window ||= MissedCallsWindow.new
+    @@missedcalls_window.add_caller(caller)
+  end
+end
 
 def update_window_tray_visibility
   return if !tray_supported?
