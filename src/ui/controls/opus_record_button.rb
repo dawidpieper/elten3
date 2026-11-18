@@ -80,12 +80,10 @@ end
   end
       }
     @btn_stop.on(:press) {
-    @recorder.stop
+    finish_recording
     @form.delete_timer(@recinfotimer) if @recinfotimer!=nil
     @form.delete_timer(@recstoptimer) if @recstoptimer!=nil
     play_sound("recording_stop")
-    @recorder=nil
-    @status = 2
     @form.show(@btn_record)
     @form.show(@btn_tags) if holds_premiumpackage("audiophile")
     @form.show(@btn_play)
@@ -429,11 +427,26 @@ form.resume
       def show
         @form.index=0
         @form.wait
+      ensure
+        finish_recording
       end
       def start_recording
         @btn_record.press
         @form.index = @recorder == nil ? @btn_record : @btn_pause
         @form.wait
+      ensure
+        finish_recording
+      end
+      private def finish_recording
+        return if @recorder == nil
+        @recorder.stop
+        @recorder = nil
+        @status = 2
+      rescue Exception => error
+        raise unless scene_restart_unwinding?
+        @recorder = nil
+        @status = 2
+        Log.error("Recorder restart cleanup failed: #{error.class}: #{error.message}\n#{Array(error.backtrace).join("\n")}") if defined?(Log)
       end
       def empty?
         @status==0

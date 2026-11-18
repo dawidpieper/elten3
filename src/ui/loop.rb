@@ -98,13 +98,8 @@ end
                     @@call=nil
                     @@missedcalls_window=nil
      def loop_update(checkControls=true, responseCalls=true)
-       if $reset==true
-         if Thread::current!=$mainthread
-           exit
-         else
-                      raise(Reset,"")
-           end
-       end
+       return loop_update_window if scene_restart_unwinding?
+       interrupt_scene_for_restart
                      exit if $exitproc==true
               if $currentthread != nil && Thread::current != $currentthread
      l="main"
@@ -112,23 +107,17 @@ end
           Log.info("Pausing thread #{l}")
           sc=$scene
     if Thread::current==$mainthread
-      while $currentthread!=Thread::current && $exitproc!=true && $reset!=true
+      while $currentthread!=Thread::current && $exitproc!=true
         EltenAPI::LiveSessions.tick(dispatch: false) if defined?(EltenAPI::LiveSessions)
         EltenAPI::Communication.tick(dispatch: false) if defined?(EltenAPI::Communication)
         EltenWindow.service_window_update
         sleep(0.005)
       end
     else
-      sleep(0.1) while $currentthread!=Thread::current && $exitproc!=true && $reset!=true
+      sleep(0.1) while $currentthread!=Thread::current && $exitproc!=true
     end
            exit if $exitproc==true
-       if $reset==true
-         if Thread::current!=$mainthread
-           exit
-         else
-                      raise(Reset,"")
-           end
-       end
+       interrupt_scene_for_restart
     Log.info("Thread resumed #{l}")
     $scene=sc
        end
@@ -400,6 +389,7 @@ if $agalarm==true and $alarmproc!=true
       $focus=(@@missedcalls_window.active==false)
     end
           keyprocs
+  interrupt_scene_for_restart
   if checkControls
   $activecontrols||=[]
   $lastactivecontrols||=[]
@@ -408,11 +398,6 @@ if $agalarm==true and $alarmproc!=true
   end
   $lastactivecontrols=$activecontrols.dup
   $activecontrols.clear
-  end
-  rescue Reset=>r
-    if $reset==true
-    $reset=false
-    fail Reset
   end
 rescue Hangup
   rescue Interrupt
