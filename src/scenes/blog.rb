@@ -843,8 +843,13 @@ def context(menu)
     if ind>0 and @isowner
     menu.option(p_("Blog", "Delete this comment")) {
          confirm(p_("Blog", "Are you sure you want to delete this comment?")) {
+         begin
          EltenLink::Blog.comment_delete(elten_link, blog: @post.owner, comment_id: @posts[ind].id)
+         rescue EltenLink::Error => error
+           alert(p_("Blog", "Could not delete the comment: %{error}") % { error: error.message })
+         else
          main
+         end
          }
     }
     end
@@ -2487,8 +2492,9 @@ if suc
       def deletecomment(comment)
       begin
       EltenLink::Blog.comment_delete(elten_link, blog: @blog, comment_id: comment.id)
-      rescue EltenLink::Error
-        alert(_("Error"))
+      rescue EltenLink::Error => error
+        alert(p_("Blog", "Could not delete the comment: %{error}") % { error: error.message })
+        return
       end
     refresh
     play_sound("editbox_delete")
