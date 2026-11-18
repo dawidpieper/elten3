@@ -589,6 +589,45 @@ class Scene_Programs
        end
      end
 
+     def self.start_login_update_check
+       @login_update_task&.cancel
+       @login_update_task = nil
+       return unless load_configuration_boolean("Updates", "AutoUpdatePrograms", false)
+
+       @login_update_session = [Session.name, Session.token]
+       @login_update_task = EltenAPI::Tasks.start do |token|
+         EltenLink::Apps.list(EltenLink::Client.new, cancellation_token: token)
+       end
+     rescue EltenAPI::Tasks::Busy => error
+       Log.warning("Cannot start program update check: #{error.message}")
+     end
+
+     def self.finish_login_update_check
+       return unless @login_update_task
+       unless Session.logged? && @login_update_session == [Session.name, Session.token]
+         @login_update_task.cancel
+         @login_update_task = nil
+         return
+       end
+       outcome = @login_update_task.take
+       return unless outcome
+       @login_update_task = nil
+       if outcome.error
+         Log.warning("Automatic program update check failed: #{outcome.error.message}")
+         return
+       end
+       return unless load_configuration_boolean("Updates", "AutoUpdatePrograms", false)
+
+       new.install_login_updates(outcome.value)
+     end
+
+     def install_login_updates(programs)
+       @programs = programs
+       @installed = Programs.local_entries
+       updates = available_updates.select { |installed, _remote| installed.installation_source == "server" }
+       install_updates(updates) unless updates.empty?
+     end
+
      def check_updates
        return unless refresh_programs
        updates=available_updates
@@ -601,22 +640,26 @@ class Scene_Programs
          lines.push("#{remote.name} #{installed.version} -> #{remote.version}")
        end
        lines.push("", p_("Programs", "Do you want to update all programs now?"))
-       confirm(lines.join("\n")) do
-         ok=0
-         failed=[]
-         updates.each do |_installed, remote|
-           if install_remote_program(remote, ask: false)
-             ok+=1
-           else
-             failed.push(remote.name)
-           end
-         end
-         @refresh=true if ok>0
-         if failed.empty?
-           alert(p_("Programs", "Updates installed."))
+       confirm(lines.join("\n")) { install_updates(updates) }
+     end
+
+     def install_updates(updates)
+       token = EltenAPI::Tasks::CancellationToken.new
+       failed=[]
+       updates.each do |_installed, remote|
+         if install_remote_program(remote, ask: false, cancellation_token: token)
+           @refresh=true
+         elsif token.cancelled?
+           alert(p_("Programs", "Installation cancelled."))
+           return
          else
-           alert(p_("Programs", "Some updates could not be installed: %{names}")%{:names=>failed.join(", ")})
+           failed.push(remote.name)
          end
+       end
+       if failed.empty?
+         alert(p_("Programs", "Updates installed."))
+       else
+         alert(p_("Programs", "Some updates could not be installed: %{names}")%{:names=>failed.join(", ")})
        end
      end
 
@@ -670,7 +713,7 @@ class Scene_Programs
        program!=nil && program.respond_to?(:elten_api_version) && Programs.api_version_compatible?(program.elten_api_version)
      end
 
-     def install_remote_program(program, ask: true)
+     def install_remote_program(program, ask: true, cancellation_token: nil)
        return false if program==nil
        if !remote_program_api_compatible?(program)
          alert(p_("Programs", "This program requires Elten API %{required}. The current Elten API version is %{current}.")%{
@@ -698,15 +741,13 @@ class Scene_Programs
        install_error=nil
        cancelled=false
        begin
-         waiting
          tempdir=Dir.mktmpdir(["elten-program-", ""], Dirs.temp)
          tempfile=EltenPath.join(tempdir, Programs.remote_package_filename(program))
          package_url=EltenLink::Apps.package_url(program)
-         downloaded=download_file(package_url, tempfile, use_waiting: false, can_cancel: true, override: true)
+         downloaded=download_file(package_url, tempfile, can_cancel: true, override: true, cancellation_token: cancellation_token)
          if !downloaded || !FileTest.exists?(tempfile)
            cancelled=true
          else
-           waiting_end
            installed_entry=Programs.install_package(tempfile,
              preferred_program: program, installation_source: "server")
          end

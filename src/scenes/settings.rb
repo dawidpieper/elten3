@@ -249,6 +249,7 @@ def make_window
           ["disabled", "hidden", "visible"]
         ) if tray_supported?
         make_setting(p_("Settings", "Check for updates at startup"), :bool, "Updates", "CheckAtStartup")
+        make_setting(p_("Settings", "Automatically update programs installed from the program centre when I log in"), :bool, "Updates", "AutoUpdatePrograms")
         make_setting(p_("Settings", "Updates branch"), [p_("Settings", "Auto"),p_("Settings", "Stable"), p_("Settings", "RC"), p_("Settings", "Beta")], "Updates", "Branch", ["auto","stable","rc","beta"])
         make_setting(p_("Settings", "Send Elten usage reports"), :bool, "Privacy", "RegisterActivity")
       end
@@ -469,10 +470,14 @@ def make_window
       @soundsettings=true
     end
     make_setting(p_("Settings", "Output device"), @soundcards, "SoundCard", "SoundCard", @soundcardsmapping)
+    ringtone_devices = [p_("Settings", "Use Elten output device")] + @soundcards.drop(1)
+    make_setting(p_("Settings", "Incoming call ringtone output device"), ringtone_devices, "SoundCard", "RingtoneDevice", @soundcardsmapping)
     make_setting(p_("Settings", "Input device"), @microphones, "SoundCard", "Microphone", @microphonesmapping)
     make_setting(p_("Settings", "Mute the microphone in conferences while recording other content"), :bool, "Advanced", "DisableConferenceMicOnRecord")
     make_setting(p_("Settings", "Use noise reduction"), [p_("Settings", "Never"), p_("Settings", "In audio conferences only"), p_("Settings", "In audio conferences and when recording")], "Advanced", "UseDenoising", ["never", "conferences", "conferences_and_recording"])
     make_setting(p_("Settings", "Enable echo cancellation"), :bool, "Advanced", "UseEchoCancellation")
+    levels = 100.step(0, -5).to_a
+    make_setting(p_("Settings", "Incoming call ringtone volume"), levels.map{|level| "#{level}%"}, "SoundCard", "RingtoneVolume", levels)
       end
   def load_ii
     return if !defined?(EltenAPI::InvisibleInterface) || (EltenAPI::InvisibleInterface.respond_to?(:available?) && !EltenAPI::InvisibleInterface.available?)
