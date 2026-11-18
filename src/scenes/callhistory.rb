@@ -11,16 +11,29 @@ class Scene_CallHistory
       $scene=Scene_Main.new
       return
     end
-    begin
-      @calls = EltenLink::Calls.history(elten_link)
-    rescue EltenLink::Error => e
-      Log.warning("Call history failed: #{e.message}")
-      alert(_("Error"))
+    @calls = fetch_calls
+    if @calls == nil
       $scene=Scene_Main.new
       return
     end
     @refresh=false
-    selt=@calls.map{|c|
+    selt=call_rows(@calls)
+       selh = [nil, p_("CallHistory", "Type"), p_("CallHistory", "Status"), p_("CallHistory", "Time")]
+       @sel = TableBox.new(selh, selt, index: 0, header: p_("CallHistory", "Call History"), quiet: false)
+       @sel.bind_context{|menu|context(menu)}
+       loop do
+         loop_update
+         @sel.update
+         break if key_pressed?(:key_escape)
+         if @refresh
+           @refresh=false
+           refresh_calls
+         end
+       end
+       $scene=Scene_Main.new
+     end
+     def call_rows(calls)
+       calls.map{|c|
     r=[]
     r[0]=c.caller
     r[1]=p_("CallHistory", "Incoming")
@@ -33,16 +46,26 @@ class Scene_CallHistory
   r[3]=format_date(Time.at(c.time))
   r
        }
-       selh = [nil, p_("CallHistory", "Type"), p_("CallHistory", "Status"), p_("CallHistory", "Time")]
-       @sel = TableBox.new(selh, selt, index: 0, header: p_("CallHistory", "Call History"), quiet: false)
-       @sel.bind_context{|menu|context(menu)}
-       loop do
-         loop_update
-         @sel.update
-         break if key_pressed?(:key_escape)
-         return main if @refresh
+     end
+     def fetch_calls
+       EltenLink::Calls.history(elten_link)
+     rescue EltenLink::Error => e
+       Log.warning("Call history failed: #{e.message}")
+       alert(_("Error"))
+       nil
+     end
+     def refresh_calls
+       calls=fetch_calls
+       if calls==nil
+         @sel.focus
+         return
        end
-       $scene=Scene_Main.new
+       index=[[@sel.index, 0].max, [calls.size-1, 0].max].min
+       @calls=calls
+       @sel.rows=call_rows(@calls)
+       @sel.reload
+       @sel.index=index
+       @sel.sayoption
      end
      def context(menu)
        return if @calls.size==0

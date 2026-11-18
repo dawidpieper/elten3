@@ -4,6 +4,8 @@
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>.
 
+require "fileutils"
+
 module EltenAPI
   module Controls
     private
@@ -39,6 +41,7 @@ def setsound(file)
 @sound = Sound.new(file)
 @basefrequency=@sound.frequency
 @file=file
+@volume_before_mute=nil
 @sound.volume=0.8
 rescue Exception
   @sound=nil
@@ -49,6 +52,7 @@ def setstream(stream)
 @sound = Sound.new(stream: stream)
 @basefrequency=@sound.frequency
 @file=nil
+@volume_before_mute=nil
 @sound.volume=0.8
 rescue Exception
   @sound=nil
@@ -99,13 +103,22 @@ if ch!=nil
       if key_pressed?(:key_left)
                 get_sound.position-=5
                       end
-            if key_pressed?(:key_up, repeat: true)
+      if get_sound && key_pressed?("M".ord) && !key_held?(:key_alt)
+        if @volume_before_mute
+          get_sound.volume = @volume_before_mute
+          @volume_before_mute = nil
+        else
+          @volume_before_mute = get_sound.volume
+          get_sound.volume = 0
+        end
+      end
+            if !@volume_before_mute && key_pressed?(:key_up, repeat: true)
               pl=0.01
               pl=0.1 if get_sound.volume>=1
               get_sound.volume += pl
 get_sound.volume = 10 if get_sound.volume > 10
       end
-      if key_pressed?(:key_down, repeat: true)
+      if !@volume_before_mute && key_pressed?(:key_down, repeat: true)
         pl=0.01
               pl=0.1 if get_sound.volume>=1.1
         get_sound.volume -= pl
@@ -146,6 +159,7 @@ end
 end
 if key_pressed?(0x08) == true
   reset=10
+  @volume_before_mute=nil
   get_sound.volume=0.8
   get_sound.pan=0
   get_sound.tempo=0
@@ -251,16 +265,35 @@ def savefile
                 r=true
         waiting {
         if encoder::Extension.downcase==".opus" && is_opus?
-          r=download_file(@file, pth)
+          r=download_original_stream(pth)
           else
         encoder.encode_file(@file, pth)
         end
         }
-        alert(_("Saved")) if r
-        form.resume
+        if r
+          alert(_("Saved"))
+          form.resume
+        end
         }
 form.wait
           dialog_close
+        end
+
+        def download_original_stream(destination)
+          temporary="#{destination}.download-#{$$}-#{Thread.current.object_id}"
+          FileUtils.rm_f(temporary)
+          return false unless download_file(@file, temporary, use_waiting: true, can_cancel: true, override: true)
+          if FileTest.exists?(destination) && !confirm(p_("EAPI_Network", "The file already exists. Do you want to overwrite it?"))
+            return false
+          end
+          FileUtils.mv(temporary, destination, force: true)
+          true
+        rescue Exception => e
+          Log.warning("Original audio stream download failed: #{e.class}: #{e.message}")
+          alert(_("Error"))
+          false
+        ensure
+          FileUtils.rm_f(temporary) if temporary!=nil
         end
 
         def is_opus?
@@ -456,6 +489,7 @@ h=d/3600
     tips.push(p_("EAPI_Form", "Press the Space bar to play or pause"))
     tips.push(p_("EAPI_Form", "Use the Left/Right Arrow keys to seek"))
     tips.push(p_("EAPI_Form", "Use up/down arrows to change playback volume"))
+    tips.push(p_("EAPI_Form", "Press M to mute or restore the playback volume"))
     tips.push(p_("EAPI_Form", "Use Shift+Left/Right Arrow to change panning"))
     tips.push(p_("EAPI_Form", "Use Shift+Up/Down Arrow to change pitch"))
     tips.push(p_("EAPI_Form", "Use Ctrl+Up/Down Arrow to change tempo").sub(/CTRL/i, main_modifier_name))
