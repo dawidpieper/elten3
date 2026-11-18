@@ -1781,6 +1781,10 @@ module Programs
 
     def unregister_runtime(runtime, reason = :unload)
       return if runtime == nil
+      classes = @@bypaths[runtime.entry_id] || []
+      classes.each do |program|
+        program.close_app_cache if program.respond_to?(:close_app_cache)
+      end
       if defined?(EltenAPI::Scheduler)
         EltenAPI::Scheduler.unregister_program_runtime(runtime, reason,
           :remove_state => reason.to_sym == :uninstall)
@@ -2238,6 +2242,7 @@ module Programs
     end
 
     def unregister(program)
+      program.close_app_cache if program.is_a?(Class) && program.respond_to?(:close_app_cache)
       i = 0
       while i < @@listeners.size
         if @@listeners[i].cls == program
@@ -4023,6 +4028,14 @@ class Program
   def self.app_cache
     @appcache = FileCache.new(cache_path("cache.dat")) if @appcache == nil
     @appcache
+  end
+
+  def self.close_app_cache
+    return false if @appcache == nil
+    cache = @appcache
+    cache.close
+    @appcache = nil
+    true
   end
 
   def signaled(_user, _packet)
