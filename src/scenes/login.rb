@@ -255,6 +255,7 @@ else
     Session.token = nil
     speech_wait
   when "session.invalid_credentials", "auth.invalid_password", "unauthorized"
+    delete_logindata if autologin.to_i==3 && @skipauto!=true
     alert(p_("Login", "Invalid login or password.")) if autologin.to_i==0
     Session.token = nil
     speech_wait
