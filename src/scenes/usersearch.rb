@@ -6,6 +6,8 @@
 
 class Scene_UserSearch
   def main
+    loop do
+    @search_again=false
     usr=""
     while usr==""
       usr=input_text(p_("UserSearch", "Search users"),flags: 0,text: "",escapable: true)
@@ -39,14 +41,16 @@ loop do
   @sel.update
   usermenu(@results[@sel.index]) if key_pressed?(:key_enter)
   $scene=Scene_Main.new if key_pressed?(:key_escape)
+  break if @search_again
   break if $scene!=self
   end
+break if !@search_again || $scene!=self
+end
 end
 def context(menu)
 menu.useroption(@results[@sel.index])
 menu.option(p_("UserSearch", "Search again")) {
-initialize
-main
+@search_again=true
 }
 end
 end

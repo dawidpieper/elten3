@@ -4,6 +4,8 @@
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>.
 
+require "fileutils"
+
 module EltenAPI
   module Common
     private
@@ -20,10 +22,10 @@ def player(file, label: "", wait: false, control: true, try_download: false, is_
   dialog_opened=false
   begin
   soundfont=EltenPath.join(Dirs.extras, "soundfont.sf2")
-  if File.extname(file).downcase==".mid" and FileTest.exists?(soundfont) == false
+  if File.extname(file).downcase==".mid" and !valid_soundfont_file?(soundfont)
     if confirm(p_("EAPI_Common", "You are trying to play a MIDI file. Elten needs an external instrument sound bank to play MIDI files. Do you want to download it from the server now? This may take several minutes."))
       alert(p_("EAPI_Common", "Please wait, the soundfont is being downloaded. It may take a while."))
-    download_file(soundfont_url,soundfont)
+    return unless download_soundfont(soundfont)
     alert(p_("EAPI_Common", "SoundFont downloaded successfully."))
     Bass::BASS_SetConfigPtr.call(0x10403,soundfont)
   else
@@ -60,6 +62,33 @@ ensure
   snd.close if snd!=nil
   dialog_close if dialog_opened
 end
+end
+
+def download_soundfont(destination)
+  temporary=destination+".download"
+  FileUtils.rm_f(temporary)
+  return false unless download_file(soundfont_url, temporary, use_waiting: true, can_cancel: true, override: true)
+  unless valid_soundfont_file?(temporary)
+    Log.warning("Downloaded SoundFont is invalid")
+    alert(_("Error"))
+    return false
+  end
+  FileUtils.mv(temporary, destination, force: true)
+  true
+rescue Exception => e
+  Log.warning("SoundFont download failed: #{e.class}: #{e.message}")
+  alert(_("Error"))
+  false
+ensure
+  FileUtils.rm_f(temporary) if temporary!=nil
+end
+
+def valid_soundfont_file?(path)
+  return false if !File.file?(path) || File.size(path)<12
+  header=File.binread(path, 12)
+  header[0, 4]=="RIFF" && header[8, 4]=="sfbk" && header[4, 4].unpack1("V")+8==File.size(path)
+rescue Exception
+  false
 end
   end
 end

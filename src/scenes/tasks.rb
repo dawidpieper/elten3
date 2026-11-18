@@ -738,6 +738,7 @@ class Scene_Tasks
       loop_update
       @sel.update
       $scene = Scene_Main.new if key_pressed?(:key_escape)
+      cycle_project_filter(raw_key_held?(:key_shift) ? -1 : 1) if key_pressed?(:key_tab)
       manage_goals(current_task) if @sel.selected? && current_task != nil
       if @reload
         selected_id = @selected_task_id || (current_task && current_task.id)
@@ -823,6 +824,12 @@ class Scene_Tasks
     request_reload
   end
 
+  def cycle_project_filter(direction)
+    filters = [nil] + @projects.sort_by { |project| task_project_label(project).downcase }.map(&:id)
+    position = filters.index(@filter_project_id) || 0
+    switch_filter(filters[(position + direction) % filters.size], @status)
+  end
+
   def current_task
     return nil if @tasks == nil || @tasks.empty? || @sel == nil
     @tasks[@sel.index]
@@ -846,10 +853,9 @@ class Scene_Tasks
              when :all then p_("Tasks", "All tasks")
              else p_("Tasks", "Pending tasks")
              end
-    return status if @filter_project_id == nil
-
-    project = @projects.find { |item| item.id == @filter_project_id }
-    project == nil ? status : "#{status}: #{task_project_label(project)}"
+    project = @projects.find { |item| item.id == @filter_project_id } if @filter_project_id != nil
+    filter = project == nil ? p_("Tasks", "All projects") : task_project_label(project)
+    "#{status}: #{filter}"
   end
 
   def save_task(task=nil, parent=nil)

@@ -362,9 +362,10 @@ else
   @file=EltenPath.join(Dirs.soundthemes, id+".elsnd")
 end
 end
-fl=File.binread(@file)
 begin
-  EltenLink::SoundThemes.upload(elten_link, id, fl)
+  File.open(@file, "rb") do |input|
+    EltenLink::SoundThemes.upload(elten_link, id, input)
+  end
 rescue EltenLink::Error => e
   Log.warning("Sound theme upload failed: #{e.message}")
       alert(_("Error"))
