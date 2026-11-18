@@ -19,7 +19,15 @@ module EltenAPI
       end
 
       ringtone = user_ringtone_set?(user)
-      actions = user_menu_actions(user, user_info, ringtone)
+      blacklisted = nil
+      if Session.logged? && !user.to_s.casecmp?(Session.name.to_s)
+        begin
+          blacklisted = EltenLink::Accounts.blacklist(elten_link).any? { |name| name.casecmp?(user.to_s) }
+        rescue EltenLink::Error => error
+          Log.warning("Could not load blacklist actions: #{error.message}")
+        end
+      end
+      actions = user_menu_actions(user, user_info, ringtone, blacklisted: blacklisted)
       play_sound("menu_open") unless submenu
       Menu.menubg_play if !submenu && Configuration.bgsounds == true && Configuration.soundthemeactivation == true
 
@@ -70,7 +78,7 @@ module EltenAPI
       play_sound("menu_close") unless submenu
     end
 
-    def user_menu_actions(user, user_info, ringtone)
+    def user_menu_actions(user, user_info, ringtone, blacklisted: nil)
       guest = !Session.logged?
       in_contacts = user_info.in_contacts unless guest
       banned = user_info.banned
@@ -196,6 +204,13 @@ module EltenAPI
             insert_scene(Scene_Contacts_Insert.new(user, Scene_Main.new), true)
           end
         end
+
+        unless blacklisted == nil
+          blacklist_label = blacklisted ? p_("EAPI_Common", "Remove from blacklist") : p_("EAPI_Common", "Add to blacklist")
+          actions << user_menu_action(blacklist_label, close_all: false) do
+            change_user_blacklist(user, blacklisted: !blacklisted)
+          end
+        end
       end
 
       if Session.moderator > 0
@@ -218,6 +233,37 @@ module EltenAPI
       end
 
       actions
+    end
+
+    def change_user_blacklist(user, blacklisted:)
+      question = if blacklisted
+        p_("Account", "The users added to your black list cannot send you private messages. Are you sure  you want to continue?")
+      else
+        p_("Account", "Are you sure you want to remove this user from the black list?")
+      end
+      return false unless confirm(question)
+
+      if blacklisted
+        EltenLink::Accounts.add_to_blacklist(elten_link, user)
+        alert(p_("Account", "User %{user} has been added to your blacklist") % { user: user })
+      else
+        EltenLink::Accounts.delete_from_blacklist(elten_link, user)
+        play_sound("editbox_delete")
+        alert(p_("Account", "The user has been removed from the blacklist."))
+      end
+      true
+    rescue EltenLink::Error => error
+      case error.code.to_s
+      when "accounts.blacklist_moderator"
+        alert(p_("Account", "You cannot add an administrator to the black list."))
+      when "accounts.blacklist_exists"
+        alert(p_("Account", "This user is already on your black list."))
+      when "users.not_found"
+        alert(p_("Account", "The user cannot be found."))
+      else
+        alert(error.message)
+      end
+      false
     end
 
     def user_menu_action(label, close_all: true, &handler)
