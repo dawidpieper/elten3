@@ -1717,7 +1717,7 @@ def start_timeout(seconds)
           false
         end
       end
-      @form.resume if resume_form
+      @form.resume_for_refresh if resume_form
     end
   rescue Exception
     Log.error("Conference timeout: #{$!.class}: #{$!.message}")
