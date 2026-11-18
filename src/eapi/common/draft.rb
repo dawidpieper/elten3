@@ -13,6 +13,8 @@ module EltenAPI
     class Draft
       include EltenAPI
 
+      attr_reader :last_close_action
+
       MODES = %w[disabled local server].freeze
 
       def initialize(key, config_key:, collection:, empty: nil)
@@ -119,6 +121,7 @@ module EltenAPI
       end
 
       def close(detach: true, editor: @editor)
+        @last_close_action = nil
         data = snapshot
         target = mode
         if !empty?(data) && target == "disabled" && editor
@@ -126,7 +129,11 @@ module EltenAPI
             p_("Drafts", "Save locally"), p_("Drafts", "Save on the server")],
             header: p_("Drafts", "What would you like to do with the draft?"),
             cancel_index: 0, flags: Controls::ListBox::Flags::AnyDir)
-          return discard(detach: detach) if selected == 1
+          if selected == 1
+            result = discard(detach: detach)
+            @last_close_action = :discarded if result
+            return result
+          end
           return false unless [2, 3].include?(selected)
           target = MODES[selected - 1]
           LocalConfig[@config_key] = target
@@ -135,7 +142,9 @@ module EltenAPI
             header: p_("Drafts", "What would you like to do with the draft?"), cancel_index: 0, flags: Controls::ListBox::Flags::AnyDir)
           case selected
           when 1
-            return discard(detach: detach)
+            result = discard(detach: detach)
+            @last_close_action = :discarded if result
+            return result
           when 2
             target = selector([p_("Drafts", "Remember locally"), p_("Drafts", "Remember on the server"), _("Cancel")],
               header: p_("Drafts", "Remember drafts"), cancel_index: 2, flags: Controls::ListBox::Flags::AnyDir)
@@ -146,14 +155,19 @@ module EltenAPI
             return false
           end
         end
-        return discard(detach: detach) if empty?(data)
+        if empty?(data)
+          result = discard(detach: detach)
+          @last_close_action = :discarded if result
+          return result
+        end
         return false unless save(data, target: target, wait: true)
+        @last_close_action = :saved
         self.detach if detach
         true
       end
 
-      def sent
-        discard(detach: false)
+      def sent(show_error: true)
+        discard(detach: false, show_error: show_error)
       end
 
       def detach
@@ -254,7 +268,7 @@ module EltenAPI
         true
       end
 
-      def discard(detach: true)
+      def discard(detach: true, show_error: true)
         @waiting = true
         finish_pending(true)
         targets = @known.select { |_, known| known }.keys
@@ -268,7 +282,7 @@ module EltenAPI
             true
           end
           unless finish_pending(true)
-            alert(p_("Drafts", "The draft could not be deleted."))
+            alert(p_("Drafts", "The draft could not be deleted.")) if show_error
             return false
           end
         end
@@ -276,7 +290,8 @@ module EltenAPI
         self.detach if detach
         true
       rescue StandardError => error
-        report_error(error, true)
+        Log.warning("Cannot delete draft: #{error.class}: #{error.message}")
+        alert(p_("Drafts", "The draft could not be deleted.")) if show_error
         false
       ensure
         @waiting = false

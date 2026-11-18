@@ -114,27 +114,18 @@ class Scene_Honors_Users
   end
 
   def main
-    begin
-      honor_users = EltenLink::Honors.users(elten_link, @honor)
-    rescue EltenLink::Error
-      alert(_("Error"))
+    honor_users = fetch_honor_users
+    if honor_users == nil
       $scene = Scene_Honors.new(@user, @toscene, @honor)
       return
     end
 
-    grouped = honor_users.group_by(&:level)
-    @users = []
-    labels = []
-    grouped.keys.sort.reverse_each do |level|
-      grouped[level].sort_by { |entry| entry.name.downcase }.each do |entry|
-        @users << entry.name
-        labels << "#{entry.name} (#{p_("Honors", "level")}#{level + 1})"
-      end
-    end
+    @users, labels = honor_user_rows(honor_users)
 
     @sel = ListBox.new(labels.map { |label| user_with_status(label, false) }, header: "", index: 0, flags: 0, quiet: false)
     apply_user_status_states(@sel, @users, false)
     @sel.bind_context { |menu| context(menu) }
+    @refresh = false
     loop do
       loop_update
       @sel.update
@@ -143,13 +134,52 @@ class Scene_Honors_Users
       elsif key_pressed?(:key_enter) && !@users.empty?
         usermenu(@users[@sel.index], false)
       end
+      if @refresh
+        @refresh = false
+        refresh_honor_users(@sel.index)
+      end
       break if $scene != self
     end
   end
 
   def context(menu)
     menu.useroption(@users[@sel.index]) unless @users.empty?
-    menu.option(_("Refresh")) { main }
+    menu.option(_("Refresh")) { @refresh = true }
+  end
+
+  def fetch_honor_users
+    EltenLink::Honors.users(elten_link, @honor)
+  rescue EltenLink::Error
+    alert(_("Error"))
+    nil
+  end
+
+  def honor_user_rows(honor_users)
+    grouped = honor_users.group_by(&:level)
+    users = []
+    labels = []
+    grouped.keys.sort.reverse_each do |level|
+      grouped[level].sort_by { |entry| entry.name.downcase }.each do |entry|
+        users << entry.name
+        labels << "#{entry.name} (#{p_("Honors", "level")}#{level + 1})"
+      end
+    end
+    [users, labels]
+  end
+
+  def refresh_honor_users(index)
+    honor_users = fetch_honor_users
+    if honor_users == nil
+      @sel.focus
+      return false
+    end
+
+    @users, labels = honor_user_rows(honor_users)
+    @sel.options = labels.map { |label| user_with_status(label, false) }
+    apply_user_status_states(@sel, @users, false)
+    @sel.index = [[index.to_i, 0].max, [@users.size - 1, 0].max].min
+    @users.empty? ? @sel.focus : @sel.sayoption
+    true
   end
 end
 
