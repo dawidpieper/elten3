@@ -67,8 +67,8 @@ module EltenLink
         parse_messages(client.api_data("GET", "/api/v1/feeds", { "user" => user }))
       end
 
-      def responses(client, id)
-        parse_messages(client.api_data("GET", "/api/v1/feeds/#{id.to_i}/responses"))
+      def responses(client, id, cancellation_token: nil)
+        parse_messages(client.api_data("GET", "/api/v1/feeds/#{id.to_i}/responses", cancellation_token: cancellation_token))
       end
 
       def followed_updates(client, time: 0, limit: 1500)
