@@ -651,11 +651,7 @@ if $setkeys.is_a?(Array)
         $opencontextmenucounter=0
       end
       if key_first_pressed?(0x7B)
-        if $resetting!=true
-          $resetting=true
-          confirm(p_("EAPI_UI", "Do you want to restart Elten?")) {$reset=true}
-          $resetting=false
-        end
+        $reset=true if confirm_restart
       end
       process_quick_action_hotkeys
       any_key_pressed = key_any_pressed?

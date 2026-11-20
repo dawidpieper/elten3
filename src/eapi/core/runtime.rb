@@ -219,7 +219,31 @@ end
       File.expand_path($PROGRAM_NAME.to_s)
     end
 
+    def confirm_restart(mode = :current)
+      return false if $resetting == true
+      required = mode == :developer ? Configuration.confirmdeveloperrestart == true : Configuration.confirmrestart != false
+      return true unless required
+
+      question = case mode
+                 when :developer
+                   p_("EAPI_UI", "Do you want to restart Elten in developer mode?")
+                 when :normal
+                   p_("EAPI_UI", "Do you want to restart Elten in normal mode?")
+                 when :debug
+                   p_("EAPI_UI", "Do you want to restart Elten in debug mode?")
+                 else
+                   p_("EAPI_UI", "Do you want to restart Elten?")
+                 end
+      $resetting = true
+      begin
+        confirm(question)
+      ensure
+        $resetting = false
+      end
+    end
+
     def restart_to_developer_mode
+      return nil unless confirm_restart(:developer)
       command = developer_restart_command
       if command.to_s == ""
         Log.error("Developer restart failed: empty restart command")
@@ -243,6 +267,7 @@ end
     end
 
     def restart_to_normal_mode
+      return nil unless confirm_restart(:normal)
       command = normal_restart_command
       if command.to_s == ""
         Log.error("Normal restart failed: empty restart command")
