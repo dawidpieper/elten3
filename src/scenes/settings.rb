@@ -229,14 +229,18 @@ def make_window
   end
   def load_general
     setting_category(p_("Settings", "General"))
-        l=loadedlanguages.map{|l|l.realcode}
-        langsmapping=["en-GB"]
-    for d in l
-        langsmapping.push(d) if !langsmapping.include?(d)
-        end
-  langsmapping=langsmapping.find_all{|l|Lists.langs[l[0..1].downcase].is_a?(Hash)}
-        langs=langsmapping.map{|l|Lists.langs[l[0..1].downcase]['name']+" ("+Lists.langs[l[0..1].downcase]['nativeName']+")"}  
-      make_setting(p_("Settings", "Language"), langs, "Interface", "Language", langsmapping)
+    coverage = JSON.parse(EltenAPI::Resources.read("translation-coverage.json") || "{}").fetch("percentages", {})
+    langsmapping = (["en-GB"] + loadedlanguages.map(&:realcode)).uniq.select { |code| Lists.langs[code[0..1].downcase].is_a?(Hash) }
+    langs = langsmapping.map do |code|
+      language = Lists.langs[code[0..1].downcase]
+      name = "#{language['name']} (#{language['nativeName']})"
+      if coverage.key?(code)
+        p_("Settings", "%{language}, %{percent}%% translated") % {language: name, percent: coverage[code]}
+      else
+        name
+      end
+    end
+    make_setting(p_("Settings", "Language"), langs, "Interface", "Language", langsmapping)
       translation_langs=translation_languages
       make_setting(p_("Settings", "Translation languages (all if none selected)"), translation_langs.values, "Interface", "TranslationLanguages", translation_langs.keys, true)
                             make_setting(p_("Settings", "Automatically minimize Elten Window to system tray"), :bool, "Interface", "HideWindow") if tray_supported?

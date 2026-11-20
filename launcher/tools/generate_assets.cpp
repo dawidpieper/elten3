@@ -416,7 +416,13 @@ std::vector<ResourceEntry> EmbeddedResourceEntries(const Options &options) {
     for (const fs::path &path : RecursiveRegularFiles(resourcesRoot)) {
       std::string extension = Lower(path.extension().generic_string());
       if (extension != ".json" && extension != ".pem") continue;
-      entries.push_back({ResourceNameFromRoot(path, resourcesRoot), ReadFile(path)});
+      const std::string name = ResourceNameFromRoot(path, resourcesRoot);
+      fs::path source = path;
+      if (name == "translation-coverage.json") {
+        const fs::path generated = options.output.parent_path() / name;
+        if (fs::is_regular_file(generated)) source = generated;
+      }
+      entries.push_back({name, ReadFile(source)});
     }
   }
 
