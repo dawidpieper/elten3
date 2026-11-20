@@ -81,6 +81,42 @@ Do not add the generated `EltenPrograms` namespace yourself. The runtime evaluat
 
 The launched interaction follows the same `Form#wait`, `Tasks.run`, `Runner`, `$scene` and `insert_scene` rules described in the [architecture guide](architecture.md#owning-an-interaction).
 
+## Optional Program Centre actions
+
+Define the public class method `self.program_settings` to add Settings to an application's Program Centre context menu, or `self.program_changelog` to add Changelog. The hooks are independent and optional. Applications which do not define them keep their existing behaviour; older clients continue to use the application's existing entry points.
+
+The actions are available only while the application's runtime is loaded, including for applications hidden from the main menu. Elten checks for the methods without calling them when building the menu, then invokes the selected action without creating an application instance or opening its main interaction.
+
+`program_settings` opens the application's settings and returns when that interaction finishes. Use `show_settings` for a settings form, or `Form#wait` for a custom contained interaction. Do not replace `$scene` merely to display these settings. An entry point in the application's own interface can call the same method:
+
+```ruby
+class ExampleApplication < Program
+  def self.program_settings
+    show_settings do |settings|
+      settings.boolean(:announcements, label: _("Announce updates"), default: true)
+    end
+  end
+
+  def open_settings
+    self.class.program_settings
+  end
+end
+```
+
+`show_settings` supplies Apply, OK and Cancel. Fields without custom getters and setters are stored in the application's `settings.json`. Apply saves without closing; OK saves and closes; Cancel discards changes made since the last Apply. Opening the form does not save default values. Read the saved example value with `read_json("settings.json", default: {}).fetch("announcements", true)`.
+
+`program_changelog` returns a `String` containing plain text or Markdown. Elten displays it in the standard read-only text viewer. Return `nil`, an empty string or a string containing only whitespace when no changelog is available; Elten then announces that it is unavailable. Translate the text in the application's current language:
+
+```ruby
+class ExampleApplication < Program
+  def self.program_changelog
+    _("## Version 1.1\n\nAdded an option to announce updates.")
+  end
+end
+```
+
+Both methods run on the active interaction thread in the application's runtime context. Resolve labels and changelog text when the hook is called so they follow the current language. Keep the interaction responsive and follow the normal `Form#wait` and `Tasks.run` ownership rules. Closing the form or text viewer restores focus to the selected Program Centre entry. Hook errors use Elten's existing application error display. No manifest fields or application package changes are required.
+
 ## Manifest
 
 The manifest is JSON, even though it is embedded in a Ruby block comment. JSON keys are strings and the block must be valid before any application code is evaluated.
