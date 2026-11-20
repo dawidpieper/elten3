@@ -274,6 +274,11 @@ class Scene_Blog_Posts
     @isowner=(@id.is_a?(Integer)&&(blogowners(owner)||"").include?(Session.name))
     end
   def main
+    if @sel && @id.is_a?(Integer)
+      update_post_rows
+      @sel.focus
+      return browse_posts
+    end
     @mentions=[]
     if @id=="MENTIONED" or @id=="NEWMENTIONED"
       begin
@@ -327,13 +332,18 @@ end
 @sel.on(:move) {play_sound("file_audio", volume: 50, pitch: 50, pan: @sel.lpos) if @post[@sel.index]!=nil && (@post[@sel.index].audio || @post[@sel.index].audio_url.to_s!="")}
 @sel.trigger(:move)
 @sel.bind_context{|menu|context(menu)}
-loop do
-  loop_update
-  @sel.update
-  update
-  break if $scene != self
+    browse_posts
   end
-end
+
+  def browse_posts
+    loop do
+      loop_update
+      @sel.update
+      update
+      break if $scene != self
+    end
+  end
+
 def update
   if key_pressed?(:key_escape) or (key_pressed?(:key_left) and !key_held?(0x10))
     if @id!=-1
@@ -354,7 +364,7 @@ else
       bopen
     end
   end
-  def load_posts(page)
+  def load_posts(page, jump: false)
     id=@id
     id=0 if @id==-1
     @owner=Session.name if id.to_i.to_s!=id.to_s
@@ -362,11 +372,15 @@ else
     blogtemp = EltenLink::Blog.posts(elten_link, blog: @owner, category_id: id, page: page, search: @search)
 rescue EltenLink::Error
   alert(_("Error"))
-  $scene = Scene_Main.new
-  return
+  $scene = Scene_Main.new unless jump
+  return false
+end
+if jump && blogtemp.posts.empty?
+  alert(p_("Blog", "There are no posts on this page."))
+  return false
 end
 post=nil
-@post = [] if @id == "NEWFOLLOWEDBLOGS"
+@post = [] if jump || @id == "NEWFOLLOWEDBLOGS"
 for source in blogtemp.posts
   post=Struct_Blog_Post.new(source.id)
   post.name = source.name
@@ -393,6 +407,12 @@ end
 if @id == "NEWFOLLOWEDBLOGS" and LocalConfig["BlogPostsSortBy", SORT_POSTS_BY_BLOG, type: :string] == SORT_POSTS_BY_DATE
   @post = @post.sort_by { |p| p.date * -1 }
 end
+@more_posts = blogtemp.more
+update_post_rows
+true
+end
+
+  def update_post_rows
 @sel.rows=@post.map{|s|
 tmp=""
 tmp+=s.name
@@ -405,7 +425,7 @@ s.author,
 s.comments.to_s
 ]
 }
-if blogtemp.more
+if @more_posts
   @sel.rows.push([p_("Blog", "Load more"), nil, nil])
 end
 @sel.setcolumn(@sel.column)
@@ -417,7 +437,8 @@ end
 end
 def bopen
   if @sel.index<@post.size
-  $scene = Scene_Blog_Read.new(@post[@sel.index],@id,@categoryselindex,@sel.index, nil,@page, @search)
+  return_scene = self if @id.is_a?(Integer)
+  $scene = Scene_Blog_Read.new(@post[@sel.index],@id,@categoryselindex,@sel.index, return_scene,@page, @search)
 else
   @page+=1
   load_posts(@page)
@@ -444,6 +465,19 @@ else
     menu.option(p_("Blog", "Select")) {
       bopen
     }
+    if @id.is_a?(Integer)
+      menu.option(p_("Blog", "Go to page")) {
+        page = input_text(p_("Blog", "Page number"), flags: EditBox::Flags::Numbers, text: @page.to_s, escapable: true)
+        next if page.nil? || page.empty?
+        if page.to_i < 1
+          alert(p_("Blog", "Enter a page number greater than zero."))
+        elsif load_posts(page.to_i, jump: true)
+          @page = page.to_i
+          @sel.index = 0
+          @sel.focus
+        end
+      }
+    end
     if @post.size>0 && @sel.index < @post.size
       if @isowner
     menu.option(p_("Blog", "Edit"), nil, "e") {
@@ -577,6 +611,7 @@ begin
 blogtemp = EltenLink::Blog.read_post(elten_link, blog: @post.owner, post_id: @post.id)
 rescue EltenLink::Error => e
   if e.code == "blogs.post_not_found"
+    @scene = nil if @scene.is_a?(Scene_Blog_Posts)
     alert(p_("Blog", "The blog post is unavailable. It may have been deleted or you may not have access to it."))
   else
     alert(_("Error"))
@@ -615,6 +650,10 @@ end
 @fields = []
 fdate=""
 comments_count = @posts.size - 1
+if @scene.is_a?(Scene_Blog_Posts) && !@posts.empty?
+  @post.comments = comments_count
+  @post.unread = false
+end
 for i in 0..@posts.size-1
 field_index=(i==0?i:(i+2))
 @fields[field_index] = EditBox.new(@posts[i].author,type: EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly|EditBox::Flags::HTML,text: format(@posts[i], i, comments_count),quiet: true)
