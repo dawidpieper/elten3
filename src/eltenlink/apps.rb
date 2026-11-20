@@ -370,7 +370,15 @@ module EltenLink
         prm = {}
         prm["os"] = os if os != nil
         data = client.api_data("GET", "/api/v1/apps", prm, cancellation_token: cancellation_token)
-        data["apps"].to_a.map { |row| package_from(row) }
+        rows = data["apps"]
+        unless rows.is_a?(Array) && rows.all? { |row| row.is_a?(Hash) }
+          raise Error.new("Invalid program catalogue", code: "client.invalid_response")
+        end
+        packages = rows.map { |row| package_from(row) }
+        unless packages.all? { |package| package.id.match?(/\A[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/i) }
+          raise Error.new("Invalid program catalogue identifier", code: "client.invalid_response")
+        end
+        packages
       end
 
       def upload_package(elten_link, file, uuid: nil, original_filename: nil, timeout: nil, cancellation_token: nil)

@@ -14,6 +14,8 @@ module EltenAPI
       NOTIFICATION_DEDUP_LIMIT = 8_192
       VIRTUAL_UPDATE_CHECK_INTERVAL = 600.0
       VIRTUAL_UPDATE_RETRY_INTERVAL = 60.0
+      PROGRAM_CATALOGUE_CHECK_INTERVAL = 3600.0
+      PROGRAM_CATALOGUE_RETRY_INTERVAL = 300.0
       INITIAL_RUNTIME_STATE_TIMEOUT = 5.0
       STREAM_CONTROL_INTERVAL = 6.0
       STREAM_CONTROL_TIMEOUT = 10.0
@@ -90,6 +92,7 @@ module EltenAPI
         ServerClock.__send__(:stop)
         stop_stream
         cancel_status_requests
+        cancel_program_catalogue_check
       end
 
       def running?
@@ -261,6 +264,8 @@ module EltenAPI
         @feed_request_id = nil
         @virtual_update_request_pending = false
         @next_virtual_update_check_at = 0.0
+        @program_catalogue_task = nil
+        @next_program_catalogue_check_at = 0.0
         @feedstime = 0
         @notificationtime = 0
         $feeds = {}
@@ -313,6 +318,7 @@ module EltenAPI
               drain_background_responses
               refresh_server_data(key, now)
               clear_stale_requests(now)
+              check_program_catalogue(key, now)
               if @feed_request_pending == true && now - (@feed_request_started_at || 0) > 30
                 @feed_request_pending = false
                 @feed_request_id = nil
@@ -340,6 +346,42 @@ module EltenAPI
         end
       end
 
+      def check_program_catalogue(key, now)
+        unless ProgramCatalogue.notifications_enabled?
+          cancel_program_catalogue_check
+          @next_program_catalogue_check_at = 0.0
+          return
+        end
+        task = @program_catalogue_task
+        if task != nil
+          outcome = task.take
+          return if outcome == nil
+          return if @stopped || @program_catalogue_task != task
+          @program_catalogue_task = nil
+          if outcome.error
+            Log.warning("Program catalogue check failed: #{outcome.error.message}")
+            @next_program_catalogue_check_at = now + PROGRAM_CATALOGUE_RETRY_INTERVAL
+          else
+            enqueue_event("func" => "program_catalogue", "session" => key, "programs" => outcome.value)
+            @next_program_catalogue_check_at = now + PROGRAM_CATALOGUE_CHECK_INTERVAL
+          end
+        end
+        return if @stopped || now < @next_program_catalogue_check_at
+        @next_program_catalogue_check_at = now + PROGRAM_CATALOGUE_RETRY_INTERVAL
+        @program_catalogue_client ||= EltenLink::Client.new
+        @program_catalogue_task = EltenAPI::Tasks.start(timeout: 30) do |token|
+          EltenLink::Apps.list(@program_catalogue_client, cancellation_token: token)
+        end
+        cancel_program_catalogue_check if @stopped
+      rescue EltenAPI::Tasks::Busy => error
+        Log.warning("Cannot start program catalogue check: #{error.message}")
+      end
+
+      def cancel_program_catalogue_check
+        @program_catalogue_task&.cancel
+        @program_catalogue_task = nil
+      end
+
       def session_key
         return nil unless Session.logged?
         name = Session.name
@@ -352,6 +394,8 @@ module EltenAPI
       def reset_session(key)
         return if @session_key == key
         stop_stream
+        cancel_program_catalogue_check
+        @next_program_catalogue_check_at = 0.0
         clear_events
         clear_responses
         clear_background_responses

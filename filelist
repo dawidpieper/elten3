@@ -85,6 +85,7 @@ src/scenes/keyboardshortcuts.rb
 src/scenes/settings.rb
 src/scenes/spellcheckdictionary.rb
 src/scenes/clock.rb
+src/eapi/program_catalogue.rb
 src/scenes/programs.rb
 src/scenes/palantiri.rb
 src/scenes/log.rb
