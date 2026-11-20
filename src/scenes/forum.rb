@@ -1998,7 +1998,7 @@ loop do
     edt_query = EditBox.new(p_("Forum", "Search query"), type: 0, text: "", quiet: true),
     lst_phrasein = ListBox.new([p_("Forum", "Titles"), p_("Forum", "Content"), p_("Forum", "Authors")], header: p_("Forum", "Search in"), index: 0, flags: ListBox::Flags::MultiSelection),
     lst_threadin = ListBox.new([p_("Forum", "Joined groups"), p_("Forum", "Recommended groups"), p_("Forum", "Groups you have not joined")], header: p_("Forum", "of threads in"), index: 0, flags: ListBox::Flags::MultiSelection),
-    chk_transcriptions = CheckBox.new(p_("Forum", "Include transcriptions of audio posts")),
+    chk_transcriptions = CheckBox.new(premium_feature_label(p_("Forum", "Include transcriptions of audio posts"), "courier")),
     btn_search = Button.new(p_("Forum", "Search")),
     btn_cancel = Button.new(_("Cancel"))
     ], index: 0, silent: false, quiet: true)
@@ -2305,7 +2305,7 @@ form.focus
         threadsmain(@sforums[@frmsel.index].id)
       }
       copy_forum_url_option(menu, "forum", @sforums[@frmsel.index].id)
-            s = p_("Forum", "Follow this forum")
+            s = premium_feature_label(p_("Forum", "Follow this forum"), @sforums[@frmsel.index].group.role == 2 ? nil : "courier")
       s = p_("Forum", "Unfollow this forum") if @sforums.size > 0 and @sforums[@frmsel.index].followed == true
       menu.option(s, nil, "l") {
       if @sforums[@frmsel.index].followed || @sforums[@frmsel.index].group.role==2 || requires_premiumpackage("courier")
@@ -2801,8 +2801,8 @@ threadopen(@thrsel.index)
           end
         }
       end
-            s = p_("Forum", "Mark this thread")
-      s = p_("Forum", "Unmark this thread") if @sthreads[@thrsel.index].marked== true
+            s = premium_feature_label(p_("Forum", "Mark this thread"), "courier")
+      s = premium_feature_label(p_("Forum", "Unmark this thread"), "courier") if @sthreads[@thrsel.index].marked== true
       menu.option(s, nil, "h") {
       if requires_premiumpackage("courier")
       m=0
@@ -3233,7 +3233,7 @@ form.wait
     end
     fields = [EditBox.new(p_("Forum", "Thread name"), type: 0, text: draft_data["title"].to_s, quiet: true)]
     if type == 0
-      fields[1..6] = [EditBox.new(p_("Forum", "Post content"), type: EditBox::Flags::MultiLine, text: draft_data["text"], quiet: true), CheckBox.new(p_("Forum", "Use Markdown in this post"), checked: draft_data["markdown"] == true && holds_premiumpackage("courier")), nil, Button.new(p_("Forum", "Attach a poll")), nil, Button.new(p_("Forum", "Attach a file"))]
+      fields[1..6] = [EditBox.new(p_("Forum", "Post content"), type: EditBox::Flags::MultiLine, text: draft_data["text"], quiet: true), CheckBox.new(premium_feature_label(p_("Forum", "Use Markdown in this post"), "courier"), checked: draft_data["markdown"] == true && holds_premiumpackage("courier")), nil, Button.new(p_("Forum", "Attach a poll")), nil, Button.new(p_("Forum", "Attach a file"))]
     fields[2].on(:change) {
     fields[2].checked=false if !requires_premiumpackage("courier")
     }
@@ -3982,7 +3982,7 @@ end
     question_button = post_question_button(@reply_questions)
     markdown = @textfields && @textfields[3] && @textfields[3].checked
     @textfields = [EditBox.new(p_("Forum", "Your reply"), type: EditBox::Flags::MultiLine, text: pretext, quiet: true), nil, nil, nil, nil, nil, Button.new(p_("Forum", "Attach a file"))]
-      @textfields[3] = CheckBox.new(p_("Forum", "Use Markdown in this post"), checked: markdown)
+      @textfields[3] = CheckBox.new(premium_feature_label(p_("Forum", "Use Markdown in this post"), "courier"), checked: markdown)
       if @noteditable == false && @type != 1
         @reply_draft ||= Draft.new("thread:#{@thread}", config_key: "ForumDrafts", collection: "forum_drafts")
         data = @reply_draft.restore({ "text" => pretext, "markdown" => markdown })
@@ -4050,7 +4050,7 @@ end
       p_("Forum", "None"),
       p_("Forum", "Sound"),
       p_("Forum", "Text information"),
-      p_("Forum", "Hide signatures")
+      premium_feature_label(p_("Forum", "Hide signatures"), "courier")
     ]
   end
 
@@ -4178,11 +4178,11 @@ end
       m.option(p_("Forum", "Show mention"), nil, "/") {
       input_text(p_("Forum", "Mention from %{user}")%{:user=>mention.author}, flags: EditBox::Flags::ReadOnly, text: mention.message, escapable: true)
       }
-      m.option(p_("Forum", "Reply to the user who mentioned you"), nil, "?") {
+      m.option(premium_feature_label(p_("Forum", "Reply to the user who mentioned you"), "courier"), nil, "?") {
       reply_to_mention(mention)
       }
       if ["mention", "message"].include?(LocalConfig["MentionReplyType", "", type: :string])
-      m.option(p_("Forum", "Reply to mention as...")) {
+      m.option(premium_feature_label(p_("Forum", "Reply to mention as..."), "courier")) {
       reply_to_mention(mention, true)
       }
       end
@@ -4265,7 +4265,7 @@ if post.edited && !post.locked
           return_scene: @scene
         )
       }
-    m.option(p_("Forum", "Bookmarks"), nil, "b") {
+    m.option(premium_feature_label(p_("Forum", "Bookmarks"), "courier"), nil, "b") {
     if requires_premiumpackage("courier")
     showbookmarks
     end
@@ -4372,8 +4372,8 @@ if post.edited && !post.locked
       }
     end
   end
-        s = p_("Forum", "Mark this thread")
-      s = p_("Forum", "Unmark this thread") if @threadclass.marked== true
+        s = premium_feature_label(p_("Forum", "Mark this thread"), "courier")
+      s = premium_feature_label(p_("Forum", "Unmark this thread"), "courier") if @threadclass.marked== true
             menu.option(s, nil, "h") {
             if requires_premiumpackage("courier")
                   m=0
@@ -4987,7 +4987,7 @@ form.wait
       a=post.attachments[i]
       atts.push([a, nil, attnames[i]])
       end
-      form = Form.new([EditBox.new(p_("Forum", "edit your post here"), type: EditBox::Flags::MultiLine, text: post.post), ListBox.new(atts.map{|a|a[2]}, header: p_("Forum", "Attachments")), CheckBox.new(p_("Forum", "Use Markdown in this post")), Button.new(_("Save")), Button.new(_("Cancel"))])
+      form = Form.new([EditBox.new(p_("Forum", "edit your post here"), type: EditBox::Flags::MultiLine, text: post.post), ListBox.new(atts.map{|a|a[2]}, header: p_("Forum", "Attachments")), CheckBox.new(premium_feature_label(p_("Forum", "Use Markdown in this post"), "courier")), Button.new(_("Save")), Button.new(_("Cancel"))])
       form.fields[2].checked=post.format
       form.fields[2].on(:change) {
       form.fields[2].checked=post.format if !requires_premiumpackage("courier")
