@@ -340,6 +340,9 @@ if c[2].is_a?(String)
           end
         }
     st_conference.bind_context{|menu|
+    if Conference.channel.id != 0 && Conference.channel.spatialization != 2
+      menu.option(p_("Conference", "Look around"), nil, :l) { look_around }
+    end
     menu.option(p_("Conference", "Read current position"), nil, :q) {speak(Conference.get_coordinates.map{|c|c.to_s}.join(", "))}
     menu.option(p_("Conference", "Read channel size"), nil, :e) {speak([Conference.channel.width, Conference.channel.height].map{|c|c.to_s}.join(", "))}
     menu.submenu(p_("Conference", "Conference")) {|menu|context(menu)}
@@ -367,6 +370,7 @@ if Conference.channel.id==0
 elsif channel_target?(@target)
   speak(p_("Conference", "You are already connected to another channel."))
     end
+    st_conference.add_tip(p_("Conference", "Press L to look around and Ctrl to stop the announcements")) if Conference.channel.spatialization != 2
     @form.wait if Conference.channel.id!=0
     timeout_expired=conference_timeout_expired?
     timeout_break
@@ -377,6 +381,7 @@ elsif channel_target?(@target)
       end
   $scene=Scene_Main.new
 ensure
+  speech_stop if @look_around_sequence && current_speechsequence.equal?(@look_around_sequence)
   Conference.remove_hook(@waitingchannel_hook)
   Conference.remove_hook(@users_hook)
   Conference.remove_hook(@status_hook)
@@ -873,6 +878,50 @@ end
     end
     delay(1)
   end
+  def look_around
+    channel = Conference.channel
+    x, y, direction = Conference.get_coordinates
+    angle = direction * Math::PI / 180
+    nearby = channel.users.filter_map do |user|
+      next if user.waiting || user.id == Conference.userid
+      tx, ty = Conference.get_coordinates(user.id)
+      next unless x > 0 && y > 0 && tx > 0 && ty > 0
+      dx, dy = tx - x, ty - y
+      distance = Math.hypot(dx, dy)
+      next if distance > 20
+      lateral = dx * Math.cos(angle) + dy * Math.sin(angle)
+      pan = 50 + 50 * (lateral / 8.0).clamp(-1, 1)
+      [distance, user.name, pan]
+    end
+    if nearby.empty?
+      alert(p_("Conference", "No participants nearby"))
+      return
+    end
+    nearby.sort_by!{|distance, name, _pan| [distance, name]}
+    indexed = Configuration.soundthemeactivation && speech_indexes_supported?
+    parts = nearby.flat_map do |distance, name, pan|
+      steps = distance.round
+      label = np_("Conference", "%{name}, %{count} step", "%{name}, %{count} steps", steps) % {name: name, count: steps}
+      if indexed
+        cue = EltenAPI::SpeechCommands::CustomCommand.new do
+          play_sound("listbox_focus", pan: pan, pitch: distance > 15 ? 75 : 100)
+        end
+        [cue, label + "\r\n"]
+      else
+        direction = if pan < 50
+          p_("Conference", "left")
+        elsif pan > 50
+          p_("Conference", "right")
+        else
+          p_("Conference", "centre")
+        end
+        [p_("Conference", "%{participant}, %{direction}") % {participant: label, direction: direction} + "\r\n"]
+      end
+    end
+    @look_around_sequence = EltenAPI::SpeechSequence.new(parts)
+    speak(@look_around_sequence, limit: 0)
+  end
+
   def get_channelslist
     Conference.update_channels
 if Conference.channels==[]
