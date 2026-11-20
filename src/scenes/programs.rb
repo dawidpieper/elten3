@@ -6,6 +6,7 @@
 
 require "fileutils"
 require "tmpdir"
+require "uri"
 
 class Scene_Programs
   PROGRAM_LANGUAGE_FILTER_KEY = "ProgramsLanguageFilter"
@@ -248,6 +249,8 @@ class Scene_Programs
         menu.option(action) { @refresh=true if install_remote_program(remote) }
       end
       menu.option(p_("Programs", "Details")) { show_program_details(program) }
+      repository = program_repository_url(remote, installed)
+      menu.option(p_("Programs", "Open source repository")) { platform_open_url(repository) } if repository
       if installed!=nil
         installed_context(menu, installed)
       end
@@ -361,6 +364,20 @@ class Scene_Programs
        true
      end
 
+  def program_repository_url(*entries)
+    entries.compact.each do |entry|
+      url = entry.repository_url
+      next unless url.is_a?(String)
+      begin
+        uri = URI.parse(url)
+        return url if uri.is_a?(URI::HTTP) && !uri.host.to_s.empty? && !uri.userinfo
+      rescue URI::InvalidURIError
+        next
+      end
+    end
+    nil
+  end
+
   def show_program_details(program)
     installed=installed_program_for(program)
     remote=remote_program_for(program)
@@ -373,6 +390,8 @@ class Scene_Programs
       p_("Programs", "Platforms: %{platforms}")%{platforms: Array(program.platforms).join(", ")},
       p_("Programs", "Size: %{size}")%{size: format_size(program.size)}
     ]
+    repository = program_repository_url(remote, installed)
+    lines.push(p_("Programs", "Source repository: %{url}") % { url: repository }) if repository
     description=(remote||program).description.to_s
     lines.push(p_("Programs", "Description: %{description}")%{description: description}) unless description.empty?
     if remote!=nil
