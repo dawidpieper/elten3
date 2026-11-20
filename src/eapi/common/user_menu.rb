@@ -134,7 +134,7 @@ module EltenAPI
           if ringtone
             set_ringtone(user, nil)
             alert(p_("EAPI_Common", "Ringtone removed"))
-          elsif requires_premiumpackage("audiophile")
+          elsif requires_premiumpackage("audiophile", p_("EAPI_Common", "Choose the sound that plays when this user calls you."))
             file = get_file(
               p_("EAPI_Common", "Select ringtone for user %{user}") % { user: user },
               path: EltenPath.with_separator(Dirs.documents),

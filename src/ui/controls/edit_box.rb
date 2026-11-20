@@ -495,24 +495,24 @@ def context(menu, submenu=false)
   if (@flags&Flags::Formattable)>0
     menu.submenu(p_("EAPI_Form", "Format")) {|m|
     m.option(p_("EAPI_Form", "Bold"), nil, "b") {
-    if requires_premiumpackage("scribe")
+    if requires_premiumpackage("scribe", p_("EAPI_Form", "Apply bold formatting to the selected text."))
     setformatting(Element::Bold)
     end
     }
     m.option(p_("EAPI_Form", "Italic"), nil, "i") {
-    if requires_premiumpackage("scribe")
+    if requires_premiumpackage("scribe", p_("EAPI_Form", "Apply italic formatting to the selected text."))
     setformatting(Element::Italic)
     end
     }
     m.option(p_("EAPI_Form", "Underline"), nil, "u") {
-    if requires_premiumpackage("scribe")
+    if requires_premiumpackage("scribe", p_("EAPI_Form", "Underline the selected text."))
     setformatting(Element::Underline)
     end
     }
     m.submenu(p_("EAPI_Form", "Heading")) {|n|
         for i in 1..6
       n.option(p_("EAPI_Form", "Heading level %{level}")%{:level=>i}, i, i.to_s) {|level|
-      if requires_premiumpackage("scribe")
+      if requires_premiumpackage("scribe", p_("EAPI_Form", "Change the heading level of the current paragraph."))
       a=line_beginning(@vindex, true)
       b=line_ending(@vindex, true)
       del=[]
@@ -538,7 +538,7 @@ def context(menu, submenu=false)
     }
     menu.submenu(p_("EAPI_Form", "Insert")) {|m|
     m.option(p_("EAPI_Form", "Link")) {
-      if requires_premiumpackage("scribe")
+      if requires_premiumpackage("scribe", p_("EAPI_Form", "Insert a link with a label and a destination address."))
     form=Form.new([
     EditBox.new(p_("EAPI_Form", "URL"), type: 0, text: "", quiet: true),
     EditBox.new(p_("EAPI_Form", "Label"), type: 0, text: "", quiet: true),
@@ -594,7 +594,7 @@ eredo
   }
   if defined?(SpellCheck) && (!SpellCheck.respond_to?(:available?) || SpellCheck.available?)
     menu.option(p_("EAPI_Form", "Spell check"), nil, "S") {
-    if requires_premiumpackage("scribe")
+    if requires_premiumpackage("scribe", p_("EAPI_Form", "Check the spelling of the text and review suggested corrections."))
   espellcheck
   end
   }
@@ -616,12 +616,12 @@ search
     }
   end
   menu.option(p_("EAPI_Form", "Quick translation"), nil, "t") {
-  if requires_premiumpackage("scribe")
+  if requires_premiumpackage("scribe", p_("EAPI_Form", "Translate the selected text directly into your interface language."))
   espeech(translatetext(0,Configuration.language,get_check_or_all))
   end
   }
     menu.option(p_("EAPI_Form", "Translate"), nil, "T") {
-    if requires_premiumpackage("scribe")
+    if requires_premiumpackage("scribe", p_("EAPI_Form", "Open the translator with the selected text or the contents of this field."))
   translator(get_check_or_all)
   end
   }
