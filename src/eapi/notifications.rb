@@ -1061,7 +1061,12 @@ module EltenAPI
         queued = []
         notifications.each do |notification|
           id = notification["id"]
-          queued << notification if remember_notification(id)
+          next unless remember_notification(id)
+          if notification["cat"] == "grouprole"
+            title = NotificationGroups.group_role_title(notification["payload"])
+            notification = notification.merge("alert" => title) if title
+          end
+          queued << notification
         end
         batch_sounds = {}
         app_notifications, queued = queued.partition do |notification|

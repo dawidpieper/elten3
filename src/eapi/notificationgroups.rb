@@ -20,6 +20,7 @@ module NotificationGroups
     blogfollower
     blogmention
     groupinvitation
+    grouprole
     mtr
     app
     program_updates
@@ -47,6 +48,19 @@ module NotificationGroups
 
   def self.default_notification_type_order
     NOTIFICATION_TYPE_ORDER.dup
+  end
+
+  def self.group_role_title(payload)
+    return unless payload.is_a?(Hash)
+    group = payload["groupname"].to_s.gsub(/[\r\n\t]+/, " ").strip
+    return if group.empty?
+
+    case payload["role"]
+    when "moderator"
+      p_("Notifications", "You now have moderator privileges in the group %{group}.") % { group: group }
+    when "administrator"
+      p_("Notifications", "You now have administrator privileges in the group %{group}.") % { group: group }
+    end
   end
 
   def self.notification_type_key(cat)
@@ -572,6 +586,8 @@ module NotificationGroups
       p_("Notifications", "Blog mentions")
     when "groupinvitation"
       p_("Notifications", "Group invitations")
+    when "grouprole"
+      p_("Notifications", "Group roles")
     when "mtr"
       p_("Notifications", "Online monitors")
     when "app"
@@ -631,6 +647,8 @@ module NotificationGroups
       }
     when "groupinvitation"
       group_invitation_title(payload, payloads: payloads)
+    when "grouprole"
+      NotificationGroups.group_role_title(payload)
     when "mtr"
       monitor_title(payload, count: count, payloads: payloads)
     when "program_updates"
