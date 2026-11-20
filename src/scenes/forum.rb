@@ -3757,6 +3757,56 @@ return $scene=(@scene || Scene_Forum.new(@thread, @param, @cat, @query, @threadc
     end
   end
   
+  def listen_to_text_thread
+    unless nvda_output.check && nvda_output.getversion.to_i >= 45
+      alert(p_("Forum", "Update the Elten add-on for NVDA to listen to the entire thread."))
+      return
+    end
+
+    form = @form
+    posts = @posts
+    first_post = form.index / POST_FIELDS
+    chunks = Enumerator.new do |output|
+      posts.each_with_index do |post, index|
+        next if index < first_post
+        text = "#{post.author}\r\n#{post.post}\r\n#{post.date}\r\n\r\n"
+        offset = 0
+        while offset < text.length
+          chunk = text[offset, 8000]
+          if offset + chunk.length < text.length
+            boundary = chunk.rindex(/\s/)
+            chunk = chunk[0..boundary] if boundary
+          end
+          output << [index, chunk]
+          offset += chunk.length
+        end
+      end
+    end
+
+    next_chunk = nil
+    next_chunk = proc do
+      begin
+        index, text = chunks.next
+      rescue StopIteration
+        next
+      end
+      sequence = nil
+      active = proc do
+        current_speechsequence.equal?(sequence) && $scene.equal?(self) &&
+          @form.equal?(form) && @posts.equal?(posts) && speech_output_nvda? && nvda_output.check
+      end
+      sequence = SpeechSequence.new([
+        SpeechCommands::CustomCommand.new do
+          form.index = index * POST_FIELDS if active.call && form.index != index * POST_FIELDS
+        end,
+        text,
+        SpeechCommands::CustomCommand.new { next_chunk.call if active.call }
+      ])
+      speak(sequence)
+    end
+    next_chunk.call
+  end
+
   def question_display_button(post)
     return nil unless post.questions_count > 0
     label = post.questions_count == 1 ? p_("Forum", "Show attached question") : p_("Forum", "Show attached questions")
@@ -4334,11 +4384,7 @@ if post.edited && !post.locked
       if @type!=2
       menu.option(p_("Forum", "Listen to the thread")) {
         if speech_output_nvda? and @type == 0
-          text = ""
-          for pst in @posts[@form.index / POST_FIELDS..@posts.size]
-            text += pst.author + "\r\n" + pst.post + "\r\n" + pst.date + "\r\n\r\n"
-          end
-          speak(text)
+          listen_to_text_thread
         else
           cur = @form.index / POST_FIELDS - 1
           while cur < @posts.size

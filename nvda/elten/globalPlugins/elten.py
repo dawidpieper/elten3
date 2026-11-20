@@ -259,8 +259,8 @@ def elten_command(ac):
 			text_added = False
 			for i in range(0, len(texts)):
 				if is_python_3_or_above:
-					if(speech.isBlank(texts[i])): continue
 					if(i<len(indexes)): v.append(EltenIndexCallback(indexes[i], indid))
+					if(speech.isBlank(texts[i])): continue
 					if(i<len(indexes) and i>0 and texts[i-1]!="" and texts[i-1][-1]=="\n") and speech.commands is not None and text_added:
 						v.append(speech.commands.EndUtteranceCommand())
 						text_added = False
@@ -334,7 +334,7 @@ def elten_command(ac):
 			eltenbraille.update()
 			braille.handler.update()
 		if(ac['ac']=='getversion'):
-			return {'version': 44}
+			return {'version': 45}
 		if(ac['ac']=='getnvdaversion'):
 			return {'version': buildVersion.version}
 		if(ac['ac']=='getindex'):
