@@ -20,6 +20,16 @@ module GlobalMenu
                 @menu.open
         @currentmenu = nil
         loop_update(false)
+  ensure
+    if scene_restart_unwinding? && @currentmenu != nil
+      begin
+        @currentmenu.close
+      rescue Exception => error
+        Log.error("Menu restart cleanup failed: #{error.class}: #{error.message}\n#{Array(error.backtrace).join("\n")}") if defined?(Log)
+      ensure
+        @currentmenu = nil
+      end
+    end
           end
   def construct(defaults=true, force_context: false)
     @header=""

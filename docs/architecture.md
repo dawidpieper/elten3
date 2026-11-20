@@ -120,6 +120,8 @@ Choose the smallest component which can own the complete interaction:
 
 These interfaces call `loop_update` internally. The architectural improvement is ownership: feature code declares how the interaction ends while one reusable component performs the polling and cleanup.
 
+A requested restart is handled at the scene boundary. The active interaction unwinds through its `ensure` blocks, and a launched `Program` runs its `close` hook and releases its managed resources without normal-exit navigation or announcements. Temporary scene owners finish in turn before the primary dispatcher reloads the client or completes the existing shutdown path for a change of mode. Cleanup callbacks may service the window, but must not start another interaction while the restart is unwinding.
+
 ### What `loop_update` coordinates
 
 One `loop_update` call is an application frame, not merely a keyboard poll. Its current responsibilities include:

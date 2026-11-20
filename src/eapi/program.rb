@@ -3973,9 +3973,11 @@ class Program
   end
 
   def finalize(v = nil, reason: :normal)
-    raise ArgumentError, "Invalid program finalization reason #{reason.inspect}" if ![:normal, :error, :notification].include?(reason)
+    previous_unwinding = Thread.current.thread_variable_get(:elten_restart_unwinding)
+    raise ArgumentError, "Invalid program finalization reason #{reason.inspect}" if ![:normal, :error, :notification, :restart].include?(reason)
     return v if @program_finalized == true
     @program_finalized = true
+    Thread.current.thread_variable_set(:elten_restart_unwinding, true) if reason == :restart
 
     cleanup_error = nil
     {
@@ -3992,7 +3994,7 @@ class Program
     end
 
     raise cleanup_error if cleanup_error != nil && reason == :normal
-    return v if reason == :error
+    return v if reason == :error || reason == :restart
 
     if reason == :notification
       $scene = Scene_Main.new
@@ -4003,10 +4005,13 @@ class Program
     alert(p_("Program", "The program has been closed."))
     $scene = Scene_Main.new
     v
+  ensure
+    Thread.current.thread_variable_set(:elten_restart_unwinding, previous_unwinding) if reason == :restart
   end
 
   def finish(v = nil)
-    finalize(v, reason: :normal)
+    reason = scene_restart_unwinding? || scene_restart_requested? ? :restart : :normal
+    finalize(v, reason: reason)
   end
 
   def close

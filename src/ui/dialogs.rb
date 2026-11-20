@@ -385,6 +385,30 @@ def dialog_close
   end
 end
 
+def close_restart_dialogs
+  {
+    "waiting dialog" => proc { waiting_end },
+    "dialog output" => proc { close_dialog_output if @@dialogopened }
+  }.each do |label, action|
+    begin
+      action.call
+    rescue Exception => error
+      Log.error("Restart #{label} cleanup failed: #{error.class}: #{error.message}\n#{Array(error.backtrace).join("\n")}") if defined?(Log)
+    end
+  end
+ensure
+  @@waitingvoice = nil
+  @@waitingopened = false
+  @@dialogvoice = nil
+  @@dialogopened = false
+  now = modal_interaction_time
+  @@modal_interaction_mutex.synchronize do
+    @@modal_interaction_elapsed = modal_interaction_elapsed_at(now)
+    @@modal_interaction_depth = 0
+    @@modal_interaction_started_at = nil
+  end
+end
+
 def close_dialog_output
   @@dialogvoice_generation += 1
   if @@dialogvoice != nil

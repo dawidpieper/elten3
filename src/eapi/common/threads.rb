@@ -27,7 +27,7 @@ module EltenAPI
     $subthreads=[] if $subthreads==nil
                                 loop do
                               sleep(0.05)
-                                    if $scenes.size > 0
+                                    if $scenes.size > 0 && !scene_restart_requested?
                                       if $currentthread != $mainthread
                                                                                   $subthreads.push($currentthread)
                                         end
@@ -36,22 +36,24 @@ module EltenAPI
                                         sc=$scene
                                         sleep(0.1)
                                         begin
-                                          if stopct == false
+                                          if stopct == false && !scene_restart_requested?
                                                                                     newsc = $scenes[0]
                                           $scenes.delete_at(0)
                                           return_to_main = newsc.instance_variable_get(:@insert_scene_return_to_main) == true
                                                                 $scene = newsc
-                                                                  while $scene != nil and $scene.is_a?(Scene_Main) == false and $exit!=true
+                                                                  while $scene != nil and $scene.is_a?(Scene_Main) == false and $exit!=true and !scene_restart_requested?
 Log.debug("Loading parallel scene: #{$scene.class.to_s}")
 prepare_keyboard_scene_transition if defined?(EltenAPI::KeyboardState)
 execute_scene_main($scene)
                       end
+                      unless scene_restart_requested?
                       $scene = return_to_main ? Scene_Main.new : sc
 $scene=Scene_Main.new if $scene.is_a?(Scene_Main) or $scene == nil
 $scene=nil if $exit==true
 prepare_keyboard_scene_transition if defined?(EltenAPI::KeyboardState)
 $focus = true if $scene.is_a?(Scene_Main) == false                     and $scene!=nil
 Log.info("Exiting parallel scenes thread")
+end
 end
 rescue Exception => error
       handled = defined?(Programs) && Programs.handle_execution_error(error, $scene)
@@ -66,7 +68,7 @@ end
 sleep(0.1)
 end
 end
-    if $switchthread!=nil
+    if $switchthread!=nil && !scene_restart_requested?
       cr=$switchthread
       $switchthread=nil
       cur=$currentthread

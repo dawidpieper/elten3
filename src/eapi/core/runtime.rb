@@ -55,20 +55,35 @@ def recover_elten_error(error, scene)
   end
 end
 def execute_scene_main(scene)
-  with_scene_context(scene) do
-    if defined?(Program) && scene.is_a?(Program) && scene.respond_to?(:program_main, true)
-      begin
-        result = scene.__send__(:program_main)
-      rescue StandardError
-        scene.finalize(reason: :error)
-        raise
+  previous_target = Thread.current.thread_variable_get(:elten_restart_target)
+  previous_unwinding = Thread.current.thread_variable_get(:elten_restart_unwinding)
+  target = Object.new
+  Thread.current.thread_variable_set(:elten_restart_target, target)
+  # A restart unwinds owned interactions without becoming an application error.
+  scene_result = catch(target) do
+    with_scene_context(scene) do
+      if defined?(Program) && scene.is_a?(Program) && scene.respond_to?(:program_main, true)
+        begin
+          result = scene.__send__(:program_main)
+        rescue StandardError
+          scene.finalize(reason: :error)
+          raise
+        else
+          scene.finalize(result, reason: :normal) unless scene_restart_requested?
+        end
       else
-        scene.finalize(result, reason: :normal)
+        scene.main
       end
-    else
-      scene.main
     end
   end
+  if Thread.current.equal?($mainthread) && scene_restart_requested?
+    Thread.current.thread_variable_set(:elten_restart_unwinding, true)
+    prepare_scene_restart
+  end
+  scene_result
+ensure
+  Thread.current.thread_variable_set(:elten_restart_target, previous_target)
+  Thread.current.thread_variable_set(:elten_restart_unwinding, previous_unwinding)
 end
 
 def with_scene_context(scene)
@@ -76,7 +91,51 @@ def with_scene_context(scene)
   Thread.current.thread_variable_set(:elten_scene, scene)
   yield
 ensure
-  Thread.current.thread_variable_set(:elten_scene, previous)
+  begin
+    if (scene_restart_unwinding? || scene_restart_requested?) && defined?(Program) && scene.is_a?(Program)
+      scene.finalize(reason: :restart)
+    end
+  ensure
+    Thread.current.thread_variable_set(:elten_scene, previous)
+  end
+end
+
+def scene_restart_requested?
+  $restart == true || $reset == true || ($exit == true && $exit_runproc != nil)
+end
+
+def scene_restart_unwinding?
+  Thread.current.thread_variable_get(:elten_restart_unwinding) == true
+end
+
+def interrupt_scene_for_restart
+  return unless scene_restart_requested? && Thread.current.equal?($currentthread)
+  target = Thread.current.thread_variable_get(:elten_restart_target)
+  return if target == nil || scene_restart_unwinding?
+  Thread.current.thread_variable_set(:elten_restart_unwinding, true)
+  throw target
+end
+
+def prepare_scene_restart
+  (Array($activecontrols) | Array($lastactivecontrols)).each do |control|
+    begin
+      control.blur
+    rescue Exception => error
+      Log.error("Control #{control.class} restart cleanup failed: #{error.class}: #{error.message}\n#{Array(error.backtrace).join("\n")}") if defined?(Log)
+    end
+  end
+  close_restart_dialogs
+  $activecontrols = []
+  $lastactivecontrols = []
+  $scenes.clear if $scenes != nil
+  $switchthread = nil
+  if $reset == true
+    $reset = false
+    key_update
+    $DEBUG = true if key_held?(0x10)
+    play_sound("signal") if key_held?(0x10)
+    $restart = true
+  end
 end
 
 def insert_scene(scene, must=false, return_to_main: false)
