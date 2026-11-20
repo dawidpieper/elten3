@@ -476,6 +476,7 @@ end
     @cat = type
     groupsload(type, ll)
     loop do
+      return groupsmain(0) if type == 4 && @sgroups.empty?
       loop_update
       @grpsel.update
      LocalConfig["ForumColumnGroup"] = @grpsel.column if LocalConfig["ForumColumnGroup", type: :numeric] != @grpsel.column
@@ -483,9 +484,10 @@ end
       return groupsmain(0) if (key_pressed?(:key_escape) or (key_pressed?(:key_left) and !key_held?(0x10))) and type!=0
       break if $scene!=self
       if (key_pressed?(:key_enter) or key_pressed?(:key_right) and !key_held?(0x10))
-        groupopen(@grpsel.index, type, false)
+        list = @grpsel
+        groupopen(list.index, type, false)
         break if $scene != self
-        @grpsel.focus
+        list.focus if @grpsel.equal?(list)
       end
       break if $scene!=self
     end
@@ -822,6 +824,21 @@ return result
       end
     else
       g = @sgroups[index - @grpheadindex]
+      if g.role == 5 && !allThreads
+        choice = selector(
+          [p_("Forum", "Browse"), p_("Forum", "Accept invitation"), p_("Forum", "Decline invitation"), _("Cancel")],
+          header: p_("Forum", "Invitation to %{groupname}") % { groupname: g.name },
+          cancel_index: 3, flags: ListBox::Flags::AnyDir
+        )
+        case choice
+        when 0
+          return alert(p_("Forum", "Accept the invitation to browse this private group.")) unless g.public
+        when 1, 2
+          return respond_to_group_invitation(g, type, accept: choice == 1)
+        else
+          return
+        end
+      end
       groupmotddlg(g, false) if g.hasnewmotd && (g.role == 1 || g.role == 2)
       if g.role == 1 or g.role == 2 or g.public
         if allThreads
@@ -836,6 +853,25 @@ return result
         alert(p_("Forum", "You cannot access this group."))
       end
     end
+  end
+
+  def respond_to_group_invitation(group, type, accept:)
+    return unless group.role == 5
+
+    if accept
+      return unless canjoin(group)
+      return unless forum_attempt { group.role = EltenLink::Forum.join_group(elten_link, group_id: group.id) }
+      alert(group.role == 4 ? p_("Forum", "Request sent") : p_("Forum", "You've just joined the group"))
+    else
+      return unless forum_attempt { EltenLink::Forum.leave_group(elten_link, group_id: group.id) }
+      group.role = 0
+      alert(p_("Forum", "Invitation declined"))
+    end
+
+    @grpindex[type] = @grpsel.index
+    @grpsetindex = group.id
+    getcache
+    groupsload(type)
   end
 
   def context_groups(menu, type)
@@ -1005,9 +1041,20 @@ if (((@sgroups[@grpsel.index - @grpheadindex].role==1 || (@sgroups[@grpsel.index
       menu.option(p_("Forum", "Group members"), nil, "m") {
         groupmembers(@sgroups[@grpsel.index - @grpheadindex])
       }
+      if g.role == 5
+        menu.option(p_("Forum", "Accept invitation"), nil, "j") do
+          confirm(p_("Forum", "Accept the invitation to %{groupname}?") % { groupname: g.name }) do
+            respond_to_group_invitation(g, type, accept: true)
+          end
+        end
+        menu.option(p_("Forum", "Decline invitation"), nil, "l") do
+          confirm(p_("Forum", "Decline the invitation to %{groupname}?") % { groupname: g.name }) do
+            respond_to_group_invitation(g, type, accept: false)
+          end
+        end
+      end
       s = ""
       s = p_("Forum", "Join") if @sgroups[@grpsel.index - @grpheadindex].role == 0 and @sgroups[@grpsel.index - @grpheadindex].open and @sgroups[@grpsel.index - @grpheadindex].public
-      s = p_("Forum", "Accept invitation") if @sgroups[@grpsel.index - @grpheadindex].role == 5
       s = p_("Forum", "Request to join this group") if @sgroups[@grpsel.index - @grpheadindex].role == 0 && ((@sgroups[@grpsel.index - @grpheadindex].public && !@sgroups[@grpsel.index - @grpheadindex].open) || (@sgroups[@grpsel.index - @grpheadindex].open && !@sgroups[@grpsel.index - @grpheadindex].public))
       if s != ""
         menu.option(s, nil, "j") {
@@ -1045,7 +1092,6 @@ if (((@sgroups[@grpsel.index - @grpheadindex].role==1 || (@sgroups[@grpsel.index
         end
       s = ""
       s = p_("Forum", "Leave") if (@sgroups[@grpsel.index - @grpheadindex].role == 1 or @sgroups[@grpsel.index - @grpheadindex].role == 2 or @sgroups[@grpsel.index - @grpheadindex].role == 4) and @sgroups[@grpsel.index - @grpheadindex].founder != Session.name
-      s = p_("Forum", "Refuse invitation") if @sgroups[@grpsel.index - @grpheadindex].role == 5
       if s != ""
         menu.option(s, nil, "l") {
           confirm(p_("Forum", "Are you sure you want to leave %{groupname}?")%{ :groupname => @sgroups[@grpsel.index - @grpheadindex].name }) {
@@ -1175,6 +1221,7 @@ end
 
   def groupregulationsdlg(group)
     regs = groupregulations(group)
+    return if regs.nil?
       fields=[
             EditBox.new((p_("Forum", "Rules of group %{groupname}")%{:groupname=>group.name}), type: ((group.role==2)?(EditBox::Flags::MultiLine):(EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly)), text: regs),
             Button.new(_("Save")),
@@ -1880,12 +1927,13 @@ rfr.call
   end
 
   def groupregulations(group)
-    forum_fetch("", nil) { EltenLink::Forum.group_regulations(elten_link, group_id: group.id) }
+    forum_fetch { EltenLink::Forum.group_regulations(elten_link, group_id: group.id) }
     end
 
     def canjoin(group)
       return true if !group.hasregulations
-regs=groupregulations(group)
+      regs = groupregulations(group)
+      return false if regs.nil?
 fields = [
 EditBox.new(p_("Forum", "Rules of group %{groupname}")%{:groupname=>group.name}, type: EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly, text: regs),
 Button.new(p_("Forum", "I accept the rules of the group %{groupname}")%{:groupname=>group.name}),
