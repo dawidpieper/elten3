@@ -149,6 +149,7 @@ show(package)
     return if c < 0 || c >= CURRENCIES.size
     @currency = CURRENCIES[c]
     LocalConfig['PremiumPackagesCurrency'] = @currency
+    true
 end
   def show(package)
     sbuy=p_("PremiumPackages", "Buy")
@@ -191,65 +192,71 @@ sactivate=p_("PremiumPackages", "Activate package using code")
     }
     form.wait
     end
-  def refresh
-        @packages=[
-    get_courier,
-    get_audiophile,
-    get_scribe,
-    get_director,
-    get_orchestra,
-    get_sponsor
-    ]
-    begin
-      active_until=EltenLink::PremiumPackages.active_until(elten_link)
-      active_until.each do |package, totime|
-        for c in @packages
-          c.totime=totime if c.package==package
-          end
-        end
-    rescue EltenLink::Error
+  def buy_sponsorship
+    unless Session.logged?
+      alert(_("This section is unavailable for guests"))
+      return
     end
-      begin
-        j=EltenLink::Payments.prices(elten_link)
-        sponsor_only=sponsor_only_offer?(j)
-        for k in j.keys
-          for c in @packages
-            if c.package==k
-              c.activable=true  
-              c.price=j[k]["price$#{@currency}"]
-              c.monthlyprice=j[k]["monthlyprice$#{@currency}"]
-              c.available=j[k]['available']==true
-              c.allowed=c.available && (c.totime==0 || j[k]['yearlimit']>=Time.at(c.totime).year)
-              c.special=j[k]['special']
-            end
-          end
-        end
-        end
-        apply_sponsor_only_offer if sponsor_only
-        apply_offer_availability
-        @sel.rows=@packages.map{|c|
-        st=p_("PremiumPackages", "Inactive")
-        st=p_("PremiumPackages", "Active until %{time}")%{:time=>format_date(Time.at(c.totime))} if c.totime>0
-        monthlyprice=nil
-        price=nil
-        conversionprice=nil
-        if c.available && c.package=="sponsor"
-          z=conversion_credit("sponsor")
-          conversionprice=(c.price-z).ceil if z>0
-        end
-        if c.available && c.package=="orchestra" && c.price.is_a?(Numeric)
-          z=conversion_credit("orchestra")
-          conversionprice=(c.price-z).ceil if z>0
-        end
-        monthlyprice=c.monthlyprice.to_s+" "+@currency if c.available && c.monthlyprice!=nil
-        price=c.price.to_s+" "+@currency if c.available && c.price!=nil
-        conversionprice=nil if conversionprice!=nil && conversionprice<=0
-        conversionprice=conversionprice.to_s+" "+@currency if conversionprice!=nil
-          [c.name, st, price, monthlyprice, conversionprice]
-        }
-        @sel.reload
-      rescue EltenLink::Error, JSON::ParserError
+    @currency = LocalConfig['PremiumPackagesCurrency', "unset", type: :string]
+    return if !CURRENCIES.include?(@currency) && !select_currency
+    unless load_offers(require_active: true)
+      alert(_("Error"))
+      return
+    end
+    sponsor = @packages.find{|package| package.package == "sponsor" && package.allowed}
+    if sponsor && sponsor.price.is_a?(Numeric) && sponsor.price.positive?
+      buy(sponsor, offer_conversion: true)
+    else
+      alert(p_("PremiumPackages", "The Sponsorship package is unavailable for purchase."))
+    end
+  end
+
+  def load_offers(require_active: false)
+    @packages = [get_courier, get_audiophile, get_scribe, get_director, get_orchestra, get_sponsor]
+    begin
+      active_until = EltenLink::PremiumPackages.active_until(elten_link)
+      @packages.each do |package|
+        expires = active_until[package.package]
+        package.totime = expires if expires
       end
+    rescue EltenLink::Error
+      return false if require_active
+    end
+    prices = EltenLink::Payments.prices(elten_link)
+    @packages.each do |package|
+      offer = prices[package.package]
+      next unless offer
+      package.activable = true
+      package.price = offer["price$#{@currency}"]
+      package.monthlyprice = offer["monthlyprice$#{@currency}"]
+      package.available = offer['available'] == true
+      package.allowed = package.available && (package.totime == 0 || offer['yearlimit'] >= Time.at(package.totime).year)
+      package.special = offer['special']
+    end
+    apply_sponsor_only_offer if sponsor_only_offer?(prices)
+    apply_offer_availability
+    true
+  rescue EltenLink::Error, JSON::ParserError
+    false
+  end
+
+  def refresh
+    return unless load_offers
+    @sel.rows = @packages.map do |package|
+      status = p_("PremiumPackages", "Inactive")
+      if package.totime > 0
+        status = p_("PremiumPackages", "Active until %{time}") % {time: format_date(Time.at(package.totime))}
+      end
+      monthlyprice = "#{package.monthlyprice} #{@currency}" if package.available && package.monthlyprice
+      price = "#{package.price} #{@currency}" if package.available && package.price
+      if package.available && ["sponsor", "orchestra"].include?(package.package) && package.price.is_a?(Numeric)
+        reduced_price = conversion_price(package)
+        conversionprice = "#{reduced_price} #{@currency}" if reduced_price&.positive?
+      end
+      [package.name, status, price, monthlyprice, conversionprice]
+    end
+    @sel.reload
+  end
       def sponsor_only_offer?(prices)
         return false if !prices.is_a?(Hash)
         prices.select{|_package, offer|offer.is_a?(Hash) && offer['available']==true}.keys.map(&:to_s).uniq==["sponsor"]
@@ -275,17 +282,47 @@ sactivate=p_("PremiumPackages", "Activate package using code")
           (package.price*0.9)/365.0*days
         end
       end
-      def buy(package, convert=false)
-        return if convert && !confirm(p_("PremiumPackages", "Regardless of the remaining duration of other packages, they will be replaced by the selected package. This package will be activated for a period of one year. The remaining period for other packages will be deducted from the package price. Do you want to continue?"))
+      def conversion_price(package)
+        credit = conversion_credit(package.package)
+        return unless credit.positive?
+        (package.price - credit).ceil
+      end
+
+      def purchase_period(package, offer_conversion)
+        offers = [[:year, p_("PremiumPackages", "One year"), package.price]]
+        if package.monthlyprice.is_a?(Numeric) && package.monthlyprice.positive?
+          offers << [:month, p_("PremiumPackages", "One month"), package.monthlyprice]
+        end
+        if offer_conversion
+          reduced_price = conversion_price(package)
+          offers << [:convert, p_("PremiumPackages", "Convert for one year"), reduced_price] if reduced_price&.positive?
+        end
+        return :year if !offer_conversion && offers.size == 1
+        actions = offers.map do |period, label, price|
+          [period, p_("PremiumPackages", "%{option}: %{price} %{currency}") % {option: label, price: price, currency: @currency}]
+        end
+        select_action(actions, header: p_("PremiumPackages", "Select a purchase option"))
+      end
+
+      def confirm_payment_fee(method, price)
+        fee = 0
+        fee += method['plus'] if method['plus'].is_a?(Numeric)
+        fee += method['perc_plus'] * price / 100.0 if method['perc_plus'].is_a?(Numeric)
+        return true if fee.zero?
+        confirm(p_("PremiumPackages", "The total is %{total} %{currency}, including a processing fee of %{fee} %{currency}. Do you want to continue?") %
+          {total: (price + fee).round(2), fee: fee.round(2), currency: @currency})
+      end
+
+      def buy(package, convert=false, offer_conversion: false)
         if package!=nil && !package.available
           alert(p_("PremiumPackages", "This package is currently unavailable. Try to buy it next month."))
           return
         end
-        type = 0
-        if package!=nil && package.monthlyprice!=nil && package.monthlyprice!=0 && !convert
-          type = selector([p_("PremiumPackages", "One year") + ": " + package.price.to_s + " " + @currency, p_("PremiumPackage", "One month") + ": " + package.monthlyprice.to_s + " " + @currency], header: p_("PremiumPackages", "For how long do you want to buy this package?"), start_index: 0, cancel_index: -1)
-        end
-        return if type==-1
+        period = package && !convert ? purchase_period(package, offer_conversion) : :year
+        return unless period
+        convert = true if period == :convert
+        return if convert && !confirm(p_("PremiumPackages", "Regardless of the remaining duration of other packages, they will be replaced by the selected package. This package will be activated for a period of one year. The remaining period for other packages will be deducted from the package price. Do you want to continue?"))
+        type = period == :month ? 1 : 0
         accepted=false
         form=Form.new([
         edt_info = EditBox.new(p_("PremiumPackages", "Information"), type: EditBox::Flags::MultiLine|EditBox::Flags::ReadOnly, text: p_("PremiumPackages",
@@ -374,10 +411,7 @@ form=Form.new([
       price=package.price if package!=nil
       price=package.monthlyprice if type==1 && package!=nil
       if package!=nil and package.package=="sponsor" and convert==true
-        conversionprice=package.price
-          z=conversion_credit("sponsor")
-          conversionprice=(package.price-z).ceil if z>0
-        price=conversionprice
+        price = conversion_price(package) || package.price
         payment_package='sponsor_c'
         end
       if package==nil
@@ -386,10 +420,7 @@ form=Form.new([
       pr=@packages.find{|pc|!pc.special}
     price=pr.price*payment_amount if pr!=nil
       end
-            per=0
-            per+=method['plus'] if method['plus'].is_a?(Numeric)
-            per+=method['perc_plus']*price/100.0 if method['perc_plus'].is_a?(Numeric)
-      return if (per!=0 && !confirm(p_("PremiumPackages", "You will be charged a processing fee of %{amount} for the selected payment method.")%{:amount=>per.to_s+" "+@currency}))
+      return unless confirm_payment_fee(method, price)
       begin
         url=EltenLink::Payments.pay(elten_link, method: method['id'], package: payment_package, currency: @currency, time: payment_time, amount: payment_amount)
       rescue EltenLink::Error
@@ -406,10 +437,7 @@ form=Form.new([
       price=package.price if package!=nil
       price=package.monthlyprice if type==1 && package!=nil
       if package!=nil and package.package=="sponsor" and convert==true
-        conversionprice=package.price
-          z=conversion_credit("sponsor")
-          conversionprice=(package.price-z).ceil if z>0
-        price=conversionprice
+        price = conversion_price(package) || package.price
         payment_package='sponsor_c'
         end
       if package==nil
@@ -418,10 +446,7 @@ form=Form.new([
       pr=@packages.find{|pc|!pc.special}
     price=pr.price*payment_amount if pr!=nil
       end
-            per=0
-            per+=method['plus'] if method['plus'].is_a?(Numeric)
-            per+=method['perc_plus']*price/100.0 if method['perc_plus'].is_a?(Numeric)
-      return if (per!=0 && !confirm(p_("PremiumPackages", "You will be charged a processing fee of %{amount} for the selected payment method.")%{:amount=>per.to_s+" "+@currency}))
+      return unless confirm_payment_fee(method, price)
 code = input_text(p_("PremiumPackages", "Enter the BLIK code"), flags: EditBox::Flags::Numbers, text: "", escapable: true, permitted_characters: [], denied_characters: [], max_length: 6)
 return if code==nil
       begin

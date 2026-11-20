@@ -18,20 +18,14 @@ module EltenAPI
 
     def requires_premiumpackage(package)
       return true if holds_premiumpackage(package)
-      package_name=''
-      case package
-      when "courier"
-        package_name=p_("EAPI_Common", "Courier")
-when "audiophile"
-        package_name=p_("EAPI_Common", "Audiophile")
-        when "scribe"
-        package_name=p_("EAPI_Common", "Scribe")
-when "director"
-        package_name=p_("EAPI_Common", "Director")
+      if Session.logged?
+        confirm(p_("EAPI_Common", "This feature requires the Sponsorship package. Would you like to buy it?")) do
+          Scene_PremiumPackages.new.buy_sponsorship
+        end
+      else
+        alert(_("This section is unavailable for guests"))
       end
-      confirm(p_("EAPI_Common", "This feature requires the %{package} premium package. Would you like to see the available premium packages?")%{:package=>package_name}) {insert_scene(Scene_PremiumPackages.new)
-      }
-      return false
-      end
+      false
+    end
   end
 end
