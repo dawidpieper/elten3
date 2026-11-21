@@ -824,6 +824,8 @@ return result
       end
     else
       g = @sgroups[index - @grpheadindex]
+      group_table = @grpsel
+      group_row = group_table.rows[index]
       if g.role == 5 && !allThreads
         choice = selector(
           [p_("Forum", "Browse"), p_("Forum", "Accept invitation"), p_("Forum", "Decline invitation"), _("Cancel")],
@@ -848,7 +850,10 @@ return result
         else
            forumsmain(g.id) if g.role == 1 or g.role == 2 or g.public
          end
-         @grpsel.rows[@grpsel.index][-2]=(g.posts-g.readposts).to_s
+        # Returning through groupsmain can replace the table while this call is still active.
+        if @grpsel.equal?(group_table) && group_table.rows[index].equal?(group_row) && group_row && group_row.size >= 2
+          group_row[-2] = (g.posts - g.readposts).to_s
+        end
       else
         alert(p_("Forum", "You cannot access this group."))
       end
