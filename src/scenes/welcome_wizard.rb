@@ -356,11 +356,12 @@ class Scene_WelcomeWizard
   end
 
   def add_quick_actions_page
-    text = p_("WelcomeWizard", "The main window greets you with a list of Quick Actions: shortcuts that take you straight to the places and commands you use most, such as opening Messages, publishing to the feed or entering a conference channel. The default set covers the essentials, but all of it is yours to change: press Tab to choose which actions should be visible in your Quick Actions list; shortcuts assigned to hidden actions remain active. You can also use a Quick Action's context menu at any time to move, rename, hide or delete it, assign a hotkey to it, add further actions or restore the defaults.")
+    text = p_("WelcomeWizard", "The main window greets you with a list of Quick Actions: shortcuts that take you straight to the places and commands you use most, such as opening Messages, publishing to the feed or entering a conference channel. The default set covers the essentials, but all of it is yours to change. Shortcuts assigned to hidden actions remain active. You can also use a Quick Action's context menu at any time to move, rename, hide or delete it, assign a hotkey to it, add further actions or restore the defaults.")
     if available_quick_actions.empty?
       add_info_page(:quick_actions, p_("WelcomeWizard", "Quick Actions"), text)
       return
     end
+    text += " " + p_("WelcomeWizard", "Press Tab to choose which actions should be visible in your Quick Actions list.")
 
     add_page(:quick_actions, p_("WelcomeWizard", "Quick Actions")) do
       actions = available_quick_actions
