@@ -760,7 +760,7 @@ end
     @sgroups.each_with_index do |group, i|
       grpselt[@grpheadindex + i] << activity_date(@group_last_update[group.id])
     end
-    @grpsel = TableBox.new(grpselh, grpselt, index: @grpindex[type], header: p_("Forum", "Forum"))
+    @grpsel = TableBox.new(grpselh, grpselt, index: @grpindex[type], header: p_("Forum", "Forum"), flags: ListBox::Flags::HeaderSkippedOnEntry)
     @grpsel.trigger(:move)
     @grpsel.column = LocalConfig["ForumColumnGroup", type: :numeric] if LocalConfig["ForumColumnGroup", type: :numeric] != nil
     @grpsel.bind_context(p_("Forum", "Forum")) { |menu| context_groups(menu, type) }
@@ -2129,7 +2129,7 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
     end
     @frmindex = 0 if @frmindex == nil
     frmselh = [nil, p_("Forum", "Threads"), p_("Forum", "posts"), p_("Forum", "Unread"), nil, p_("Forum", "Last activity")]
-    @frmsel = TableBox.new(frmselh, frmselt, index: @frmindex, header: p_("Forum", "Select forum"))
+    @frmsel = TableBox.new(frmselh, frmselt, index: @frmindex, header: p_("Forum", "Select forum"), flags: ListBox::Flags::HeaderSkippedOnEntry)
     @sforums.each_with_index do |forum, i|
       apply_forum_row_states(i, forum)
     end
@@ -2702,7 +2702,7 @@ break
     thrselh = [nil, p_("Forum", "Author"), p_("Forum", "posts"), p_("Forum", "Unread")]
     thrselh[4]=nil if id==-11
     thrselh << p_("Forum", "Last activity")
-    @thrsel = TableBox.new(thrselh, thrselt, index: index, header: header, quiet: true, flags: ListBox::Flags::Tagged)
+    @thrsel = TableBox.new(thrselh, thrselt, index: index, header: header, quiet: true, flags: ListBox::Flags::Tagged | ListBox::Flags::HeaderSkippedOnEntry)
     @sthreads.each_with_index do |thread, i|
       apply_thread_row_states(i, thread, id)
     end

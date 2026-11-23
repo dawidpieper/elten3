@@ -36,6 +36,7 @@ class Flags
   Circular=16
   HotKeys=32
   Tagged=64
+  HeaderSkippedOnEntry=128
   end
 
   ITEM_AUDIO_COMPLETION_BUFFER_SECONDS=0.1
@@ -122,6 +123,7 @@ def initialize(options, header: "", index: 0, flags: 0, quiet: true, empty_label
 @anydir=((flags & Flags::AnyDir)>0)
 @hk=((flags & Flags::HotKeys)>0)
 @tagged=((flags & Flags::Tagged)>0)
+@header_skipped_on_entry=((flags & Flags::HeaderSkippedOnEntry)>0)
 @limit=-1
 @item_states=[]
 @item_audio_urls=[]
@@ -1115,6 +1117,11 @@ def foplay(voice)
   play_sound(voice, volume: 100, pitch: 100, pan: lpos)
   end
 
+def header_announced_on_focus?
+  return true if !@header_skipped_on_entry
+  Configuration.announcelistheadersonentry!=false || FormBase.focusing_by_navigation?
+end
+
 def focus(index=nil, count=nil, header=@header, spk=true)
   mark_item_audio_active(self.index) if item_audio?(self.index)
   pos=50
@@ -1139,10 +1146,13 @@ end
             braille_text=""
             remember_late_focus_states(pos) if spk
             if @header!=nil and @header!=""
-            sp = text_utf8(header || @header)
+            sp = header_announced_on_focus? ? text_utf8(header || @header) : ""
             sp+=" (#{text_utf8(p_("EAPI_Form", "Multi-select list"))})" if @multi==true and Configuration.controlspresentation!=:sound_only
+            sp=sp.lstrip
+            if sp!=""
                             sp+=": " if !" .:?!,".include?(sp[-1..-1] || "")
               sp+=" " if sp[-1..-1]!=" "
+            end
               end
             if options.size>0
               if !hidden?(self.index) && self.index>=0

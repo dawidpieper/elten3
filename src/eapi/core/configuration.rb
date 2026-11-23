@@ -70,6 +70,7 @@ module EltenAPI
   Configuration.iicards = load_configuration_list("InvisibleInterface", "Cards", [:messages, :feed, :conference], [:messages, :feed, :conference])
   Configuration.iireadmessagesubjects = load_configuration_boolean("InvisibleInterface", "ReadMessageSubjects", false)
   Configuration.roundupforms = load_configuration_boolean("Interface", "RoundUpForms", false)
+  Configuration.announcelistheadersonentry = load_configuration_boolean("Interface", "AnnounceListHeadersOnEntry", true)
   Configuration.usepan = load_configuration_boolean("Interface", "UsePan", true)
   Configuration.soundcard = readconfig("SoundCard", "SoundCard", "")
   if Configuration.soundcard==""

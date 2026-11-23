@@ -199,7 +199,7 @@ def import(arr)
       ind=selt.size-1 if u.user==@lastuser.user if @lastuser!=nil
     end
 selt.push(p_("Messages", "Show older")) if @users_more
-    @sel_users=ListBox.new(selt,header: p_("Messages", "Messages"), index: ind, flags: 0, quiet: false)
+    @sel_users=ListBox.new(selt,header: p_("Messages", "Messages"), index: ind, flags: ListBox::Flags::HeaderSkippedOnEntry, quiet: false)
     states.each_with_index{|st,i|@sel_users.set_item_states(i, st) if st!=nil}
     @sel_users.bind_context{|menu|context_users(menu)}
 end
@@ -509,7 +509,7 @@ if result.conversations.empty? and sp=='new'
     selt.push(p_("Messages", "Show older")) if @conversations_more
     u=user
     u=@conversation_name if @conversation_name!="" && @conversation_name!=nil
-    @sel_conversations=ListBox.new(selt,header: ((sp==nil)?(p_("Messages", "Conversations with %{user}")%{:user=>u}):""), index: ind, flags: 0, quiet: false)
+    @sel_conversations=ListBox.new(selt,header: ((sp==nil)?(p_("Messages", "Conversations with %{user}")%{:user=>u}):""), index: ind, flags: ListBox::Flags::HeaderSkippedOnEntry, quiet: false)
     states.each_with_index{|st,i|@sel_conversations.set_item_states(i, st) if st!=nil}
     @sel_conversations.bind_context{|menu|context_conversations(menu)}
   end
@@ -648,7 +648,7 @@ def deleteconversation(c)
     head=p_("Messages", "Messages in conversation %{subject} with %{user}")%{:subject=>subject||"",:user=>u}
     head=p_("Messages", "Flagged messages") if sp=='flagged'
     head=p_("Messages", "Found items") if sp=='search'
-    @sel_messages=ListBox.new(selt,header: head)
+    @sel_messages=ListBox.new(selt,header: head, flags: ListBox::Flags::HeaderSkippedOnEntry)
     states.each_with_index{|st,i|@sel_messages.set_item_states(i, st) if st!=nil}
     audio_urls.each_with_index{|url,i|@sel_messages.set_item_audio(i, url, autoplay: audio_autoplay[i]!=false, completion_label: audio_completion_labels[i]) if url!=nil && url.to_s!=""}
     @sel_messages.bind_context{|menu|context_messages(menu)}

@@ -130,6 +130,17 @@ module EltenAPI
 
       class FormBase
         attr_accessor :header
+        @@focusing_by_navigation=false
+        def self.focus_by_navigation
+          previous=@@focusing_by_navigation
+          @@focusing_by_navigation=true
+          yield
+        ensure
+          @@focusing_by_navigation=previous
+        end
+        def self.focusing_by_navigation?
+          @@focusing_by_navigation
+        end
         def params
           @params||={}
           @params
@@ -421,7 +432,7 @@ ind=@index
           @fields[oldindex].trigger(:blur)
           @fields[oldindex].blur
           @fields[@index].trigger(:before_focus)
-            @fields[@index].focus(@index, @fields.size)
+            FormBase.focus_by_navigation { @fields[@index].focus(@index, @fields.size) }
             @fields[@index].trigger(:focus)
             trigger(:move, @index)
         else

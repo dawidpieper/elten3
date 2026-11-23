@@ -173,7 +173,7 @@ def apply_settings
 end
 def make_window
   @form=Form.new
-  @form.fields[0] = ListBox.new([], header: p_("Settings", "Category"))
+  @form.fields[0] = ListBox.new([], header: p_("Settings", "Category"), flags: ListBox::Flags::HeaderSkippedOnEntry)
   @form.fields[1]=Button.new(_("Apply"))
   @form.fields[2]=Button.new(_("Save"))
   @form.fields[3]=Button.new(_("Cancel"))
@@ -265,6 +265,7 @@ def make_window
                     make_setting(p_("Settings", "Wrap long lines in text fields"), :bool, "Interface", "LineWrapping")
             make_setting(p_("Settings", "Selection-list navigation mode"), [p_("Settings", "Linear"),p_("Settings", "Circular")], "Interface", "ListType", ["linear", "circular"])
             make_setting(p_("Settings", "Wrap focus within forms"), :bool, "Interface", "RoundUpForms")
+            make_setting(p_("Settings", "Announce list names when entering a screen"), :bool, "Interface", "AnnounceListHeadersOnEntry")
             make_setting(p_("Settings", "Automatically play audio content"), [p_("Settings", "Always"),p_("Settings", "Only when transcription is not available"), p_("Settings", "Never")], "Interface", "AutoPlay", ["always", "without_transcription", "never"])
             make_setting(p_("Settings", "Keyboard scheme"), [p_("Settings", "Default"), p_("Settings", "Windows"), p_("Settings", "macOS")], "Interface", "KeyboardScheme", ["default", "windows", "macos"])
             make_setting(p_("Settings", "Use macOS-style character navigation in text fields"), [p_("Settings", "System Default"), p_("Settings", "Disable"), p_("Settings", "Enable")], "Interface", "MacOSCharacterNavigation", ["default", "disabled", "enabled"])
