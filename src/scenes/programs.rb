@@ -56,15 +56,24 @@ class Scene_Programs
     $scene=Scene_Main.new if $scene==self
   end
 
-  def category_labels
+  def category_labels(hidden_count=hidden_language_programs.size)
     {
       updates: p_("Programs", "Available updates"),
       installed: p_("Programs", "Installed programs"),
       featured: p_("Programs", "Featured programs"),
       popular: p_("Programs", "Most installed programs"),
       recent: p_("Programs", "Recently updated programs"),
+      hidden_languages: p_("Programs", "Programs hidden by the language filter (%{count})")%{count: hidden_count},
       authors: p_("Programs", "Programs by author")
     }
+  end
+
+  def root_category_labels
+    hidden_count=hidden_language_programs.size
+    labels=category_labels(hidden_count)
+    labels.delete(:updates) if available_updates.empty?
+    labels.delete(:hidden_languages) if hidden_count==0
+    labels
   end
 
   def program_list?
@@ -94,9 +103,12 @@ class Scene_Programs
   end
 
   def build_view(announce_header: false)
-    labels=category_labels
+    if @category==:hidden_languages && hidden_language_programs.empty?
+      @category=nil
+      @author=nil
+    end
+    labels=@category==nil ? root_category_labels : category_labels
     if @category==nil
-      labels.delete(:updates) if available_updates.empty?
       @items=labels.keys
       options=labels.values
       header=p_("Programs", "Program centre")
@@ -117,6 +129,8 @@ class Scene_Programs
       p_("Programs", "The program catalogue is unavailable.")
     elsif @category==:updates
       p_("Programs", "No updates available.")
+    elsif @category==:hidden_languages
+      p_("Programs", "No programs are hidden by the language filter.")
     else
       p_("Programs", "No programs available.")
     end
@@ -160,8 +174,16 @@ class Scene_Programs
   end
 
   def visible_server_programs
-    compatible=@programs.select{|program|remote_program_platform_compatible?(program) || installed_program_for(program)!=nil}
-    filter_server_programs(compatible)
+    filter_server_programs(compatible_server_programs)
+  end
+
+  def compatible_server_programs
+    @programs.select{|program|remote_program_platform_compatible?(program) || installed_program_for(program)!=nil}
+  end
+
+  def hidden_language_programs
+    compatible=compatible_server_programs
+    compatible-filter_server_programs(compatible)
   end
 
   def category_programs
@@ -170,6 +192,8 @@ class Scene_Programs
       @installed
     when :updates
       available_updates.map(&:first)
+    when :hidden_languages
+      hidden_language_programs
     when :featured
       visible_server_programs.select(&:recommended)
     when :authors
