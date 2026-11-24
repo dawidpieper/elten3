@@ -23,6 +23,29 @@ module ForumSceneClient
     false
   end
 
+  def forum_publish_attempt(kind)
+    yield
+    true
+  rescue EltenLink::Error => error
+    log_forum_error(error)
+    alert(forum_publish_error_message(error, kind))
+    false
+  end
+
+  def forum_publish_error_message(error, kind)
+    uncertain = ["network_error", "timeout", "cancelled", "invalid_json"].include?(error.code.to_s) ||
+      (error.code.to_s == "api_error" && error.response == nil)
+    if kind == :thread
+      return p_("Forum", "The server could not confirm whether the thread was created. Check the forum before trying again to avoid creating a duplicate thread.") if uncertain
+
+      p_("Forum", "Could not create the thread: %{error}") % { error: error.message }
+    else
+      return p_("Forum", "The server could not confirm whether the post was published. Check the thread before trying again to avoid creating a duplicate post.") if uncertain
+
+      p_("Forum", "Could not publish the post: %{error}") % { error: error.message }
+    end
+  end
+
   def forum_group_moderator?(group)
     group.role == 2 || (Session.moderator == 1 && group.recommended)
   end
@@ -3475,7 +3498,7 @@ form.wait
         atts.chop! if atts[-1..-1] == ","
         attachments = atts
       end
-      ft = forum_attempt(nil, p_("Forum", "Error creating thread!")) {
+      ft = forum_publish_attempt(:thread) {
         EltenLink::Forum.create_thread(elten_link, forumid: forumclasses[form.fields[-3].index].id, name: name, text: text, format: format, follow: form.fields[-4].checked, polls: polls, attachments: attachments, questions: questions)
       }
     else
@@ -3485,7 +3508,7 @@ if flp[0..3] != "OggS"
         alert(_("Error"))
         return $scene = Scene_Main.new
       end
-      ft = forum_attempt(nil, p_("Forum", "Error creating thread!")) {
+      ft = forum_publish_attempt(:thread) {
         EltenLink::Forum.create_audio_thread(elten_link, forumid: forumclasses[form.fields[-3].index].id, name: name, audio: flp, follow: form.fields[-4].checked, questions: questions)
       }
       form.fields[1].delete_audio(true)
@@ -4134,7 +4157,7 @@ end
       if @form.fields[@postscount * POST_FIELDS + 4]!=nil
         format = @form.fields[@postscount * POST_FIELDS + 4].checked
         end
-      if forum_attempt(nil) {
+      if forum_publish_attempt(:post) {
         EltenLink::Forum.create_post(elten_link, thread_id: @thread, text: text, attachments: attachments, format: format, questions: @reply_questions)
       }
         @form.fields[@postscount * POST_FIELDS + 1].set_text("")
@@ -4161,7 +4184,7 @@ end
         alert(_("Error"))
         return $scene = Scene_Main.new
       end
-      if forum_attempt(nil, p_("Forum", "Post creation failure.")) {
+      if forum_publish_attempt(:post) {
         EltenLink::Forum.create_audio_post(elten_link, thread_id: @thread, audio: fl, questions: @reply_questions)
       }
         @reply_questions.clear
