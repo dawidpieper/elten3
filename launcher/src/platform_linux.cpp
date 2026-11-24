@@ -285,9 +285,10 @@ RubyApi PlatformLoadRuby(const fs::path &runtimeDir, const fs::path &fallbackRub
   };
   void *library = nullptr;
   std::ostringstream errors;
+  std::ostringstream missing;
   for (const auto &candidate : candidates) {
     if (!fs::exists(candidate)) {
-      errors << "  " << PlatformPathToUtf8(candidate) << ": file not found\n";
+      missing << "  " << PlatformPathToUtf8(candidate) << ": file not found\n";
       continue;
     }
     // RTLD_GLOBAL: native gem extensions leave Ruby symbols undefined and
@@ -299,7 +300,13 @@ RubyApi PlatformLoadRuby(const fs::path &runtimeDir, const fs::path &fallbackRub
            << "\n";
   }
   if (library == nullptr) {
-    throw std::runtime_error("Cannot load Ruby shared library:\n" + errors.str());
+    // When a copy exists but cannot be loaded, the loader's reason - usually a
+    // dependency of libruby that is not found - is the only useful part. Listing
+    // the absent fallback beside it as "file not found" reads as if libruby
+    // itself were missing from the installation, so report it only when no
+    // candidate exists at all.
+    std::string details = errors.str().empty() ? missing.str() : errors.str();
+    throw std::runtime_error("Cannot load Ruby shared library:\n" + details);
   }
 
   RubyApi api;
