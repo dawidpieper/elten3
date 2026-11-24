@@ -9,7 +9,7 @@ module EltenAPI
     private
   class EditBox < FormField
     BRAILLE_CONTEXT_CHARS = 25_000
-    READ_TEXT_BREAK_PATTERN = /\n|[!?\.,] /.freeze
+    READ_TEXT_BREAK_PATTERN = /\n|[!?\.] /.freeze
     @@customactions=[]
     @@lastedits=[]
     attr_accessor :index
@@ -1645,8 +1645,7 @@ def value
       end
       links = markdown_link_starts(index, limit_end - 1).to_h { |position| [position, true] }
       links.each_key { |position| breaks[position] = text_byte_offset(position) }
-      initial_callbacks=(@speak_callbacks||{})[fragment_char]
-      if head!=nil && head!="" && initial_callbacks!=nil && initial_callbacks.size>0
+      if head!=nil && head!=""
         commands.push(head.to_s+"\n")
         head=""
       end
