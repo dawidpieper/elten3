@@ -251,8 +251,8 @@ module EltenLink
         true
       end
 
-      def complete(client, task)
-        client.api_data("PATCH", "/api/v1/tasks/#{task_id(task)}/completion")
+      def complete(client, task, cancellation_token: nil)
+        client.api_data("PATCH", "/api/v1/tasks/#{task_id(task)}/completion", cancellation_token: cancellation_token)
         true
       end
 
