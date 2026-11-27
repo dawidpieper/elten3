@@ -351,6 +351,7 @@ class Scene_Forum
     return if @frmsel==nil || @sforums==nil || @sforums[index]==nil || @frmsel.rows[index]==nil
     @frmsel.rows[index][0] = forum_row_title(@sforums[index])
     apply_forum_row_states(index, @sforums[index])
+    @frmsel.reload_row(index)
   end
 
   def refresh_thread_row(index=nil, list_id=@forum)
@@ -358,6 +359,7 @@ class Scene_Forum
     return if @thrsel==nil || @sthreads==nil || @sthreads[index]==nil || @thrsel.rows[index]==nil
     @thrsel.rows[index][0] = thread_row_title(@sthreads[index], list_id)
     apply_thread_row_states(index, @sthreads[index], list_id)
+    @thrsel.reload_row(index)
   end
 
   def mark_thread_read_locally(thread_id)
@@ -378,7 +380,6 @@ class Scene_Forum
       @thrsel.rows[index][3] = "0"
       refresh_thread_row(index)
     end
-    @thrsel.reload
   end
 
   def forum_closed_command
@@ -783,9 +784,9 @@ end
     @sgroups.each_with_index do |group, i|
       grpselt[@grpheadindex + i] << activity_date(@group_last_update[group.id])
     end
-    @grpsel = TableBox.new(grpselh, grpselt, index: @grpindex[type], header: group_list_header(type))
+    column = LocalConfig["ForumColumnGroup", type: :numeric] || 0
+    @grpsel = TableBox.new(grpselh, grpselt, index: @grpindex[type], header: group_list_header(type), column: column)
     @grpsel.trigger(:move)
-    @grpsel.column = LocalConfig["ForumColumnGroup", type: :numeric] if LocalConfig["ForumColumnGroup", type: :numeric] != nil
     @grpsel.bind_context(p_("Forum", "Forum")) { |menu| context_groups(menu, type) }
     return [@sgroups, @grpheadindex]
   end
@@ -865,7 +866,11 @@ return result
         end
         # Returning through groupsmain can replace the table while this call is still active.
         if @grpsel.equal?(group_table) && group_table.rows[index].equal?(group_row) && group_row && group_row.size >= 2
-          group_row[-2] = (g.posts - g.readposts).to_s
+          unread = (g.posts - g.readposts).to_s
+          if group_row[-2] != unread
+            group_row[-2] = unread
+            group_table.reload_row(index)
+          end
         end
       else
         alert(p_("Forum", "You cannot access this group."))
@@ -1136,7 +1141,7 @@ if (((@sgroups[@grpsel.index - @grpheadindex].role==1 || (@sgroups[@grpsel.index
               end
             @sgroups[@grpsel.index-@grpheadindex].readposts = @sgroups[@grpsel.index-@grpheadindex].posts
             @grpsel.rows[@grpsel.index][-2]="0"
-            @grpsel.reload
+            @grpsel.reload_row(@grpsel.index)
             alert(p_("Forum", "The group has been marked as read."))
           end
         end
@@ -2148,12 +2153,12 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
     else
       @groups.find { |candidate| candidate.id == group }&.name || p_("Forum", "Forums")
     end
-    @frmsel = TableBox.new(frmselh, frmselt, index: @frmindex, header: header)
+    column = LocalConfig["ForumColumnForum", type: :numeric] || 0
+    @frmsel = TableBox.new(frmselh, frmselt, index: @frmindex, header: header, column: column)
     @sforums.each_with_index do |forum, i|
       apply_forum_row_states(i, forum)
     end
     @frmsel.trigger(:move)
-    @frmsel.column = LocalConfig["ForumColumnForum", type: :numeric] if LocalConfig["ForumColumnForum", type: :numeric] != nil
     @frmsel.bind_context(p_("Forum", "Forum")) { |menu| context_forums(menu) }
   end
   
@@ -2369,7 +2374,7 @@ form.focus
             @sforums[@frmsel.index].group.readposts = @forums.find_all{|f|f.group==@sforums[@frmsel.index].group}.map{|f|f.readposts}.sum
             apply_forum_row_states(@frmsel.index, @sforums[@frmsel.index])
             @frmsel.rows[@frmsel.index][3]="0"
-            @frmsel.reload
+            @frmsel.reload_row(@frmsel.index)
             alert(p_("Forum", "The forum has been marked as read."))
           end
         end
@@ -2442,7 +2447,6 @@ break
               refresh_forum_row
               alert(p_("Forum", "The forum has been closed"))
             end
-            @frmsel.reload
           end
         } if can_manage_forums
         m.option(p_("Forum", "Edit forum tags"), nil, "t") {
@@ -2735,12 +2739,13 @@ break
     thrselh = [nil, p_("Forum", "Author"), p_("Forum", "posts"), p_("Forum", "Unread")]
     thrselh[4]=nil if id==-11
     thrselh << p_("Forum", "Last activity")
-    @thrsel = TableBox.new(thrselh, thrselt, index: index, header: thread_list_header(id, target_forum), quiet: true, flags: ListBox::Flags::Tagged)
+    column = LocalConfig["ForumColumnThread", type: :numeric] || 0
+    @thrsel = TableBox.new(thrselh, thrselt, index: index, header: thread_list_header(id, target_forum),
+      quiet: true, flags: ListBox::Flags::Tagged, column: column)
     @sthreads.each_with_index do |thread, i|
       apply_thread_row_states(i, thread, id)
     end
     @thrsel.trigger(:move)
-    @thrsel.column = LocalConfig["ForumColumnThread", type: :numeric] if LocalConfig["ForumColumnThread", type: :numeric] != nil
     @thrsel.bind_context(p_("Forum", "Forum")) { |menu| context_threads(menu) }
     if @tag != nil
       @thrsel.tag = @tag
@@ -2972,7 +2977,6 @@ break
               refresh_thread_row
               alert(p_("Forum", "The thread has been closed"))
             end
-            @thrsel.reload
           end
         }
         s = p_("Forum", "Pin thread")
@@ -2991,7 +2995,6 @@ break
               refresh_thread_row
               alert(p_("Forum", "Thread has been pinned"))
             end
-            @thrsel.reload
           end
         }
         if @sthreads[@thrsel.index].offered==0
