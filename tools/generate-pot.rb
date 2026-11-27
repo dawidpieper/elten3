@@ -26,3 +26,5 @@ Dir.chdir(__dir__) do
     File.binwrite(OUTPUT, File.binread(temporary.path))
   end
 end
+
+system(RbConfig.ruby, File.join(__dir__, "translation-coverage.rb"), exception: true)

@@ -100,6 +100,8 @@ Elten uses Gettext, but translation artefacts are deliberately updated separatel
 
 The POT template is regenerated as a single coordinated update during release preparation. Batching extraction avoids repeated changes across a large generated file and reduces unnecessary merge conflicts between otherwise unrelated contributions.
 
+The template generator also updates the interface translation percentages in `resources/translation-coverage.json`. After compiling an updated `.mo`, run `ruby tools/translation-coverage.rb` with the same `gettext` gem and include the refreshed resource with the catalogue. Packaged builds reuse this resource when it matches the template and catalogues. With changed inputs they regenerate it in the build directory using the build host's Ruby and gettext.
+
 A commit whose sole purpose is maintaining a translation may update the relevant `.po` files. Keep such work separate from source-code changes so that translation work and later merges have a clear boundary. The POT template should still be left to the scheduled release extraction unless the change is explicitly the coordinated template refresh itself.
 
 When writing or translating localised text:

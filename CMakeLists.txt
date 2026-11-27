@@ -133,11 +133,26 @@ add_executable(EltenAssetGenerator
 )
 
 set(ELTEN_ASSET_GENERATOR_COMMAND "$<TARGET_FILE:EltenAssetGenerator>")
+set(ELTEN_TRANSLATION_COVERAGE "${ELTEN_GENERATED_DIR}/translation-coverage.json")
 set(ELTEN_ASSET_GENERATOR_DEPENDS
+  "${ELTEN_TRANSLATION_COVERAGE}"
   EltenAssetGenerator
   "$<TARGET_FILE:EltenAssetGenerator>"
   "${ELTEN_ASSET_GENERATOR_SOURCE}"
   "${ELTEN_ASSET_GENERATOR_BLAKE3_HEADER}"
+)
+
+file(GLOB ELTEN_TRANSLATION_CATALOGUES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/locale/*/LC_MESSAGES/elten.mo")
+file(GENERATE OUTPUT "${ELTEN_GENERATED_DIR}/translation-catalogues.txt" CONTENT "${ELTEN_TRANSLATION_CATALOGUES}\n")
+add_custom_command(
+  OUTPUT "${ELTEN_TRANSLATION_COVERAGE}"
+  COMMAND "${CMAKE_COMMAND}" "-DROOT=${CMAKE_SOURCE_DIR}" "-DOUTPUT=${ELTEN_TRANSLATION_COVERAGE}"
+          -P "${CMAKE_SOURCE_DIR}/cmake/translation_coverage.cmake"
+  DEPENDS "${CMAKE_SOURCE_DIR}/cmake/translation_coverage.cmake" "${CMAKE_SOURCE_DIR}/tools/translation-coverage.rb"
+          "${CMAKE_SOURCE_DIR}/resources/translation-coverage.json"
+          "${CMAKE_SOURCE_DIR}/locale/elten.pot" "${ELTEN_GENERATED_DIR}/translation-catalogues.txt" ${ELTEN_TRANSLATION_CATALOGUES}
+  COMMENT "Preparing translation coverage for the interface language list"
+  VERBATIM
 )
 
 target_include_directories(EltenAssetGenerator PRIVATE
