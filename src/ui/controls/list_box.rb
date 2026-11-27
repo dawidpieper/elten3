@@ -1115,11 +1115,11 @@ def foplay(voice)
   play_sound(voice, volume: 100, pitch: 100, pan: lpos)
   end
 
-def focus(index=nil, count=nil, header=@header, spk=true)
+def focus(index=nil, count=nil, header=@header, spk=true, announce_header: true)
   mark_item_audio_active(self.index) if item_audio?(self.index)
   pos=50
     pos=index.to_f/(count-1).to_f*100.0 if index!=nil and count!=nil && count!=0
-  if spk && Configuration.controlspresentation!=:voice_only
+  if spk && announce_header && Configuration.controlspresentation!=:voice_only
     if @multi==false
   play_sound("listbox_marker", volume: 100, pitch: 100, pan: pos)  if @silent == false
 else
@@ -1138,7 +1138,7 @@ end
             sp=""
             braille_text=""
             remember_late_focus_states(pos) if spk
-            if @header!=nil and @header!=""
+            if announce_header && @header!=nil && @header!=""
             sp = text_utf8(header || @header)
             sp+=" (#{text_utf8(p_("EAPI_Form", "Multi-select list"))})" if @multi==true and Configuration.controlspresentation!=:sound_only
                             sp+=": " if !" .:?!,".include?(sp[-1..-1] || "")

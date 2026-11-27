@@ -215,8 +215,8 @@ super
              end
            @sel.update
          end
-         def focus(index=nil,count=nil)
-           @sel.focus(index, count)
+         def focus(index=nil, count=nil, announce_header: true)
+           @sel.focus(index, count, announce_header: announce_header)
          end
 
          def selected?
