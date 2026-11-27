@@ -6,6 +6,7 @@
 
 class Scene_Main
   include NotificationGroups
+  include FeedNavigation
 
   NOTIFICATION_FOCUS_POLICIES = [:configured, :keep_current, :new_notifications, :unread_notifications].freeze
 
@@ -69,6 +70,7 @@ class Scene_Main
     feeds_load(false)
     @program_ui_revision = program_ui_revision
     focus_current_control
+    @from_feed = false
 
     loop do
       loop_update
@@ -261,7 +263,11 @@ def focus_current_control
   when :actions
     @acsel.focus if @acsel!=nil
   when :feed
-    @feedsel.focus if @feedsel!=nil
+    if @from_feed
+      @feedsel&.focus(announce_header: false)
+    else
+      @feedsel&.focus
+    end
   when :empty
     empty_main_control.focus
   else
@@ -493,16 +499,22 @@ def feed_update
   if @feeds.size>0
     if @feedsel.selected?
       feedshow(@feeds[@feedsel.index])
+      @feedsel.focus if $scene == self
       loop_update
     end
     if @feedsel.expanded?
       feed=@feeds[@feedsel.index]
       if feed.responses>0
-        $scene = Scene_FeedViewer.new(feed, Scene_Main.new(notification_focus: :keep_current), false)
+        open_feed_responses(feed)
       end
     end
   end
 end
+def open_feed_responses(feed)
+  parent = Scene_Main.new(notification_focus: :keep_current)
+  $scene = Scene_FeedViewer.new(feed, feed_parent: parent)
+end
+
 def qacindex
   ind=@acsel.index
   ind-=@specials.size
@@ -742,11 +754,11 @@ def feeds_context(menu)
     menu.useroption(feed.user)
     if feed.responses>0
       menu.option(p_("Main", "Show responses"), nil, "d") {
-      $scene = Scene_FeedViewer.new(feed)
+      open_feed_responses(feed)
       }
       elsif feed.response>0
       menu.option(p_("Main", "Show conversation"), nil, "d") {
-      $scene = Scene_FeedViewer.new(feed, nil, false)
+      open_feed_responses(feed)
       }
     end
     if feed.likes>0

@@ -4,14 +4,27 @@
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
 
-class Scene_FeedViewer
-  def initialize(n, scene=nil, first=true)
-    @ind=-1
-    @n=n
-    @scene=scene
-    @first=first
+module FeedNavigation
+  def return_from_feed
+    @from_feed = true
+    self
   end
+end
+
+class Scene_FeedViewer
+  include FeedNavigation
+
+  def initialize(n, scene=nil, first=true, feed_parent: nil)
+    @n = n
+    @scene = scene
+    @first = first && feed_parent.nil?
+    @feed_parent = feed_parent
+    @from_feed = !feed_parent.nil?
+  end
+
   def main
+    previous_index = @sel&.index
+    previous_id = @feeds[previous_index]&.id if previous_index
     begin
       @feeds = []
       if @n.is_a?(String)
@@ -26,7 +39,7 @@ class Scene_FeedViewer
     rescue EltenLink::Error => e
       Log.warning("Feed viewer load failed: #{e.message}")
       alert(_("Error"))
-      $scene=@scene || Scene_Main.new
+      $scene = @feed_parent || @scene || Scene_Main.new
       return
     end
 selt=@feeds.map{|f|
@@ -41,36 +54,41 @@ rescue Exception
 parts << EltenAPI::SpeechCommands::SoundCommand.new("listbox_itemcontaining", " "+p_("EAPI_Speech", "Containing")+": ", "->", immediate: true) if f.responses>0
 EltenAPI::SpeechSequence.new(parts)
 }
-ind=0
-ind=selt.size-1 if selt.size>0 && @n.is_a?(FeedMessage)
-ind=@ind if @ind!=-1
-@sel = ListBox.new(selt, header: p_("FeedViewer", "Feed"), index: ind, flags: 0, quiet: true)
-configure_feed_list_audio(@sel, @feeds)
-@sel.focus
-@sel.bind_context{|menu|context(menu)}
-loop do
-  loop_update
-  @sel.update
-  break if key_pressed?(:key_escape) or key_pressed?(:key_tab) or (@first!=true && @sel.collapsed?)
-  break if $scene!=self
-  if @sel.expanded? && @feeds.size>0 && @feeds[@sel.index].responses>0 && !responses_shown?(@feeds[@sel.index])
-    feed=@feeds[@sel.index]
-$scene = Scene_FeedViewer.new(feed, $scene, false)
-end
-if @sel.selected? and @feeds.size>0
-  feedshow(@feeds[@sel.index])
-  loop_update
+    if previous_index
+      index = @feeds.index { |feed| feed.id == previous_id } || previous_index.clamp(0, [@feeds.size - 1, 0].max)
+    else
+      index = @n.is_a?(FeedMessage) && !@feeds.empty? ? @feeds.size - 1 : 0
+    end
+    @sel = ListBox.new(selt, header: p_("FeedViewer", "Feed"), index: index, quiet: true)
+    configure_feed_list_audio(@sel, @feeds)
+    @sel.focus(announce_header: !@from_feed)
+    @from_feed = false
+    @sel.bind_context { |menu| context(menu) }
+    loop do
+      loop_update
+      break if $scene != self
+      @sel.update
+      break if $scene != self
+      if key_pressed?(:key_escape) || key_pressed?(:key_tab) || (!@first && @sel.collapsed?)
+        $scene = @feed_parent&.return_from_feed || @scene || Scene_Main.new
+        break
+      end
+      feed = @feeds[@sel.index]
+      if feed && @sel.expanded? && feed.responses > 0 && !responses_shown?(feed)
+        open_feed_responses(feed)
+        break
+      elsif feed && @sel.selected?
+        feedshow(feed)
+        @sel.focus if $scene == self
+        loop_update
+      end
+    end
   end
-end
-@ind=@sel.index
-if $scene==self
-if @scene!=nil
-  $scene=@scene
-else
-  $scene=Scene_Main.new
-end
-end
-end
+
+  def open_feed_responses(feed)
+    $scene = Scene_FeedViewer.new(feed, feed_parent: self)
+  end
+
 def responses_shown?(feed)
   return false if !@n.is_a?(FeedMessage)
   feed.id==@n.id || (@n.response>0 && feed.id==@n.response)
@@ -82,12 +100,12 @@ def context(menu)
     if feed.responses>0
       if !responses_shown?(feed)
       menu.option(p_("FeedViewer", "Show responses"), nil, "d") {
-      $scene = Scene_FeedViewer.new(feed, $scene, false)
+        open_feed_responses(feed)
       }
       end
     elsif feed.response>0
       menu.option(p_("FeedViewer", "Show conversation"), nil, "d") {
-      $scene = Scene_FeedViewer.new(feed, $scene, false)
+        open_feed_responses(feed)
       }
     end
     if feed.likes>0
