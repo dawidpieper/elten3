@@ -23,6 +23,7 @@ module NotificationGroups
     grouprole
     mtr
     app
+    new_programs
     program_updates
     update
   ].freeze
@@ -349,6 +350,20 @@ module NotificationGroups
 
   def collect_virtual_notification_groups
     groups = NotificationGroups.virtual_notification_groups
+    if Session.logged? && ProgramCatalogue.notifications_enabled?
+      account = Session.name.to_s.downcase
+      ProgramCatalogue.pending_notifications(account).each do |uuid, entry|
+        group = NotificationGroup.new(
+          key: "virtual:new_program:#{account}:#{uuid}", cat: "new_programs",
+          category: category_label("new_programs"), date: entry["date"], revoked: false,
+          ids: [], payload: entry.merge("uuid" => uuid, "account" => account), payloads: [],
+          event_count: 1, virtual: true,
+          action: Proc.new { insert_scene(Scene_Programs.new(selected_program: uuid), true, return_to_main: true) }
+        )
+        group.label = group_label(group)
+        groups << group
+      end
+    end
     Programs::LocalNotifications.list(include_revoked: true).each do |notification|
       group = NotificationGroup.new(
         key: notification.id,
@@ -384,7 +399,11 @@ module NotificationGroups
     virtual_groups.to_a.each_with_object([]) do |group, result|
       next unless group.virtual?
 
-      group.revoked = group.local? ? group.app_notification.revoked? : virtual_notification_revoked?(group.key)
+      group.revoked = if group.cat == "new_programs"
+        !ProgramCatalogue.pending_notifications(group.payload["account"]).key?(group.payload["uuid"])
+      else
+        group.local? ? group.app_notification.revoked? : virtual_notification_revoked?(group.key)
+      end
       group.label = group_label(group)
       result << group if include_revoked == true || !group.revoked
     end
@@ -397,6 +416,11 @@ module NotificationGroups
   def revoke_virtual_notification(group)
     if group.local?
       return false unless group.app_notification.revoke
+    elsif group.cat == "new_programs"
+      unless ProgramCatalogue.acknowledge(group.payload["account"], group.payload["uuid"])
+        alert(_("Error"))
+        return false
+      end
     else
       @@virtual_notification_revoked[group.key.to_s] = true
     end
@@ -639,6 +663,8 @@ module NotificationGroups
       p_("Notifications", "Programs")
     when "program_updates"
       p_("Notifications", "Program updates")
+    when "new_programs"
+      p_("Notifications", "New programs")
     when "update"
       p_("Notifications", "Updates")
     else
@@ -698,6 +724,8 @@ module NotificationGroups
       monitor_title(payload, count: count, payloads: payloads)
     when "program_updates"
       program_updates_title(payload)
+    when "new_programs"
+      payload["name"].to_s
     when "update"
       update_title(payload)
     else
@@ -1195,6 +1223,7 @@ module NotificationGroups
 
   def open_notification_group(group)
     return false if group == nil
+    return false if group.cat == "new_programs" && (!Session.logged? || group.payload["account"] != Session.name.to_s.downcase)
     return false if group.local? && !Programs::LocalNotifications.include?(group.app_notification)
 
     if group.action != nil
@@ -1230,7 +1259,7 @@ module NotificationGroups
 
   def revoke_all_notification_groups(groups=nil)
     groups.to_a.each do |group|
-      revoke_virtual_notification(group) if group.virtual? && !group.revoked
+      return false if group.virtual? && !group.revoked && !revoke_virtual_notification(group)
     end
     if groups == nil || groups.any? { |group| !group.virtual? && !group.revoked && !group.ids.empty? }
       EltenLink::Notifications.revoke_all(elten_link, app_uuids: Programs.notification_app_uuids)
