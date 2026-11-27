@@ -25,6 +25,7 @@ Treat existing code as evidence of how Elten reached its present state, not as a
 | Understand the runtime, source tree or loading order | [Elten 3 architecture](architecture.md) |
 | Review cross-cutting development directions | [Development roadmap](roadmap.md) |
 | Develop an application hosted by Elten | [Elten applications](eltenapps.md) |
+| Add optional application actions to the Program Centre | [Optional Program Centre actions](eltenapps.md#optional-program-centre-actions) |
 | Plan and implement a change | [Planning a change](#planning-a-change), then [Making changes](#making-changes) |
 | Change a form or user interaction | [Elten interface conventions](#elten-interface-conventions) |
 | Report a suspected vulnerability | [Security Policy](security.md) |
