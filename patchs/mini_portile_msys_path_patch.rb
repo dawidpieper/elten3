@@ -33,6 +33,10 @@ if defined?(::MiniPortile)
       alias_method :elten_original_computed_options, :computed_options
     end
 
+    unless private_method_defined?(:elten_original_download_file)
+      alias_method :elten_original_download_file, :download_file
+    end
+
     unless method_defined?(:elten_original_configure)
       alias_method :elten_original_configure, :configure
     end
@@ -51,8 +55,21 @@ if defined?(::MiniPortile)
 
     def computed_options
       elten_original_computed_options.map do |option|
-        option.is_a?(String) ? MiniPortile.elten_msys_posix_option(option) : option
+        # SQLite's config.sub expects the MinGW host spelling, unlike Clang.
+        if name == "sqlite3" && option == "--host=aarch64-w64-windows-gnu"
+          "--host=aarch64-w64-mingw32"
+        else
+          option.is_a?(String) ? MiniPortile.elten_msys_posix_option(option) : option
+        end
       end
+    end
+
+    def download_file(url, full_path, count = 3)
+      # GNU's mirror selector can redirect Ruby to a mirror that returns 403.
+      if name == "libiconv" && url == "https://ftpmirror.gnu.org/gnu/libiconv/libiconv-#{version}.tar.gz"
+        url = "https://ftp.gnu.org/gnu/libiconv/libiconv-#{version}.tar.gz"
+      end
+      elten_original_download_file(url, full_path, count)
     end
 
     def configure
@@ -80,6 +97,9 @@ if defined?(::MiniPortile)
     end
 
     def elten_patch_generated_build_files
+      # SQLite's autosetup Makefile already works with MSYS make and is read-only.
+      return if name == "sqlite3"
+
       elten_patch_generated_libtool
       Dir.glob(File.join(work_path, "**", "Makefile")).each do |makefile|
         text = File.read(makefile)
