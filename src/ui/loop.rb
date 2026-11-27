@@ -193,15 +193,11 @@ end
               missed_call = @@call if @@call != nil && @@call.id == d['call_id'] && !@@call.handled?
               @@call=nil
               if missed_call != nil && missed_call.caller != nil
-                @@missedcalls_window ||= MissedCallsWindow.new
-                @@missedcalls_window.add_caller(missed_call.caller)
+                show_missed_call(missed_call.caller)
               end
-              $focus=true
+              $focus=true unless EltenAPI::UI.calls_muted?
            elsif d['func']=='missed_call'
-             if d['caller']!=nil
-               @@missedcalls_window ||= MissedCallsWindow.new
-               @@missedcalls_window.add_caller(d['caller'])
-             end
+             show_missed_call(d['caller'])
            elsif d['func']=='premiumpackages'
              update_premiumpackages(d['premiumpackages'].to_s.split(","))
            elsif d['func']=="feeds"
@@ -379,9 +375,11 @@ if $agalarm==true and $alarmproc!=true
     process_quick_action_hotkeys(only: :donotdisturb)
   end
   if @@call!=nil
-  @@call.update
-  EltenAPI::KeyboardState.clear_current_frame if defined?(EltenAPI::KeyboardState)
+    # Hidden calls must not consume the underlying control's input frame.
+    if @@call.update
+      EltenAPI::KeyboardState.clear_current_frame if defined?(EltenAPI::KeyboardState)
       $focus=false
+    end
     elsif @@missedcalls_window!=nil && @@missedcalls_window.active==true
 @@missedcalls_window.update
   EltenAPI::KeyboardState.clear_current_frame if defined?(EltenAPI::KeyboardState)
