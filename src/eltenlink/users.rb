@@ -21,6 +21,7 @@ module EltenLink
     :feed_followed,
     :monitored,
     :archived,
+    :blacklisted,
     keyword_init: true
   )
 
@@ -79,7 +80,8 @@ module EltenLink
           callable: bool_value(data["callable"]),
           feed_followed: bool_value(data["feed_followed"]),
           monitored: bool_value(data["monitored"]),
-          archived: bool_value(data["archived"])
+          archived: bool_value(data["archived"]),
+          blacklisted: bool_value(data["blacklisted"])
         )
       end
 
