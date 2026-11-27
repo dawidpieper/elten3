@@ -19,19 +19,19 @@ end
 
 gem "base62", "1.0.0"
 gem "base64", "0.3.0"
-gem "bigdecimal", "3.3.1"
-gem "nokogiri", "1.19.4", force_ruby_platform: true
-gem "rubyzip", "3.2.2"
+gem "bigdecimal", "4.1.3"
+gem "nokogiri", "1.19.7", force_ruby_platform: true
+gem "rubyzip", "3.7.0"
 gem "fiddle", "1.1.8"
-gem "net-http", "0.9.1"
+gem "net-http", "0.10.0"
 
 platforms :windows do
-  gem "win32ole", "1.9.2"
+  gem "win32ole", "1.9.3"
 end
-gem "http-2", "1.1.3"
+gem "http-2", "1.3.0"
 gem "tzinfo", "2.0.6"
 gem "tzinfo-data", "1.2026.6"
 gem "ostruct", "0.6.3"
 gem "ruby-xz", "1.0.3"
-gem "sqlite3", "2.9.5", force_ruby_platform: true
-gem "zstd-ruby", "2.0.6"
+gem "sqlite3", "2.10.2", force_ruby_platform: true
+gem "zstd-ruby", "2.0.10"
