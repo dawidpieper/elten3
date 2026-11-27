@@ -177,7 +177,14 @@ def readupdate
             if key_pressed?(:key_enter)
 url=nil
 @elements.each {|e| url=e.param[1] if (e.from<=@index and e.to>=@index) and (e.type==Element::Link || e.type==Element::Frame)}
-@elements.each {|e| url=e.param[1] if (e.from>=line_beginning and e.to<=line_ending) and (e.type==Element::Link || e.type==Element::Frame)} if url==nil
+if url == nil && !@elements.empty?
+  beginning, ending = line_bounds
+  @elements.each do |element|
+    if (element.type == Element::Link || element.type == Element::Frame) && element.from >= beginning && element.to <= ending
+      url = element.param[1]
+    end
+  end
+end
               if url!=nil
                 speak(p_("EAPI_Form", "Opening a link..."))
         loop_update
@@ -307,15 +314,13 @@ espeech(p_("EAPI_Form", "End of line"))
                 directional_selection_collapse=true
                 announce_navigation_position
               else
-              b=line_beginning
-              e=line_ending
+              b, e = line_bounds
                             if b==0
                 play_sound("border")
                 espeech(e>0?(spoken_line(0,e-1)):"")
               else
                                 l=@vindex-b
-                em=line_ending(b-1)
-                bm=line_beginning(b-1)
+                bm, em = line_bounds(b-1)
                 l=em-bm if em-bm<l
                 l=0 if e-b<=1
                 l=line_ending(bm-1)-bm-1 if raw_key_held?(:key_shift)
@@ -330,15 +335,13 @@ espeech(p_("EAPI_Form", "End of line"))
                 directional_selection_collapse=true
                 announce_navigation_position
               else
-              b=line_beginning
-              e=line_ending
+              b, e = line_bounds
               if e==text_len
                 play_sound("border")
                 espeech(spoken_line(b,e-1))
               else
                 l=@vindex-b
-                ep=line_ending(e+1)
-                bp=line_beginning(e+1)
+                bp, ep = line_bounds(e+1)
                 l=ep-bp if ep-bp<l
                 l=0 if e-b<=1
                 l=line_ending(@vindex+1)-bp if raw_key_held?(:key_shift)
@@ -347,23 +350,20 @@ espeech(p_("EAPI_Form", "End of line"))
                 end
               end
         end
-                                                        if key_pressed?(:key_page_up) && !modifier_held?(:command)
-                    if line_beginning==0
-                play_sound("border")
-                espeech(spoken_line(0,line_ending-1))
-              else
-                @vindex=move_page_lines(-15)
-                espeech(spoken_line(line_beginning,line_ending-1))
-                end
+            if key_pressed?(:key_page_up) && !modifier_held?(:command)
+              page_delta = -15
             elsif key_pressed?(:key_page_down) && !modifier_held?(:command)
-              if line_ending==text_len
+              page_delta = 15
+            end
+            if page_delta
+              beginning, ending = line_bounds
+              if (page_delta < 0 && beginning == 0) || (page_delta > 0 && ending == text_len)
                 play_sound("border")
-                                espeech(spoken_line(line_beginning,line_ending-1))
               else
-                @vindex=move_page_lines(15)
-                espeech(spoken_line(line_beginning,line_ending-1))
-                end
+                @vindex, beginning, ending = page_line_target(page_delta, beginning, ending)
               end
+              espeech(spoken_line(beginning, ending-1))
+            end
               lastcheck=get_check(true)
               previous_selection=selection_bounds
               checked=false
@@ -420,7 +420,7 @@ espeech(p_("EAPI_Form", "End of line"))
           def ctrlupdate
 
   read_text(@index) if @index<text_len and (((key_held?(0x2d) and key_pressed?(:key_down)))) and (@audiotext==nil or @index>0)
-  espeech(spoken_line(line_beginning,line_ending)) if key_held?(0x2d) and key_pressed?(:key_up)
+  espeech(spoken_line(*line_bounds)) if key_held?(0x2d) and key_pressed?(:key_up)
   esay
 end
 def clear_sounds
@@ -513,8 +513,7 @@ def context(menu, submenu=false)
         for i in 1..6
       n.option(p_("EAPI_Form", "Heading level %{level}")%{:level=>i}, i, i.to_s) {|level|
       if requires_premiumpackage("scribe")
-      a=line_beginning(@vindex, true)
-      b=line_ending(@vindex, true)
+      a, b = line_bounds(@vindex, true)
       del=[]
       s=false
       for e in @elements
@@ -560,7 +559,7 @@ def context(menu, submenu=false)
         end
     end
     loop_update
-    speak(text_range(line_beginning,line_ending))
+    speak(text_range(*line_bounds))
     end
     }
     }
@@ -569,7 +568,7 @@ def context(menu, submenu=false)
   read_text(@index) if @index<text_len
   }
   menu.option(p_("EAPI_Form", "Read line"), nil, "L") {
-  espeech(spoken_line(line_beginning,line_ending))
+  espeech(spoken_line(*line_bounds))
   }
   if defined?(SpeechToFile) && SpeechToFile.available?
     menu.option(p_("EAPI_Form", "Read to file")) {
@@ -913,19 +912,27 @@ else
     edelete(index, index + len - 1, false)
   end
 
-  def line_beginning(index=@vindex, absolute=false)
+  def line_bounds(index=@vindex, absolute=false)
     index = clamp_text_index(index)
-                  return 0 if index==0
-    return 0 if text_len==0
-l=((((index>3000?index-3000:0) ... index).find_all { |i| text_char(i)=="\n"}[-1])||-1)+1
-  r=((index ... (index<text_len-3000?index+3000:text_len)).find_all { |i| text_char(i)=="\n"}[0])||text_len
-  ls=get_vlines(l,r, absolute)
-  ind=l
-  for n in ls
-    ind=n if n<=index
+    previous_lf = @text.rindex("\n", index-1) if index > 0
+    beginning = previous_lf ? previous_lf + 1 : 0
+    ending = @text.index("\n", index) || text_len
+    each_wrap_start(beginning, ending, absolute) do |position|
+      return [beginning, position-1] if position > index
+      beginning = position
+    end
+    [beginning, ending]
   end
-      return ind
-end
+
+  def line_beginning(index=@vindex, absolute=false)
+    return 0 if index.to_i <= 0
+    line_bounds(index, absolute).first
+  end
+
+  def line_ending(index=@vindex, absolute=false)
+    line_bounds(index, absolute).last
+  end
+
 def previous_word_index(index)
   index = clamp_text_index(index)
   index -= 1 while index>0 && word_separator?(text_char(index-1))
@@ -1012,19 +1019,6 @@ def deletion_range(action)
     to>@index ? [@index,to-1] : nil
   end
 end
-def line_ending(index=@vindex, absolute=false)
-  index = clamp_text_index(index)
-              return 0 if text_len==0
-  l=((((index>3000?index-3000:0) ... index).find_all { |i| text_char(i)=="\n"}[-1])||-1)+1
-  r=((index ... (index<text_len-3000?index+3000:text_len)).find_all { |i| text_char(i)=="\n"}[0])||text_len
-        ls=get_vlines(l,r, absolute)
-      ln=0
-    for i in 0...ls.size-1
-    ln=i if ls[i]<=index
-  end
-  ind=ls[ln+1]-1
-    return ind
-  end
   def markdown_link_starts(from, to)
     return [] if (@flags & Flags::MarkDown) == 0 || from > to
     @elements.filter_map do |element|
@@ -1045,8 +1039,7 @@ def line_ending(index=@vindex, absolute=false)
       espeech("")
       return
     end
-    beginning=line_beginning(@vindex, true)
-    ending=line_ending(@vindex, true)
+    beginning, ending = line_bounds(@vindex, true)
     espeech(ending>beginning ? spoken_line(beginning,ending-1) : "")
   end
   def announce_navigation_character(end_of_line=false)
@@ -1116,24 +1109,33 @@ def line_ending(index=@vindex, absolute=false)
     ind = clamp_text_index(ind)
     return [ind, ind]
     end
-def get_vlines(l,r, absolute=false)
-    return [l,r+1] if r-l<120 or (@flags&Flags::MultiLine)==0 or (@flags&Flags::DisableLineWrapping)>0 or Configuration.linewrapping==false or absolute==true
-  ls=[l]
-    for c in l...r
-           if text_char(c)==" " and c-ls[-1]>120 and c!=r-1
-                        for oc in c..r
-if text_char(oc)!=" "
-              ls.push(oc)
-              break if oc>=r
-              break
-              end
+  def each_wrap_start(beginning, ending, absolute)
+    return if absolute == true || ending - beginning <= 120
+    return if (@flags & Flags::MultiLine) == 0 || (@flags & Flags::DisableLineWrapping) != 0 || Configuration.linewrapping == false
+
+    # A visual line breaks at the first non-space after a space beyond column 120.
+    position = beginning
+    line_start = beginning
+    wrap_pending = false
+    @text[beginning...ending].each_codepoint do |codepoint|
+      if codepoint == 0x20
+        wrap_pending = true if position - line_start > 120
+      elsif wrap_pending
+        yield position
+        line_start = position
+        wrap_pending = false
       end
-          end
+      position += 1
     end
-    ls.delete_at(-1) if ls[-1]>=r
-    ls.push(r+1) if ls[-1]!=r+1
-                  return ls
   end
+  private :each_wrap_start
+
+  def get_vlines(beginning, ending, absolute=false)
+    starts = [beginning]
+    each_wrap_start(beginning, ending, absolute) { |position| starts << position }
+    starts << ending + 1
+  end
+
   def get_lines
         return [0] if text_len==0
         ns=(0...text_len).find_all {|c| text_char(c)=="\n"}
@@ -1147,28 +1149,26 @@ if text_char(oc)!=" "
           end
               return lines
           end
-  def move_page_lines(delta)
-    current_begin=line_beginning
-    current_end=line_ending
-    inlineindex=@vindex-current_begin
-    target_begin=current_begin
-    target_end=current_end
+  def page_line_target(delta, beginning, ending)
+    column = @vindex - beginning
     delta.abs.times do
-      if delta<0
-        break if target_begin<=0
-        probe=target_begin-1
-        target_begin=line_beginning(probe)
-        target_end=line_ending(probe)
+      if delta < 0
+        break if beginning == 0
+        beginning, ending = line_bounds(beginning-1)
       else
-        break if target_end>=text_len
-        probe=target_end+1
-        target_begin=line_beginning(probe)
-        target_end=line_ending(probe)
+        break if ending == text_len
+        beginning, ending = line_bounds(ending+1)
       end
     end
-    line_width=target_end-target_begin
-    inlineindex=line_width if inlineindex>line_width
-    target_begin+inlineindex
+    position = [beginning + column, ending].min
+    # A negative cursor set through index= can land before the target line.
+    beginning, ending = line_bounds(position) if position < beginning
+    [position, beginning, ending]
+  end
+  private :page_line_target
+
+  def move_page_lines(delta)
+    page_line_target(delta, *line_bounds).first
   end
   def get_check(checkOnly=false)
   return @text if @index==@check && !checkOnly
