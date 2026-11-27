@@ -17,6 +17,16 @@ if(PLATFORM STREQUAL "windows")
   set(desired_marker "${desired_marker}msys2_packages=${MSYS2_PACKAGES}\n")
   set(desired_marker "${desired_marker}nokogiri_msys_patch=${NOKOGIRI_MSYS_PATCH}\n")
   set(desired_marker "${desired_marker}nokogiri_build_options=${NOKOGIRI_BUILD_OPTIONS}\n")
+  if(ARCH STREQUAL "x86")
+    # These packages were dropped from the MINGW32 sync database. MSYS2
+    # still serves the final i686 binaries in its official package archive.
+    set(mingw32_archives
+      make    4.4.1-5  99ec08ede59a9e70aeb6789afc4d37ee8d3209c5b5efcfb3ffdbcaee04b94562
+      libxml2 2.15.4-3 7322296a85037218ff89d313ffef51ef5a0b6b0b0d3b6faa1ef4a3014cbf5b69
+      libxslt 1.1.45-1 6bcaa7d177860521f842c0adba9cf7b6dfe8f2a859349254a04834a199fe8045
+    )
+    string(APPEND desired_marker "mingw32_archives=${mingw32_archives}\n")
+  endif()
 elseif(PLATFORM STREQUAL "osx")
   # The macOS 27 SDK exposes these APIs even when targeting macOS 26, where
   # calling them crashes miniruby. Keep Ruby's fallback implementations.
@@ -306,6 +316,35 @@ function(copy_file_if_missing source destination)
   endif()
 endfunction()
 
+function(install_msys2_packages)
+  separate_arguments(repo_packages NATIVE_COMMAND "${MSYS2_PACKAGES}")
+  set(local_packages)
+  while(mingw32_archives)
+    list(POP_FRONT mingw32_archives name version sha256)
+    set(package "mingw-w64-i686-${name}")
+    list(FIND repo_packages "${package}" requested)
+    # libxml2 is a dependency of libxslt and must be in the same transaction.
+    if(requested EQUAL -1 AND NOT name STREQUAL "libxml2")
+      continue()
+    endif()
+    list(REMOVE_ITEM repo_packages "${package}")
+    set(archive "${package}-${version}-any.pkg.tar.zst")
+    set(cache_path "/var/cache/pacman/pkg/${archive}")
+    file(DOWNLOAD "https://repo.msys2.org/mingw/mingw32/${archive}" "${msys_root}${cache_path}"
+      EXPECTED_HASH "SHA256=${sha256}" TLS_VERIFY ON)
+    list(APPEND local_packages "${cache_path}")
+  endwhile()
+
+  list(JOIN repo_packages " " sync_args)
+  message(STATUS "Installing MSYS2 packages: ${sync_args}")
+  run_checked_with_c_locale("${msys_bash}" -lc "pacman --color never --noconfirm --needed -Sy ${sync_args}")
+  if(local_packages)
+    list(JOIN local_packages " " local_args)
+    message(STATUS "Installing archived MINGW32 packages: ${local_args}")
+    run_checked_with_c_locale("${msys_bash}" -lc "pacman --color never --noconfirm --needed -U ${local_args}")
+  endif()
+endfunction()
+
 function(repair_msys2_toolchain_links)
   if(ARCH STREQUAL "x64")
     set(mingw_prefix "ucrt64")
@@ -330,12 +369,16 @@ function(repair_msys2_toolchain_links)
   # as a hardlink, which can be missing on shared Windows build directories.
   copy_file_if_missing("${mingw_bin}/pkgconf.exe" "${mingw_bin}/pkg-config.exe")
   copy_file_if_missing("${mingw_bin}/pkg-config.exe" "${mingw_bin}/${target_triplet}-pkg-config.exe")
+  copy_file_if_missing("${mingw_bin}/${target_triplet}-pkg-config.exe" "${mingw_bin}/pkg-config.exe")
   if(INSTALL_GEMS AND NOT EXISTS "${mingw_bin}/${target_triplet}-pkg-config.exe")
     message(FATAL_ERROR "MSYS2 pkg-config was not prepared: ${mingw_bin}/${target_triplet}-pkg-config.exe")
   endif()
 
   if(ARCH STREQUAL "arm64")
-    foreach(tool clang clang++ clang-cpp gcc g++)
+    # Clang packages use cc.exe or the target-prefixed c++.exe as the
+    # original file for their driver hardlinks, depending on the release.
+    copy_file_if_missing("${mingw_bin}/${target_triplet}-c++.exe" "${mingw_bin}/cc.exe")
+    foreach(tool c++ clang clang++ clang-cpp as gcc g++)
       copy_file_if_missing("${mingw_bin}/cc.exe" "${mingw_bin}/${tool}.exe")
       if(NOT EXISTS "${mingw_bin}/${tool}.exe")
         message(FATAL_ERROR "MSYS2 compiler tool was not prepared: ${mingw_bin}/${tool}.exe")
@@ -343,6 +386,7 @@ function(repair_msys2_toolchain_links)
       copy_file_if_missing("${mingw_bin}/${tool}.exe" "${mingw_bin}/${target_triplet}-${tool}.exe")
     endforeach()
     copy_file_if_missing("${mingw_bin}/ld.lld.exe" "${mingw_bin}/ld.exe")
+    copy_file_if_missing("${mingw_bin}/ld.exe" "${mingw_bin}/ld.lld.exe")
     copy_file_if_missing("${mingw_bin}/ld.exe" "${mingw_bin}/lld.exe")
   elseif(NOT EXISTS "${mingw_bin}/ld.exe")
     message(STATUS "Repairing MSYS2 binutils hardlinks for ${ARCH}")
@@ -474,6 +518,9 @@ if(PLATFORM STREQUAL "windows")
   set(msys_bash "${msys_root}/usr/bin/bash.exe")
   set(msys_stamp "${msys_root}/.elten-msys2.stamp")
   set(msys_marker "source=msys2-base\nurl=${MSYS2_URL}\npackages=${MSYS2_PACKAGES}\n")
+  if(mingw32_archives)
+    string(APPEND msys_marker "mingw32_archives=${mingw32_archives}\n")
+  endif()
   set(msys_reset OFF)
   if(EXISTS "${msys_stamp}")
     file(READ "${msys_stamp}" current_msys_marker)
@@ -508,12 +555,7 @@ if(PLATFORM STREQUAL "windows")
       string(REGEX REPLACE "(^|\n)LocalFileSigLevel[^\n]*" "\\1LocalFileSigLevel = Never" pacman_conf_text "${pacman_conf_text}")
       file(WRITE "${pacman_conf}" "${pacman_conf_text}")
     endif()
-    message(STATUS "Installing MSYS2 packages: ${MSYS2_PACKAGES}")
-    run_checked_with_c_locale(
-      "${msys_bash}"
-      -lc
-      "pacman --color never --noconfirm --needed -Sy ${MSYS2_PACKAGES}"
-    )
+    install_msys2_packages()
   endif()
   # Also repair runtimes installed before these checks were added.
   repair_msys2_toolchain_links()
