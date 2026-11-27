@@ -606,7 +606,7 @@ if $setkeys.is_a?(Array)
       return if $windowminimized == true || modifier_held?(:option)
       main_modifier_held = modifier_held?(:main_modifier)
       shift_held = raw_key_held?(:key_shift)
-      for i in 1..11
+      for i in 1..12
         next unless raw_key_first_pressed?(0x6F + i)
         key = i
         key += 12 if main_modifier_held
@@ -649,13 +649,6 @@ if $setkeys.is_a?(Array)
         end
       elsif !main_menu_opened && $opencontextmenu==0
         $opencontextmenucounter=0
-      end
-      if key_first_pressed?(0x7B)
-        if $resetting!=true
-          $resetting=true
-          confirm(p_("EAPI_UI", "Do you want to restart Elten?")) {$reset=true}
-          $resetting=false
-        end
       end
       process_quick_action_hotkeys
       any_key_pressed = key_any_pressed?
