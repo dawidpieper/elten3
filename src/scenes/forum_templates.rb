@@ -125,7 +125,11 @@ module ForumTemplatesScene
       return if templates == nil
       begin
         EltenLink::Forum.set_forum_templates(elten_link, forumid: forum.id, templates: templates)
-        forum.has_templates = !templates.empty?
+        has_templates = !templates.empty?
+        if forum.has_templates != has_templates
+          Scene_Forum.invalidate_structure!
+          forum.has_templates = has_templates
+        end
         alert(_("Saved"))
         return
       rescue EltenLink::Error => error

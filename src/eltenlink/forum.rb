@@ -10,14 +10,43 @@ module EltenLink
   class ForumStructure
     attr_reader :groups, :forums, :threads, :ident, :raw_cache, :loaded_at, :url_templates
 
-    def initialize(groups:, forums:, threads:, ident:, raw_cache:, loaded_at: Time.now.to_f, url_templates: {})
+    ReuseState = Struct.new(:valid)
+    private_constant :ReuseState
+
+    def initialize(groups:, forums:, threads:, ident:, raw_cache:, loaded_at: Time.now.to_f, url_templates: {},
+      templates_offset: nil, reuse_state: nil)
       @groups = groups
       @forums = forums
       @threads = threads
-      @ident = ident
-      @raw_cache = raw_cache
+      @ident = ident.frozen? ? ident : ident.dup.freeze
+      @raw_cache = raw_cache.frozen? ? raw_cache : raw_cache.dup.freeze
       @loaded_at = loaded_at
       @url_templates = url_templates
+      @templates_offset = templates_offset
+      # Keep the caller-visible Hash mutable without letting edits alter the wire cache.
+      @template_snapshot = url_templates.transform_values(&:dup) if templates_offset && url_templates.values.all?(String)
+      @reuse_state = reuse_state || ReuseState.new(true)
+    end
+
+    def reusable?
+      @reuse_state.valid
+    end
+
+    def invalidate!
+      @reuse_state.valid = false
+    end
+
+    def confirmed(templates)
+      return unless reusable? && @templates_offset
+
+      # The server hashes the rows separately from its URL templates. The latter
+      # are the final field in raw_cache and may change with the same ident.
+      raw = @raw_cache
+      unless templates == @template_snapshot
+        raw = (raw.byteslice(0, @templates_offset) << JSON.generate(templates) << "}").freeze
+      end
+      self.class.new(groups: @groups, forums: @forums, threads: @threads, ident: @ident, raw_cache: raw,
+        url_templates: templates, templates_offset: @templates_offset, reuse_state: @reuse_state)
     end
 
     def to_h
@@ -126,36 +155,41 @@ module EltenLink
     ].freeze
 
     class << self
-      def structure(client, last_ident: nil, last_cache: nil, old_groups: [], old_forums: [], old_threads: [])
-        params = {}
+      def structure(client, last_ident: nil, last_cache: nil, old_groups: [], old_forums: [], old_threads: [],
+        previous: nil, session_auth: nil)
+        auth = session_auth && { "name" => session_auth["name"].to_s.dup, "token" => session_auth["token"].to_s.dup }
+        params = auth ? auth.dup : {}
         if last_ident.to_s != "" && last_cache.to_s != ""
           params["ident"] = last_ident.to_s
           params["increment"] = 1
         end
         data = client.api_data("GET", "/api/v1/forum", params)
-        cached_data = cached_structure_data(last_cache)
         if truthy?(data["unchanged"])
-          data = if cached_data != nil
-            cached_data.merge("ident" => data["ident"].to_s.empty? ? last_ident.to_s : data["ident"].to_s,
-              "url_templates" => data["url_templates"])
+          response_ident = data["ident"].to_s
+          if params["ident"] && (response_ident.empty? || response_ident == params["ident"])
+            if previous.is_a?(ForumStructure) && previous.ident == response_ident && previous.raw_cache.equal?(last_cache)
+              confirmed = previous.confirmed(structure_url_templates(data["url_templates"]))
+              return confirmed if confirmed
+            end
+            cached = cached_structure_data(last_cache)
+            data = cached&.merge("ident" => params["ident"], "url_templates" => data["url_templates"])
           else
-            client.api_data("GET", "/api/v1/forum")
+            data = nil
           end
         elsif truthy?(data["incremental"])
-          expanded = expand_incremental_structure(data, cached_data)
-          data = expanded || client.api_data("GET", "/api/v1/forum")
+          data = params["ident"] && expand_incremental_structure(data, cached_structure_data(last_cache, incremental: true))
+        else
+          return build_structure(data)
         end
 
-        groups = build_groups(data["groups"])
-        forums = build_forums(data["forums"], groups)
-        threads = build_threads(data["threads"], forums)
-        validate_group_featured_threads(groups, threads)
-        raw_cache_data = raw_structure_data(data)
-        raw_cache = JSON.generate(raw_cache_data)
-        ident = data["ident"].to_s
-        ident = Digest::SHA256.hexdigest(raw_cache)[0, 40] if ident.empty?
-        ForumStructure.new(groups: groups, forums: forums, threads: threads, ident: ident, raw_cache: raw_cache,
-          url_templates: raw_cache_data["url_templates"])
+        restored = build_structure(data, from_cache: true) if data
+        return restored if restored
+
+        data = auth ? client.api_data("GET", "/api/v1/forum", auth) : client.api_data("GET", "/api/v1/forum")
+        if truthy?(data["unchanged"]) || truthy?(data["incremental"])
+          raise Error.new("Expected a full forum structure", code: "invalid_response")
+        end
+        build_structure(data)
       end
 
       def url_from_template(template, id)
@@ -807,16 +841,47 @@ module EltenLink
 
       private
 
-      def cached_structure_data(raw_cache)
+      def build_structure(data, from_cache: false)
+        groups = build_groups(data["groups"])
+        forums = build_forums(data["forums"], groups, require_parents: from_cache)
+        return unless forums
+        threads = build_threads(data["threads"], forums, require_parents: from_cache)
+        return unless threads
+
+        validate_group_featured_threads(groups, threads)
+        raw_cache_data = raw_structure_data(data)
+        raw_cache = JSON.generate(raw_cache_data).freeze
+        templates = raw_cache_data.fetch("url_templates")
+        templates_offset = raw_cache.bytesize - JSON.generate(templates).bytesize - 1
+        ident = data["ident"].to_s
+        ident = Digest::SHA256.hexdigest(raw_cache)[0, 40] if ident.empty?
+        ForumStructure.new(groups: groups, forums: forums, threads: threads, ident: ident, raw_cache: raw_cache,
+          url_templates: templates, templates_offset: templates_offset)
+      rescue NoMethodError, TypeError, RangeError, JSON::GeneratorError
+        # A legacy caller can supply valid JSON with a field the model cannot convert.
+        raise unless from_cache
+        nil
+      end
+
+      def cached_structure_data(raw_cache, incremental: false)
         data = JSON.parse(raw_cache.to_s)
         return nil unless data.is_a?(Hash)
         return nil unless data["groups"].is_a?(Array) && data["forums"].is_a?(Array) && data["threads"].is_a?(Array)
-        return nil unless data["forums"].all? { |row| row.is_a?(Hash) && row["forumid"].to_i.positive? }
-        return nil unless data["threads"].all? { |row| row.is_a?(Hash) && row["forumid"].to_i.positive? }
+        # A delta validates old rows while building its lookup by ID.
+        return data if incremental
+        return nil unless data["groups"].all? { |row| row.is_a?(Hash) && structure_id?(row["id"]) }
+        return nil unless data["forums"].all? { |row| row.is_a?(Hash) && structure_id?(row["forumid"]) }
+        return nil unless data["threads"].all? { |row| row.is_a?(Hash) && structure_id?(row["id"]) && structure_id?(row["forumid"]) }
 
         raw_structure_data(data)
       rescue JSON::ParserError
         nil
+      end
+
+      def structure_id?(id)
+        return id.positive? if id.is_a?(Integer)
+
+        id.is_a?(String) && Integer(id, 10, exception: false)&.positive?
       end
 
       def raw_structure_data(data)
@@ -824,8 +889,12 @@ module EltenLink
           "groups" => data["groups"].to_a,
           "forums" => data["forums"].to_a,
           "threads" => data["threads"].to_a,
-          "url_templates" => data["url_templates"].is_a?(Hash) ? data["url_templates"].slice("group", "forum", "thread") : {}
+          "url_templates" => structure_url_templates(data["url_templates"])
         }
+      end
+
+      def structure_url_templates(templates)
+        templates.is_a?(Hash) ? templates.slice("group", "forum", "thread") : {}
       end
 
       def expand_incremental_structure(data, cached_data)
@@ -833,7 +902,7 @@ module EltenLink
 
         groups = expand_incremental_rows(data["groups"], cached_data["groups"], "id")
         forums = expand_incremental_rows(data["forums"], cached_data["forums"], "forumid")
-        threads = expand_incremental_rows(data["threads"], cached_data["threads"], "id")
+        threads = expand_incremental_rows(data["threads"], cached_data["threads"], "id", "forumid")
         return nil if groups == nil || forums == nil || threads == nil
 
         {
@@ -845,25 +914,30 @@ module EltenLink
         }
       end
 
-      def expand_incremental_rows(rows, old_rows, id_key)
-        old_by_id = old_rows.to_a.each_with_object({}) do |row, result|
-          result[row[id_key].to_s] = row if row.is_a?(Hash)
+      def expand_incremental_rows(rows, old_rows, id_key, parent_key = nil)
+        return unless rows.is_a?(Array)
+
+        old_by_id = {}
+        old_rows.each do |row|
+          return unless row.is_a?(Hash)
+          id = row[id_key]
+          return unless structure_id?(id)
+          return if parent_key && !structure_id?(row[parent_key])
+          old_by_id[id.to_i] = row
         end
-        missing = false
-        expanded = rows.to_a.map do |row|
-          if reference_row?(row)
-            cached = old_by_id[row["ref"].to_s]
-            missing = true if cached == nil
-            cached
+        rows.map do |row|
+          return unless row.is_a?(Hash)
+          if row.key?("ref")
+            ref = row["ref"]
+            return unless row.size == 1
+            ref = Integer(ref, 10, exception: false) if ref.is_a?(String)
+            old_by_id.fetch(ref) { return }
           else
+            return unless structure_id?(row[id_key])
+            return if parent_key && !structure_id?(row[parent_key])
             row
           end
         end
-        missing ? nil : expanded
-      end
-
-      def reference_row?(row)
-        row.is_a?(Hash) && row.length == 1 && row.key?("ref")
       end
 
       def build_groups(rows)
@@ -903,13 +977,16 @@ module EltenLink
         end
       end
 
-      def build_forums(rows, groups)
+      def build_forums(rows, groups, require_parents: false)
         group_by_id = groups.each_with_object({}) { |group, result| result[group.id] = group }
         rows.to_a.map do |row|
           forum = Struct_Forum_Forum.new(row["forumid"].to_i)
           forum.fullname = row["name"].to_s
           forum.type = row["type"].to_i
-          forum.group = group_by_id[row["group_id"].to_i] || Struct_Forum_Group.new(0)
+          forum.group = group_by_id.fetch(row["group_id"].to_i) do
+            return if require_parents
+            Struct_Forum_Group.new(0)
+          end
           forum.description = row["description"].to_s
           forum.meta = row["meta"].to_s
           forum.has_templates = truthy?(row["has_templates"])
@@ -923,14 +1000,17 @@ module EltenLink
         end
       end
 
-      def build_threads(rows, forums)
+      def build_threads(rows, forums, require_parents: false)
         forum_by_id = forums.each_with_object({}) { |forum, result| result[forum.id] = forum }
         rows.to_a.map do |row|
           thread = Struct_Forum_Thread.new(row["id"].to_i)
           thread.name = row["name"].to_s
           thread.meta = row["meta"].to_s
           thread.author = row["author"].to_s
-          thread.forum = forum_by_id[row["forumid"].to_i]
+          thread.forum = forum_by_id.fetch(row["forumid"].to_i) do
+            return if require_parents
+            nil
+          end
           thread.pinned = truthy?(row["pinned"])
           thread.closed = truthy?(row["closed"])
           thread.followed = truthy?(row["followed"])

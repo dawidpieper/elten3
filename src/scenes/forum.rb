@@ -231,10 +231,64 @@ class Scene_Forum
   SORT_UNREAD_ASCENDING = "unread_ascending"
   SORT_UNREAD_DESCENDING = "unread_descending"
 
-  @@lastCache=nil
-  @@lastCacheIdent=nil
-  @@lastCacheTime=nil
-  @@url_templates = {}
+  module StructureCache
+    SessionEntry = Struct.new(:server, :auth, :structure, :request, :force_full)
+    @mutex = Mutex.new
+
+    def self.with_session
+      @mutex.synchronize do
+        server = EltenLink::Client.api_base_url
+        auth = EltenLink::Client.session_auth_params
+        if !@entry || @entry.server != server || @entry.auth != auth
+          @entry = SessionEntry.new(server.dup.freeze, auth.transform_values { |value| value.dup.freeze }.freeze)
+        end
+        yield @entry
+      end
+    end
+
+    def self.fetch(client, force_full: false)
+      request = Object.new
+      entry, previous = with_session do |current|
+        current.request = request
+        current.force_full = true if force_full
+        [current, current.force_full ? nil : current.structure]
+      end
+      loop do
+        fresh = EltenLink::Forum.structure(client, session_auth: entry.auth,
+          last_ident: previous&.ident, last_cache: previous&.raw_cache, previous: previous)
+
+        with_session do |current|
+          # HTTP may run another scene, log in a different user or start a newer refresh.
+          return [nil, false] unless current.equal?(entry)
+          return [current.structure, current.request.nil?] unless current.request.equal?(request)
+
+          # An overlapping edit can invalidate a shared graph even after the GET returned.
+          if fresh.reusable?
+            current.structure = fresh
+            current.force_full = false
+            current.request = nil
+            return [fresh, true]
+          end
+        end
+      end
+    rescue StandardError => error
+      active = with_session { |current| current.equal?(entry) && current.request.equal?(request) }
+      if active && !(error.is_a?(EltenLink::Error) && error.code.to_s == "cancelled")
+        Log.error("Failed to load forum data: " + error.message)
+        alert(_("Error"))
+      end
+      with_session do |current|
+        current.equal?(entry) ? [current.structure, current.request.nil?] : [nil, false]
+      end
+    end
+
+    def self.export(structure)
+      # Callers may keep and edit these arrays or any nested value after this call.
+      structure&.invalidate!
+      structure ? structure.to_h : { "groups" => [], "forums" => [], "threads" => [], "url_templates" => {} }
+    end
+  end
+  private_constant :StructureCache
 
   def self.forum_target(id)
     { "type" => "forum", "id" => id.to_i }
@@ -281,7 +335,8 @@ class Scene_Forum
   end
 
   def copy_forum_url_option(menu, type, id)
-    url = EltenLink::Forum.url_from_template(@@url_templates[type], id)
+    template = StructureCache.with_session { |current| current.structure&.url_templates&.[](type) }
+    url = EltenLink::Forum.url_from_template(template, id)
     return if url == nil
     menu.option(p_("Forum", "Copy URL"), nil, "c") do
       Clipboard.text = url
@@ -367,6 +422,7 @@ class Scene_Forum
     thread = @threads.find { |candidate| candidate.id == thread_id }
     return if thread == nil
 
+    Scene_Forum.invalidate_structure!
     forum = thread.forum
     @threads.each { |candidate| candidate.readposts = candidate.posts if candidate.id == thread_id }
     @sthreads.each { |candidate| candidate.readposts = candidate.posts if candidate.id == thread_id }
@@ -884,9 +940,11 @@ return result
     if accept
       return unless canjoin(group)
       return unless forum_attempt { group.role = EltenLink::Forum.join_group(elten_link, group_id: group.id) }
+      Scene_Forum.invalidate_structure!
       alert(group.role == 4 ? p_("Forum", "Request sent") : p_("Forum", "You've just joined the group"))
     else
       return unless forum_attempt { EltenLink::Forum.leave_group(elten_link, group_id: group.id) }
+      Scene_Forum.invalidate_structure!
       group.role = 0
       alert(p_("Forum", "Invitation declined"))
     end
@@ -1092,11 +1150,13 @@ if (((@sgroups[@grpsel.index - @grpheadindex].role==1 || (@sgroups[@grpsel.index
               EltenLink::Forum.join_group(elten_link, group_id: @sgroups[@grpsel.index - @grpheadindex].id)
             }
               if @sgroups[@grpsel.index - @grpheadindex].role == 0 && ((@sgroups[@grpsel.index - @grpheadindex].public && !@sgroups[@grpsel.index - @grpheadindex].open) || (@sgroups[@grpsel.index - @grpheadindex].open && !@sgroups[@grpsel.index - @grpheadindex].public))
-                alert(p_("Forum", "Request sent"))
                 @sgroups[@grpsel.index - @grpheadindex].role = 4
+                Scene_Forum.invalidate_structure!
+                alert(p_("Forum", "Request sent"))
               else
-                alert(p_("Forum", "You've just joined the group"))
                 @sgroups[@grpsel.index - @grpheadindex].role = 1
+                Scene_Forum.invalidate_structure!
+                alert(p_("Forum", "You've just joined the group"))
               end
             end
           }
@@ -1122,6 +1182,7 @@ if (((@sgroups[@grpsel.index - @grpheadindex].role==1 || (@sgroups[@grpsel.index
               EltenLink::Forum.leave_group(elten_link, group_id: @sgroups[@grpsel.index - @grpheadindex].id)
             }
               alert(p_("Forum", "You've just left the group"))
+              Scene_Forum.invalidate_structure!
               @sgroups[@grpsel.index - @grpheadindex].role = 0
             end
           }
@@ -1133,6 +1194,7 @@ if (((@sgroups[@grpsel.index - @grpheadindex].role==1 || (@sgroups[@grpsel.index
           if forum_attempt(nil) {
             EltenLink::Forum.mark_group_as_read(elten_link, group_id: @sgroups[@grpsel.index-@grpheadindex].id)
           }
+            Scene_Forum.invalidate_structure!
             for t in @threads
               t.readposts = t.posts if t.forum.group.id == @sgroups[@grpsel.index-@grpheadindex].id
             end
@@ -1207,9 +1269,13 @@ if (((@sgroups[@grpsel.index - @grpheadindex].role==1 || (@sgroups[@grpsel.index
     groups.concat(@forums.to_a.map { |forum| forum.group })
     groups.concat(@threads.to_a.map { |thread| thread.forum.group })
     groups.concat(@sthreads.to_a.map { |thread| thread.forum.group })
+    changed = false
     groups.compact.each do |candidate|
       next if candidate.id.to_i != group_id
+      next if candidate.hasmotd == has_motd && candidate.hasnewmotd == has_new_motd
 
+      Scene_Forum.invalidate_structure! unless changed
+      changed = true
       candidate.hasmotd = has_motd
       candidate.hasnewmotd = has_new_motd
     end
@@ -1522,6 +1588,7 @@ rfr.call
         destination = selector(labels, header: p_("Forum", "Thread destination"), start_index: index, cancel_index: -1)
         if destination >= 0
           if forum_attempt(nil) { EltenLink::Forum.move_thread(elten_link, thread_id: thread.id, forum_id: mforums[destination].id) }
+            Scene_Forum.invalidate_structure!
             thread.forum = mforums[destination]
             alert(p_("Forum", "The thread has been moved."))
           end
@@ -1530,6 +1597,7 @@ rfr.call
         name = input_text(p_("Forum", "Type a new thread name"), flags: 0, text: thread.name, escapable: true)
         if name != nil && name.strip != ""
           if forum_attempt(nil) { EltenLink::Forum.rename_thread(elten_link, thread_id: thread.id, name: name) }
+            Scene_Forum.invalidate_structure!
             thread.name = name
             alert(p_("Forum", "The thread name has been changed."))
           end
@@ -1537,12 +1605,14 @@ rfr.call
       when :toggle_closed
         clo = thread.closed ? 0 : 1
         if forum_attempt(nil) { EltenLink::Forum.set_thread_closed(elten_link, thread_id: thread.id, closed: clo) }
+          Scene_Forum.invalidate_structure!
           thread.closed = !thread.closed
           alert(thread.closed ? p_("Forum", "The thread has been closed") : p_("Forum", "The thread has been opened"))
         end
       when :toggle_pinned
         pin = thread.pinned ? 0 : 1
         if forum_attempt(nil) { EltenLink::Forum.set_thread_pinned(elten_link, thread_id: thread.id, pinned: pin) }
+          Scene_Forum.invalidate_structure!
           thread.pinned = !thread.pinned
           alert(thread.pinned ? p_("Forum", "Thread has been pinned") : p_("Forum", "Thread has been unpinned"))
         end
@@ -1802,9 +1872,14 @@ rfr=Proc.new {
 rfr.call
 sel.focus
 chpr=Proc.new{|cat|
+              user = users[sel.index]
               if forum_attempt(nil) {
-                EltenLink::Forum.update_member(elten_link, group_id: group.id, user: users[sel.index], action: cat)
+                EltenLink::Forum.update_member(elten_link, group_id: group.id, user: user, action: cat)
               }
+                if cat == "passadmin"
+                  Scene_Forum.invalidate_structure!
+                  group.founder = user
+                end
                 alert(p_("Forum", "Privileges of this user have been changed."))
               end
 rfr.call
@@ -1830,6 +1905,7 @@ sel.focus
           EltenLink::Forum.update_member(elten_link, group_id: group.id, user: Session.name, action: "moderationresign")
         }
           roles[sel.index]=1
+          Scene_Forum.invalidate_structure!
           group.role=1
           chrfr=true
           alert(p_("Forum", "You have given up your moderator privileges."))
@@ -1851,7 +1927,6 @@ sel.focus
       menu.option(p_("Forum", "Deny moderation privileges")) {chpr.call("moderationdeny")}
       menu.option(p_("Forum", "Transfer administrator privileges")) {
                     confirm(p_("Forum", "Are you sure you want to give up your administrator privileges in %{groupname} and transfer them to %{user}?")%{ :user => users[sel.index], :groupname => group.name }) {
-                   group.founder=users[sel.index]
                     chpr.call("passadmin")
                     }
       }
@@ -2342,6 +2417,7 @@ form.focus
             EltenLink::Forum.follow_forum(elten_link, forumid: @sforums[@frmsel.index].id)
           }
             alert(p_("Forum", "You are now following this forum."))
+            Scene_Forum.invalidate_structure!
             @sforums[@frmsel.index].followed = true
           end
         else
@@ -2349,6 +2425,7 @@ form.focus
             EltenLink::Forum.unfollow_forum(elten_link, forumid: @sforums[@frmsel.index].id)
           }
             alert(p_("Forum", "You are no longer following this forum."))
+            Scene_Forum.invalidate_structure!
             @sforums[@frmsel.index].followed = false
           end
         end
@@ -2367,6 +2444,7 @@ form.focus
           if forum_attempt(nil) {
             EltenLink::Forum.mark_forum_as_read(elten_link, forumid: @sforums[@frmsel.index].id)
           }
+            Scene_Forum.invalidate_structure!
             for t in @threads
               t.readposts = t.posts if t.forum.id == @sforums[@frmsel.index].id
             end
@@ -2438,6 +2516,7 @@ break
           if forum_attempt(nil) {
             EltenLink::Forum.set_forum_closed(elten_link, forumid: @sforums[@frmsel.index].id, closed: clo)
           }
+            Scene_Forum.invalidate_structure!
             if @sforums[@frmsel.index].closed
               @sforums[@frmsel.index].closed = false
               refresh_forum_row
@@ -2494,8 +2573,7 @@ break
     sortermenu(1, @group, menu)
     menu.option(_("Refresh"), nil, "r") {
       @frmsetid=@sforums[@frmsel.index].id if @sforums.size>0
-@@lastCacheIdent=nil
-    next unless getcache
+      next unless getcache(force_full: true)
       forumsload(@group)
       @frmsel.focus
     }
@@ -2858,6 +2936,7 @@ break
           else
             alert(p_("Forum", "Thread marked"))
             end
+            Scene_Forum.invalidate_structure!
             @sthreads[@thrsel.index].marked = !@sthreads[@thrsel.index].marked
             if @forum == -10
               threadsmain(@forum)
@@ -2873,6 +2952,7 @@ break
             EltenLink::Forum.follow_thread(elten_link, thread_id: @sthreads[@thrsel.index].id)
           }
             alert(p_("Forum", "You are now following this thread."))
+            Scene_Forum.invalidate_structure!
             @sthreads[@thrsel.index].followed = true
           end
         else
@@ -2880,6 +2960,7 @@ break
             EltenLink::Forum.unfollow_thread(elten_link, thread_id: @sthreads[@thrsel.index].id)
           }
             alert(p_("Forum", "You are no longer following this thread."))
+            Scene_Forum.invalidate_structure!
             @sthreads[@thrsel.index].followed = false
             if @forum == -1
               @lastthreadindex = @thrsel.index
@@ -2968,6 +3049,7 @@ break
           if forum_attempt(nil) {
             EltenLink::Forum.set_thread_closed(elten_link, thread_id: @sthreads[@thrsel.index].id, closed: clo)
           }
+            Scene_Forum.invalidate_structure!
             if @sthreads[@thrsel.index].closed
               @sthreads[@thrsel.index].closed = false
               refresh_thread_row
@@ -2986,6 +3068,7 @@ break
           if forum_attempt(nil) {
             EltenLink::Forum.set_thread_pinned(elten_link, thread_id: @sthreads[@thrsel.index].id, pinned: pin)
           }
+            Scene_Forum.invalidate_structure!
             if @sthreads[@thrsel.index].pinned
               @sthreads[@thrsel.index].pinned = false
               refresh_thread_row
@@ -3013,6 +3096,7 @@ forum_fetch([], nil) { EltenLink::Forum.group_members(elten_link, group_id: @sth
           EltenLink::Forum.offer_thread(elten_link, thread_id: @sthreads[@thrsel.index].id, group_id: dest.id)
         }
           alert(p_("Forum", "The offer has been created"))
+          Scene_Forum.invalidate_structure!
           @sthreads[@thrsel.index].offered=dest.id
           end
         end
@@ -3024,6 +3108,7 @@ forum_fetch([], nil) { EltenLink::Forum.group_members(elten_link, group_id: @sth
           EltenLink::Forum.offer_thread(elten_link, thread_id: @sthreads[@thrsel.index].id, group_id: 0)
         }
           alert(p_("Forum", "The offer has been withdrawn."))
+          Scene_Forum.invalidate_structure!
           @sthreads[@thrsel.index].offered=0
           end
         @thrsel.focus
@@ -3057,6 +3142,7 @@ forum_fetch([], nil) { EltenLink::Forum.group_members(elten_link, group_id: @sth
 if forum_attempt(nil) {
   EltenLink::Forum.accept_thread_offer(elten_link, thread_id: @sthreads[@thrsel.index].id, forum_id: dest.id)
 }
+  Scene_Forum.invalidate_structure!
   @sthreads[@thrsel.index].offered=0
   @sthreads[@thrsel.index].forum=dest
   alert(p_("Forum", "Offer accepted"))
@@ -3073,6 +3159,7 @@ if forum_attempt(nil) {
             EltenLink::Forum.refuse_thread_offer(elten_link, thread_id: @sthreads[@thrsel.index].id)
           }
             alert(p_("Forum", "Offer refused"))
+            Scene_Forum.invalidate_structure!
             @sthreads[@thrsel.index].offered=0
             if @forum==-12
               @sthreads.delete_at(@thrsel.index)
@@ -3532,56 +3619,36 @@ if flp[0..3] != "OggS"
     draft&.detach
   end
   
-  def getcache
-    loaded = self.class.getcache(elten_link)
-    @groups, @forums, @threads = @@groups, @@forums, @@threads
+  def getcache(force_full: false)
+    structure, loaded = StructureCache.fetch(elten_link, force_full: force_full)
+    use_forum_structure(structure)
     loaded
-    end
+  end
 
-  def self.getcache(client = nil)
-    begin
-    @@oldgroups = @@groups
-    @@oldforums = @@forums
-    @@oldthreads = @@threads
-  rescue NameError
-    @@oldgroups = []
-    @@oldforums = []
-    @@oldthreads = []
-        end
-    structure = EltenLink::Forum.structure(
-      client || EltenLink.client(self),
-      last_ident: @@lastCacheIdent,
-      last_cache: @@lastCache,
-      old_groups: @@oldgroups,
-      old_forums: @@oldforums,
-      old_threads: @@oldthreads
-    )
-    @@groups = structure.groups
-    @@forums = structure.forums
-    @@threads = structure.threads
-    @@url_templates = structure.url_templates
-    @@lastCache = structure.raw_cache
-    @@lastCacheIdent = structure.ident
-    @@lastCacheTime = structure.loaded_at
-    true
-  rescue StandardError => error
-    @@groups, @@forums, @@threads = @@oldgroups, @@oldforums, @@oldthreads
-    unless error.is_a?(EltenLink::Error) && error.code.to_s == "cancelled"
-      Log.error("Failed to load forum data: "+error.message)
-      alert(_("Error"))
-    end
-    false
-      end
+  def self.getcache(client = nil, force_full: false)
+    StructureCache.fetch(client || EltenLink.client(self), force_full: force_full).last
+  end
+
+  def self.invalidate_structure!
+    StructureCache.with_session { |current| current.structure&.invalidate! }
+  end
 
   def getstruct
-    getcache
-    return { "groups" => @groups, "forums" => @forums, "threads" => @threads, "url_templates" => @@url_templates }
+    structure, = StructureCache.fetch(elten_link)
+    use_forum_structure(structure)
+    StructureCache.export(structure)
   end
-  
+
   def self.getstruct(require_fresh: false)
-    loaded = self.getcache
+    structure, loaded = StructureCache.fetch(EltenLink.client(self))
     return nil if require_fresh && !loaded
-    return { "groups" => @@groups, "forums" => @@forums, "threads" => @@threads, "url_templates" => @@url_templates }
+    StructureCache.export(structure)
+  end
+
+  private def use_forum_structure(structure)
+    @groups = structure&.groups || []
+    @forums = structure&.forums || []
+    @threads = structure&.threads || []
   end
 
   def usequery
@@ -3958,9 +4025,9 @@ loop do
       return
     end
     begin
-      @sponsors = EltenLink::Admins.users(elten_link, "sponsors")
+      sponsors = EltenLink::Admins.users(elten_link, "sponsors").to_h { |name| [name, true] }
     rescue EltenLink::Error
-      @sponsors = []
+      sponsors = {}
     end
     @fields = []
     @closed_thread_reply_button = nil
@@ -3980,12 +4047,10 @@ loop do
       label+=" (#{p_("Forum", "Banned")})" if post.banned
       label+=" (#{p_("Forum", "Account archived")})" if post.archived
       post_field = EditBox.new(label, type: flags, text: "", quiet: true)
-      update_post_field(post_field, post, signature_mode)
+      update_post_field(post_field, post, signature_mode, post_index: i)
       post_field.audio_url = post.audio_url if post.respond_to?(:audio_url) && post.audio_url.to_s != ""
-      @fields += [post_field, nil, nil, question_display_button(post)]
-if @sponsors.include?(post.author)
-  post_field.add_sound("user_sponsor")
-end
+      @fields.push(post_field, nil, nil, question_display_button(post))
+      post_field.add_sound("user_sponsor") if sponsors.key?(post.author)
       @fields[-2] = ListBox.new(name_attachments(post.attachments), header: p_("Forum", "Attachments")) if post.attachments.size > 0
       if post.polls.size > 0
         names = []
@@ -4114,9 +4179,9 @@ end
     ]
   end
 
-  def forum_post_parts(post, signature_mode)
+  def forum_post_parts(post, signature_mode, post_index: nil)
+    post_index ||= @posts.index(post) || 0
     add = ""
-    i = @posts.find_index(post)||0
     if post.edited
       add = p_("Forum", "This post has been edited")
     end
@@ -4135,28 +4200,32 @@ end
       end
       segments.push(signature)
     end
-    footer = [post.date, add, (i + 1).to_s + "/" + @posts.size.to_s]
+    footer = [post.date, add, "#{post_index + 1}/#{@posts.size}"]
     [segments, footer]
   end
 
-  def generate_posttext(post, signature_mode=effective_forum_signature_mode)
-    segments, footer = forum_post_parts(post, signature_mode)
-    (segments + footer).map { |segment| forum_post_segment(segment) }.reject { |segment| segment == "" }.join("\r\n")
+  def join_forum_post_segments(segments)
+    segments.map { |segment| forum_post_segment(segment) }.reject(&:empty?).join("\r\n")
   end
 
-  def update_post_field(field, post, signature_mode=effective_forum_signature_mode)
-    field.set_text(generate_posttext(post, signature_mode))
+  def generate_posttext(post, signature_mode=effective_forum_signature_mode, post_index: nil)
+    segments, footer = forum_post_parts(post, signature_mode, post_index: post_index)
+    join_forum_post_segments(segments + footer)
+  end
+
+  def update_post_field(field, post, signature_mode=effective_forum_signature_mode, post_index: nil)
+    segments, footer = forum_post_parts(post, signature_mode, post_index: post_index)
+    field.set_text(join_forum_post_segments(segments + footer))
     return field if signature_mode != SIGNATURE_MODE_SOUND
 
     signature = forum_post_segment(post.signature).gsub("\r\n", "\n")
     return field if signature == ""
 
-    _segments, footer = forum_post_parts(post, signature_mode)
-    footer = footer.map { |segment| forum_post_segment(segment).gsub("\r\n", "\n") }.reject { |segment| segment == "" }.join("\n")
+    footer = join_forum_post_segments(footer).gsub("\r\n", "\n")
     text = field.text_range_exclusive(0, field.text_len)
     index = text.rindex(signature + "\n" + footer)
     if index == nil
-      field.set_text(generate_posttext(post, SIGNATURE_MODE_TEXT))
+      field.set_text(generate_posttext(post, SIGNATURE_MODE_TEXT, post_index: post_index))
       return field
     end
     field.add_speak_callback(index) { play_sound("editbox_signature") }
@@ -4261,7 +4330,8 @@ end
       }
     end
     if @form.index < @postscount * POST_FIELDS
-      post=@posts[@form.index / POST_FIELDS]
+      post_index = @form.index / POST_FIELDS
+      post = @posts[post_index]
       if @threadclass != nil && @threadclass.forum.group.role!=3
       s=p_("Forum", "Like this post")
 s=p_("Forum", "Dislike this post") if post.liked==true
@@ -4281,7 +4351,9 @@ if forum_attempt(nil) {
     post.likes-=1
     speak(p_("forum", "This post is no longer liked"))
   end
-  update_post_field(@form.fields[@form.index / POST_FIELDS *  POST_FIELDS], post)
+  current_index = post_index
+  current_index = @posts.index { |listed| listed.equal?(post) } unless @posts[post_index].equal?(post)
+  update_post_field(@form.fields[current_index * POST_FIELDS], post, post_index: current_index) if current_index
 end
 }
 end
@@ -4442,6 +4514,7 @@ if post.edited && !post.locked
           else
             alert(p_("Forum", "Thread marked"))
             end
+            Scene_Forum.invalidate_structure!
             @threadclass.marked = !@threadclass.marked
           end
           end
@@ -6134,9 +6207,12 @@ def apply_settings
   end
   saved = forum_attempt(nil) { EltenLink::Forum.update_group_settings(elten_link, group_id: @group.id, settings: j) }
   if saved
-    @group.reportreasons=currentconfig("report_reasons").to_a.dup
-    featured_thread_definitions.each do |field, _label|
-      @group.public_send("#{field}=", currentconfig(field.to_s).to_i)
+    reasons = currentconfig("report_reasons").to_a
+    featured = featured_thread_definitions.to_h { |field, _label| [field, currentconfig(field.to_s).to_i] }
+    if @group.reportreasons != reasons || featured.any? { |field, id| @group.public_send(field) != id }
+      Scene_Forum.invalidate_structure!
+      @group.reportreasons = reasons.dup
+      featured.each { |field, id| @group.public_send("#{field}=", id) }
     end
   end
   saved
