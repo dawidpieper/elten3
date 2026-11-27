@@ -128,7 +128,7 @@ module EltenAPI
           selected = selector([p_("Drafts", "Return to editing"), p_("Drafts", "Discard"),
             p_("Drafts", "Save locally"), p_("Drafts", "Save on the server")],
             header: p_("Drafts", "What would you like to do with the draft?"),
-            cancel_index: 0, flags: Controls::ListBox::Flags::AnyDir)
+            start_index: 1, cancel_index: 0, flags: Controls::ListBox::Flags::AnyDir)
           if selected == 1
             result = discard(detach: detach)
             @last_close_action = :discarded if result
@@ -139,7 +139,7 @@ module EltenAPI
           LocalConfig[@config_key] = target
         elsif !empty?(data) && target == "disabled"
           selected = selector([p_("Drafts", "Return to editing"), p_("Drafts", "Discard"), p_("Drafts", "Remember")],
-            header: p_("Drafts", "What would you like to do with the draft?"), cancel_index: 0, flags: Controls::ListBox::Flags::AnyDir)
+            header: p_("Drafts", "What would you like to do with the draft?"), start_index: 1, cancel_index: 0, flags: Controls::ListBox::Flags::AnyDir)
           case selected
           when 1
             result = discard(detach: detach)
