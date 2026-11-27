@@ -247,7 +247,8 @@ module EltenAPI
               json,
               request_headers,
               data,
-              cancellation_token: cancellation_token
+              cancellation_token: cancellation_token,
+              accept_json_errors: true
             )
             body = response.is_a?(Hash) ? response[:body] : :error
             if body == :error
@@ -1282,7 +1283,7 @@ module EltenAPI
         close_io(socket) if defined?(socket)
       end
 
-      def readurl_sync(url, method="get", body="", headers={}, data=nil, redirects=0, cancellation_token: nil)
+      def readurl_sync(url, method="get", body="", headers={}, data=nil, redirects=0, cancellation_token: nil, accept_json_errors: false)
         raise "Too many redirects" if redirects > MAX_REDIRECTS
         raise_if_cancelled!(cancellation_token)
         uri = URI.parse(url)
@@ -1305,13 +1306,13 @@ module EltenAPI
         end
         response = http1_request_uri(uri, method.to_s.upcase, body_data, request_headers, data, cancellation_token)
         if response[:redirect] != nil
-          return readurl_sync(uri.merge(response[:redirect]).to_s, method, body, headers, data, redirects + 1, cancellation_token: cancellation_token)
+          return readurl_sync(uri.merge(response[:redirect]).to_s, method, body, headers, data, redirects + 1,
+            cancellation_token: cancellation_token, accept_json_errors: accept_json_errors)
         end
         status = response[:status].to_i
         if status < 200 || status >= 300
-          # Forum submissions need the API error code to recover a previously accepted request.
           content_type = header_value(response[:headers], "Content-Type").to_s.downcase
-          unless header_value(request_headers, "X-Elten-Operation-ID") && content_type.start_with?("application/json")
+          unless (accept_json_errors || header_value(request_headers, "X-Elten-Operation-ID")) && content_type.start_with?("application/json")
             return { body: :error, headers: response[:headers] }
           end
         end

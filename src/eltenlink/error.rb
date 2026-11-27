@@ -24,6 +24,14 @@ module EltenLink
       error_payload["details"]
     end
 
+    def wordpress_reason
+      info = details
+      return unless info.is_a?(Hash)
+      return info["wordpress_code"] if info["wordpress_code"]
+
+      "HTTP #{info["wordpress_status"]}" if info["wordpress_status"]
+    end
+
     def retry_after
       value = error_payload["retry_after"] || (details["retry_after"] if details.is_a?(Hash))
       value.nil? ? nil : value.to_f

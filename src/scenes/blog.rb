@@ -745,8 +745,9 @@ def update
     end
     begin
       comment_status = EltenLink::Blog.create_comment(elten_link, blog: @post.owner, post_id: @post.id, content: txt)
-    rescue EltenLink::Error
-      alert(_("Error"))
+    rescue EltenLink::Error => error
+      reason = error.wordpress_reason || error.code || error.message
+      alert(p_("Blog", "Could not create the comment: %{error}") % { error: reason })
     else
       @comment_field.set_text("")
       @comment_draft&.sent
@@ -2066,9 +2067,11 @@ class Scene_Blog_PostEditor
     details = error.message.to_s.strip
     details = error.class.to_s if details == ""
     details += " (#{code})" if code != "" && !details.include?(code)
+    wordpress_reason = error.wordpress_reason if error.is_a?(EltenLink::Error)
+    diagnostic = [wordpress_reason, details].compact.join(" - ")
     trace = Array(error.backtrace).first(8).join("\n")
-    Log.warning("Blog publishing failed: #{error.class}: #{error.message}#{code == "" ? "" : " (#{code})"}\n#{trace}")
-    alert(message % { error: details })
+    Log.warning("Blog publishing failed: #{error.class}: #{diagnostic}\n#{trace}")
+    alert(message % { error: wordpress_reason || details })
   rescue StandardError => display_error
     Log.warning("Blog publishing error reporting failed: #{display_error.class}: #{display_error.message}")
     alert(_("Error"))
