@@ -98,6 +98,7 @@ The manifest is JSON, even though it is embedded in a Ruby block comment. JSON k
 | `build_id` | Non-empty, non-zero build identity used when comparing releases and updates. Change it when publishing a different build. |
 | `EltenAPIVersion` | Minimum compatible Elten application API. The current runtime accepts the same major version when its own version is at least this value. |
 | `author` | Human-readable author or publisher. |
+| `repository_url` | Optional HTTP or HTTPS URL for the application's source repository. The program centre shows it in Details and offers to open it from the program's context menu. |
 | `main` | Logical path to the entry Ruby file. Builders infer the manifest file when this is omitted, but an explicit value is clearer. |
 | `main_class` | Class to launch, resolved inside the generated application namespace. It must inherit from `Program`. |
 | `platforms` | Supported platform families or targets. See below. |
