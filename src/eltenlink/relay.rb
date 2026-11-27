@@ -270,7 +270,8 @@ module EltenLink
       attr_reader :app_id, :user, :latency
 
       def initialize(app_id:, user:, token:, host: DEFAULT_HOST, port: DEFAULT_PORT, timeout: 5,
-                     tls_context: nil, event_sink: nil)
+                     tls_context: nil, event_sink: nil, multi_session: false)
+        @requested_features = multi_session ? FEATURES + ["multi_session_v1"] : FEATURES
         @app_id = app_id.to_s
         @user = user.to_s
         @token = token.to_s
@@ -312,7 +313,7 @@ module EltenLink
         raise
       end
 
-      def create_session(metadata:, participant_metadata:, capacity:, public_state:, encryption:, p2p: :off, p2p_participants_limit: 2)
+      def create_session(metadata:, participant_metadata:, capacity:, public_state:, encryption:, p2p: :off, p2p_participants_limit: 2, multi_session: false)
         validate_p2p_options!(p2p, p2p_participants_limit)
         fields = {
           "metadata" => metadata,
@@ -324,6 +325,10 @@ module EltenLink
         if supports?("p2p_v1")
           fields["p2p"] = p2p.to_s
           fields["p2p_participants_limit"] = p2p_participants_limit
+        end
+        if multi_session
+          raise RemoteError.new("multi_session_unavailable") unless supports?("multi_session_v1")
+          fields["multi_session"] = true
         end
         result = request("create_session", fields)
         @p2p&.track(result)
@@ -542,13 +547,13 @@ module EltenLink
         p2p_enabled = p2p_allowed?
         login = request(
           "login",
-          { "version" => VERSION, "user" => @user, "token" => @token, "app_id" => @app_id, "features" => FEATURES, "p2p_enabled" => p2p_enabled },
+          { "version" => VERSION, "user" => @user, "token" => @token, "app_id" => @app_id, "features" => @requested_features, "p2p_enabled" => p2p_enabled },
           timeout: @timeout
         )
         @client_id = login["client_id"].to_s
         @datagram_secret = Base64.strict_decode64(login["datagram_secret"].to_s)
         apply_limits(login["limits"])
-        @features = Array(login["features"]) & FEATURES
+        @features = Array(login["features"]) & @requested_features
         @server_clock_offset = login["time"].to_f - Time.now.to_f if login["time"]
         if supports?("p2p_v1")
           @p2p = P2PTransport.new(self, @client_id, @datagram_secret, @host, @port, enabled: p2p_enabled)
@@ -686,7 +691,7 @@ module EltenLink
         header = read_exact(io, 4)
         size = header.unpack1("N")
         raise IOError, "Invalid relay frame" if size <= 0 || size > limit(:max_frame)
-        JSON.parse(read_exact(io, size), max_nesting: 24, create_additions: false)
+        JSON.parse(read_exact(io, size), max_nesting: 24)
       end
 
       def read_exact(io, size)
@@ -726,7 +731,7 @@ module EltenLink
         chunk[1] += 1
         if frame["last"] == true
           @event_chunks = nil
-          event = JSON.parse(chunk[2], max_nesting: 24, create_additions: false)
+          event = JSON.parse(chunk[2], max_nesting: 24)
           @p2p&.event(event)
           emit_event(event) unless event["type"] == "p2p_state"
         end
@@ -747,7 +752,7 @@ module EltenLink
           chunk[0] += 1
           if frame["last"] == true
             @response_chunks.delete(id)
-            JSON.parse(chunk[1], max_nesting: 24, create_additions: false)
+            JSON.parse(chunk[1], max_nesting: 24)
           end
         end
         handle_response(complete) if complete

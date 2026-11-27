@@ -3946,9 +3946,13 @@ class Program
     @managed_resources ||= EltenAPI::Resources::Registry.new
   end
 
-  def communication
-    @communication = nil if @communication != nil && @communication.closed?
-    @communication ||= manage(EltenAPI::Communication::Endpoint.new(app_id: app_uuid, context: self))
+  def communication(multi_session: false)
+    @communication_endpoints ||= {}
+    endpoint = @communication_endpoints[multi_session]
+    return endpoint if endpoint && !endpoint.closed?
+    @communication_endpoints[multi_session] = manage(EltenAPI::Communication::Endpoint.new(
+      app_id: app_uuid, context: self, multi_session: multi_session
+    ))
   end
 
   def live_sessions

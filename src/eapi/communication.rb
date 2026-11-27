@@ -428,13 +428,14 @@ module EltenAPI
     end
 
     class PublicSession
-      attr_reader :id, :metadata, :capacity, :encryption, :participants
+      attr_reader :id, :metadata, :capacity, :encryption, :participants, :multi_session
 
       def initialize(data)
         @id = data["id"].to_s
         @metadata = data["metadata"].is_a?(Hash) ? data["metadata"] : {}
         @capacity = data["capacity"].to_i
         @encryption = data["encryption"].to_i
+        @multi_session = data["multi_session"] == true
         @participants = Array(data["participants"]).map { |item| InvitationParticipant.new(item) }
       end
 
@@ -444,7 +445,7 @@ module EltenAPI
     end
 
     class Session
-      attr_reader :id, :metadata, :capacity, :encryption, :owner_id, :state, :self_id, :p2p, :p2p_participants_limit
+      attr_reader :id, :metadata, :capacity, :encryption, :owner_id, :state, :self_id, :p2p, :p2p_participants_limit, :multi_session
 
       def initialize(endpoint, data)
         @endpoint = endpoint
@@ -549,12 +550,19 @@ module EltenAPI
       def on_owner_changed(&block); register_callback(:owner_changed, &block); end
       def on_closed(&block); register_callback(:closed, &block); end
 
-      def wait_for_participant(user = nil, timeout: 30, cancellation_token: nil)
+      def participants_for(user)
+        participants.select { |entry| entry.user.casecmp?(user.to_s) }
+      end
+
+      def wait_for_participant(user = nil, timeout: 30, cancellation_token: nil, participant_id: nil)
         deadline = monotonic + timeout.to_f
         loop do
           found = @mutex.synchronize do
             raise SessionClosed, "Session is closed" if @state == :closed
-            @participants.values.find { |entry| entry.id != @self_id && (user.nil? || entry.user.casecmp?(user.to_s)) }
+            @participants.values.find do |entry|
+              entry.id != @self_id && (!participant_id || entry.id == participant_id.to_s) &&
+                (user.nil? || entry.user.casecmp?(user.to_s))
+            end
           end
           return found if found
           raise TimeoutError, "Participant did not join in time" if monotonic >= deadline
@@ -676,7 +684,17 @@ module EltenAPI
       def apply_snapshot(data)
         revision = data["revision"].to_i
         return if revision < @snapshot_revision
+        members = Array(data["participants"])
+        own_id = data["self_id"]
+        if !own_id && data["multi_session"] != true
+          matches = members.select { |row| row["user"].to_s.casecmp?(@endpoint.user.to_s) }
+          own_id = matches.first["id"] if matches.one?
+        end
+        unless own_id && members.any? { |row| row["id"] == own_id && row["user"].to_s.casecmp?(@endpoint.user.to_s) }
+          raise ConnectionError, "Server returned an ambiguous participant identity"
+        end
         @snapshot_revision = revision
+        @multi_session = data["multi_session"] == true
         @id = data["id"].to_s
         @metadata = data["metadata"].is_a?(Hash) ? data["metadata"] : {}
         @capacity = data["capacity"].to_i
@@ -697,7 +715,7 @@ module EltenAPI
         end
         previous = @participants
         @participants = {}
-        @self_id = data["self_id"] || Array(data["participants"]).find { |row| row["user"].to_s.casecmp?(@endpoint.user.to_s) }&.fetch("id", nil)
+        @self_id = own_id
         Array(data["participants"]).each do |participant|
           item = previous[participant["id"].to_s]
           item ? item.update(participant) : item = Participant.new(self, participant)
@@ -749,7 +767,7 @@ module EltenAPI
     class Endpoint
       attr_reader :app_id, :user, :last_error
 
-      def initialize(app_id:, user: nil, token: nil, host: DEFAULT_HOST, port: DEFAULT_PORT, timeout: 5, context: nil)
+      def initialize(app_id:, user: nil, token: nil, host: DEFAULT_HOST, port: DEFAULT_PORT, timeout: 5, context: nil, multi_session: false)
         @app_id = app_id.to_s
         @user = (user || EltenAPI::Structs::Session.name).to_s
         relay_token = (token || EltenAPI::Structs::Session.token).to_s
@@ -793,7 +811,7 @@ module EltenAPI
         @connection_waiter = Waiter.new
         @connect_options = {
           app_id: @app_id, user: @user, token: relay_token, host: host, port: port,
-          timeout: timeout, tls_context: EltenAPI::TLS.client_context, event_sink: self
+          timeout: timeout, tls_context: EltenAPI::TLS.client_context, event_sink: self, multi_session: multi_session
         }
         Communication.register(self)
         @relay = @connection_waiter.wait(timeout.to_f + 1, pump: -> { wait_step })
@@ -809,13 +827,13 @@ module EltenAPI
         raise
       end
 
-      def create_session(metadata: {}, participant_metadata: {}, capacity: 2, public: false, encryption: 192, p2p: :off, p2p_participants_limit: 2)
+      def create_session(metadata: {}, participant_metadata: {}, capacity: 2, public: false, encryption: 192, p2p: :off, p2p_participants_limit: 2, multi_session: false)
         result = relay_call do
           @relay.create_session(
             metadata: metadata,
             participant_metadata: participant_metadata,
             capacity: capacity,
-            public_state: public,
+            public_state: public, multi_session: multi_session,
             encryption: encryption, p2p: p2p, p2p_participants_limit: p2p_participants_limit
           )
         end
