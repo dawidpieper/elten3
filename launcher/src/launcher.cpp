@@ -707,9 +707,11 @@ module EltenEmbedded
       return false if loading_rb?(rb)
       mark_rb_loading(rb)
       begin
+        # Ruby consults $LOADED_FEATURES when defining an autoloaded constant.
+        # Make the embedded file visible during eval and roll back if it raises.
+        mark_rb_loaded(rb)
         load_rb(rb)
         patch_runtime_config! if rb.to_s == 'rbconfig.rb' || rb.to_s.end_with?('/rbconfig.rb')
-        mark_rb_loaded(rb)
       rescue Exception
         unmark_rb_loaded(rb)
         raise
@@ -852,6 +854,9 @@ runtime_load_paths = [
   '.'
 ]
 $LOAD_PATH.replace(runtime_load_paths.select { |path| path == '.' || path == 'src' || File.directory?(path) })
+
+# Ruby 4's Set.inherited requires this file directly from C, outside the embedded loader.
+EltenEmbedded.require_rb('set/subclass_compatible')
 
 require 'rubygems/version'
 require 'rubygems/target_rbconfig'

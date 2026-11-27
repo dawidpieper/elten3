@@ -466,9 +466,7 @@ std::vector<fs::path> AppRubySources(const Options &options) {
   return files;
 }
 
-std::vector<fs::path> RubyLibRubySources(const Options &options) {
-  fs::path rubyRoot = options.rubyRoot / "lib" / "ruby";
-  std::vector<fs::path> all = RecursiveFiles(rubyRoot, {".rb"});
+std::set<std::string> BundledGemNames(const Options &options) {
   std::set<std::string> bundledGems;
   fs::path lockfile = options.gemLockfile.empty() ? options.root / "Gemfile.lock" : options.gemLockfile;
   if (fs::is_regular_file(lockfile)) {
@@ -476,6 +474,7 @@ std::vector<fs::path> RubyLibRubySources(const Options &options) {
     std::string line;
     bool inSpecs = false;
     while (std::getline(input, line)) {
+      if (!line.empty() && line.back() == '\r') line.pop_back();
       if (line == "  specs:") {
         inSpecs = true;
         continue;
@@ -489,42 +488,68 @@ std::vector<fs::path> RubyLibRubySources(const Options &options) {
     }
   }
 
-  auto gemNameFromDirectory = [](const std::string &dir) {
-    for (std::size_t pos = dir.size(); pos > 0;) {
-      pos = dir.rfind('-', pos - 1);
-      if (pos == std::string::npos) break;
-      if (pos + 1 < dir.size() && std::isdigit(static_cast<unsigned char>(dir[pos + 1])) &&
-          dir.find('.', pos + 1) != std::string::npos) {
-        return Lower(dir.substr(0, pos));
-      }
-    }
-    return Lower(dir);
-  };
-
-  std::vector<fs::path> files;
-  for (const fs::path &path : all) {
-    std::string tail = Relative(path, rubyRoot);
-    std::vector<std::string> parts = Split(tail);
-    if (parts.empty()) continue;
-    if (parts[0] == "gems") {
-      if (parts.size() < 5 || parts[2] != "gems") continue;
-      std::string gemName = gemNameFromDirectory(parts[3]);
-      if (bundledGems.find(gemName) == bundledGems.end()) continue;
-      if (parts[4] != "lib") continue;
-    }
-    files.push_back(path);
-  }
-  return files;
+  return bundledGems;
 }
 
-std::vector<std::string> RubyLibKeys(const Options &options, const fs::path &path) {
+std::string GemNameFromDirectory(const std::string &dir) {
+  for (std::size_t pos = dir.size(); pos > 0;) {
+    pos = dir.rfind('-', pos - 1);
+    if (pos == std::string::npos) break;
+    if (pos + 1 < dir.size() && std::isdigit(static_cast<unsigned char>(dir[pos + 1])) &&
+        dir.find('.', pos + 1) != std::string::npos) {
+      return Lower(dir.substr(0, pos));
+    }
+  }
+  return Lower(dir);
+}
+
+std::vector<std::string> InstalledGemRequirePaths(const fs::path &gemDir) {
+  fs::path specDir = gemDir.parent_path().parent_path() / "specifications";
+  fs::path specName = gemDir.filename().string() + ".gemspec";
+  std::ifstream input(specDir / specName, std::ios::binary);
+  if (!input) input.open(specDir / "default" / specName, std::ios::binary);
+
+  // RubyGems writes "# stub: name version platform require_paths" below the
+  // encoding comment in installed specifications. Multiple paths are NUL-separated.
+  std::string line;
+  if (std::getline(input, line) && std::getline(input, line) && line.rfind("# stub: ", 0) == 0) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    std::istringstream stub(line.substr(8));
+    std::string name, version, platform, paths;
+    if (stub >> name >> version >> platform && std::getline(stub >> std::ws, paths)) {
+      return Split(paths, '\0');
+    }
+  }
+  return {"lib"};
+}
+
+using GemRequirePaths = std::map<fs::path, std::vector<std::string>>;
+
+void AddGemKeys(std::vector<std::string> &keys, const Options &options,
+                const std::vector<std::string> &parts, GemRequirePaths &requirePaths) {
+  fs::path gemDir = options.rubyRoot / "lib" / "ruby" / "gems" / parts[1] / "gems" / parts[3];
+  auto [entry, inserted] = requirePaths.try_emplace(gemDir);
+  if (inserted) entry->second = InstalledGemRequirePaths(gemDir);
+
+  fs::path gemFile = JoinParts(parts, 4);
+  for (const std::string &root : entry->second) {
+    fs::path relative = gemFile.lexically_relative(fs::path(root).lexically_normal());
+    if (!relative.empty() && *relative.begin() != "..") AddKey(keys, Slash(relative));
+  }
+  // Keep existing lib-relative names as aliases for callers that use them.
+  if (parts[4] == "lib") AddKey(keys, JoinParts(parts, 5));
+}
+
+std::vector<std::string> RubyLibKeys(const Options &options, const fs::path &path,
+                                     const std::set<std::string> &bundledGems, GemRequirePaths &requirePaths) {
   std::vector<std::string> keys;
   std::string tail = Relative(path, options.rubyRoot / "lib" / "ruby");
   std::vector<std::string> parts = Split(tail);
 
-  if (parts.size() >= 4 && parts[0] == "gems") {
-    auto lib = std::find(parts.begin(), parts.end(), "lib");
-    if (lib != parts.end()) AddKey(keys, JoinParts(parts, static_cast<std::size_t>(lib - parts.begin()) + 1));
+  if (parts[0] == "gems") {
+    if (parts.size() < 5 || parts[2] != "gems" || !bundledGems.count(GemNameFromDirectory(parts[3]))) return {};
+    AddGemKeys(keys, options, parts, requirePaths);
+    if (keys.empty()) return {};
   } else if (parts.size() >= 2 && VersionPart(parts[0])) {
     AddKey(keys, JoinParts(parts, NativeArchPart(parts[1]) ? 2 : 1));
   } else if ((parts[0] == "site_ruby" || parts[0] == "vendor_ruby") && parts.size() >= 3) {
@@ -552,9 +577,11 @@ std::vector<RubyEntry> EmbeddedRubyEntries(const Options &options) {
   for (const fs::path &path : AppRubySources(options)) {
     entries.push_back({path, Relative(path, options.root), {}});
   }
-  for (const fs::path &path : RubyLibRubySources(options)) {
-    std::vector<std::string> keys = RubyLibKeys(options, path);
-    if (keys.empty()) keys.push_back(Relative(path, options.root));
+  const auto bundledGems = BundledGemNames(options);
+  GemRequirePaths requirePaths;
+  for (const fs::path &path : RecursiveFiles(options.rubyRoot / "lib" / "ruby", {".rb"})) {
+    std::vector<std::string> keys = RubyLibKeys(options, path, bundledGems, requirePaths);
+    if (keys.empty()) continue;
     std::string key = keys.front();
     keys.erase(keys.begin());
     entries.push_back({path, key, keys});
@@ -562,16 +589,18 @@ std::vector<RubyEntry> EmbeddedRubyEntries(const Options &options) {
   return entries;
 }
 
-std::vector<std::string> NativeKeys(const Options &options, const fs::path &path) {
+std::vector<std::string> NativeKeys(const Options &options, const fs::path &path, GemRequirePaths &requirePaths) {
   std::vector<std::string> keys;
   std::string tail = Relative(path, options.rubyRoot / "lib" / "ruby");
   std::vector<std::string> parts = Split(tail);
 
   if (parts.size() >= 3 && VersionPart(parts[0]) && NativeArchPart(parts[1])) {
     AddKey(keys, JoinParts(parts, 2));
-  } else if (parts.size() >= 6 && parts[0] == "gems" && parts[2] == "gems") {
-    auto lib = std::find(parts.begin(), parts.end(), "lib");
+  } else if (parts.size() >= 5 && parts[0] == "gems" && parts[2] == "gems") {
+    // Keep the installed native filename stable when adding require-path aliases.
+    auto lib = std::find(parts.begin() + 4, parts.end(), "lib");
     if (lib != parts.end()) AddKey(keys, JoinParts(parts, static_cast<std::size_t>(lib - parts.begin()) + 1));
+    AddGemKeys(keys, options, parts, requirePaths);
   } else if (parts.size() >= 7 && parts[0] == "gems" && parts[2] == "extensions") {
     AddKey(keys, JoinParts(parts, 6));
   }
@@ -1235,10 +1264,11 @@ std::map<std::string, std::string> PrepareNativeFiles(const Options &options) {
 
   std::map<std::string, std::string> map;
   std::set<std::string> expectedFiles;
+  GemRequirePaths requirePaths;
   std::vector<fs::path> files = RecursiveFiles(options.rubyRoot / "lib", {".bundle", ".so"});
   for (const fs::path &source : files) {
     if (Lower(Slash(source)).find(".dsym/") != std::string::npos) continue;
-    std::vector<std::string> keys = NativeKeys(options, source);
+    std::vector<std::string> keys = NativeKeys(options, source, requirePaths);
     std::string primary = keys.empty() ? source.filename().generic_string() : keys.front();
     for (const std::string &key : keys) {
       if (EndsWith(Lower(key), ".bundle") || EndsWith(Lower(key), ".so")) {
