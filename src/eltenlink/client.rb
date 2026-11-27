@@ -12,6 +12,8 @@ module EltenLink
     REQUEST_RESPONSE_CACHE_TIMEOUT = 1.0
     REQUEST_RESPONSE_CACHE_PATH = "/api/v1/system/request-responses".freeze
     REQUEST_ID_HEADER = "X-Elten-Request-ID".freeze
+    OPERATION_ID_HEADER = "X-Elten-Operation-ID".freeze
+    ALREADY_SEEN = "system.request_already_seen".freeze
     REQUEST_ID_LENGTH = 48
     MUTATING_METHODS = %w[POST PUT PATCH DELETE].freeze
     REQUEST_RESPONSE_CACHE_MODES = [:disabled, :mutating, :all].freeze
@@ -32,7 +34,7 @@ module EltenLink
       headers = headers.is_a?(Hash) ? headers.dup : {}
       request_id = nil
       if self.class.cache_response_for_method?(method)
-        request_id = SecureRandom.alphanumeric(REQUEST_ID_LENGTH)
+        request_id = headers[REQUEST_ID_HEADER] || SecureRandom.alphanumeric(REQUEST_ID_LENGTH)
         headers[REQUEST_ID_HEADER] = request_id
       end
       auth_params = self.class.headers_have_auth?(headers) ? {} : self.class.session_auth_params
@@ -137,12 +139,7 @@ module EltenLink
 
     def api_data(method, path, params = nil, timeout: DEFAULT_TIMEOUT, headers: nil, cancellation_token: nil)
       payload = api_payload(method, path, params, timeout: timeout, headers: headers, cancellation_token: cancellation_token)
-      raise @last_error if payload == nil && @last_error != nil
-      unless payload.is_a?(Hash) && self.class.truthy?(payload["success"])
-        @last_error = api_error(payload, path)
-        raise @last_error
-      end
-      payload["data"] || {}
+      response_data(payload, path)
     end
 
     def api_success?(method, path, params = nil, timeout: DEFAULT_TIMEOUT, headers: nil, cancellation_token: nil)
@@ -215,12 +212,20 @@ module EltenLink
 
     def api_binary_data(method, path, body, headers = {}, params = nil, timeout: DEFAULT_TIMEOUT, cancellation_token: nil)
       payload = api_binary_payload(method, path, body, headers, params, timeout: timeout, cancellation_token: cancellation_token)
-      raise @last_error if payload == nil && @last_error != nil
-      unless payload.is_a?(Hash) && self.class.truthy?(payload["success"])
-        @last_error = api_error(payload, path)
-        raise @last_error
-      end
-      payload["data"] || {}
+      response_data(payload, path)
+    end
+
+    def cached_operation_data(request_id, path)
+      raw = recover_cached_response(request_id)
+      return unless raw
+
+      original = JSON.parse(raw)
+      return unless original.is_a?(Hash) && original.key?("success")
+
+      @last_error = nil
+      response_data(original, path)
+    rescue JSON::ParserError
+      nil
     end
 
     def e_json_request(method, path, params, data=nil, headers: nil, cancellation_token: nil, protocol: nil, &block)
@@ -374,6 +379,14 @@ module EltenLink
     end
 
     private
+
+    def response_data(payload, path)
+      raise @last_error if payload.nil? && @last_error
+      return payload["data"] || {} if payload.is_a?(Hash) && self.class.truthy?(payload["success"])
+
+      @last_error = api_error(payload, path)
+      raise @last_error
+    end
 
     def recover_cached_response(request_id)
       response = nil

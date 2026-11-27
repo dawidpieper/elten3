@@ -13,13 +13,17 @@ module ForumSceneClient
     default
   end
 
-  def forum_attempt(success_message = nil, error_message = _("Error"))
+  def forum_attempt(success_message = nil, error_message = _("Error"), on_already_seen: nil)
     yield
     alert(success_message) if success_message != nil
     true
   rescue EltenLink::Error => e
     log_forum_error(e)
-    alert(error_message)
+    if e.code == EltenLink::Client::ALREADY_SEEN && on_already_seen
+      on_already_seen.call
+    else
+      alert(error_message)
+    end
     false
   end
 
@@ -3236,6 +3240,7 @@ form.wait
         return if draft_data == nil
       end
     end
+    submission = EltenLink::Forum::Submission.new(draft_data["submission"])
     fields = [EditBox.new(p_("Forum", "Thread name"), type: 0, text: draft_data["title"].to_s, quiet: true)]
     if type == 0
       fields[1..6] = [EditBox.new(p_("Forum", "Post content"), type: EditBox::Flags::MultiLine, text: draft_data["text"], quiet: true), CheckBox.new(p_("Forum", "Use Markdown in this post"), checked: draft_data["markdown"] == true && holds_premiumpackage("courier")), nil, Button.new(p_("Forum", "Attach a poll")), nil, Button.new(p_("Forum", "Attach a file"))]
@@ -3257,7 +3262,7 @@ form.wait
     fields[-4].checked = draft_data["follow"] == true
     if draft
       draft.bind(form, fields[1]) {
-        { "title" => fields[0].text, "text" => fields[1].text, "markdown" => fields[2].checked,
+        { "title" => fields[0].text, "text" => fields[1].text, "markdown" => fields[2].checked, "submission" => submission.state,
           "forum_id" => forumclasses[form.fields[-3].index].id, "follow" => form.fields[-4].checked,
           "template_id" => draft_data["template_id"], "from_template" => draft_data["from_template"] == true,
           "tags" => current_tags.each_with_index.to_h { |tag, index|
@@ -3466,17 +3471,9 @@ form.wait
     if type == 0
       format=0
       format=form.fields[2].checked if form.fields[2]!=nil
-      attachments = nil
-      if files.size > 0
-        atts = ""
-        for f in files
-          atts += send_attachment(f) + ","
-        end
-        atts.chop! if atts[-1..-1] == ","
-        attachments = atts
-      end
       ft = forum_attempt(nil, p_("Forum", "Error creating thread!")) {
-        EltenLink::Forum.create_thread(elten_link, forumid: forumclasses[form.fields[-3].index].id, name: name, text: text, format: format, follow: form.fields[-4].checked, polls: polls, attachments: attachments, questions: questions)
+        attachments = submission.attachment_ids(elten_link, files)
+        EltenLink::Forum.create_thread(elten_link, forumid: forumclasses[form.fields[-3].index].id, name: name, text: text, format: format, follow: form.fields[-4].checked, polls: polls, attachments: attachments, questions: questions, submission: submission)
       }
     else
       fl = form.fields[1].get_recording_file(true)
@@ -3486,9 +3483,9 @@ if flp[0..3] != "OggS"
         return $scene = Scene_Main.new
       end
       ft = forum_attempt(nil, p_("Forum", "Error creating thread!")) {
-        EltenLink::Forum.create_audio_thread(elten_link, forumid: forumclasses[form.fields[-3].index].id, name: name, audio: flp, follow: form.fields[-4].checked, questions: questions)
+        EltenLink::Forum.create_audio_thread(elten_link, forumid: forumclasses[form.fields[-3].index].id, name: name, audio: flp, follow: form.fields[-4].checked, questions: questions, submission: submission)
       }
-      form.fields[1].delete_audio(true)
+      form.fields[1].delete_audio(true) if ft
     end
     if ft
       if draft
@@ -3497,7 +3494,7 @@ if flp[0..3] != "OggS"
       end
       alert(p_("Forum", "Thread has been created."))
     end
-    break if ft || type != 0
+    break if ft
     end
   ensure
     draft&.detach
@@ -3914,13 +3911,20 @@ loop do
   end
       end
   
-  def refresh
+  def refresh(after_unconfirmed_reply: false)
+    reply_fields = @form.fields.drop(@postscount * POST_FIELDS) if after_unconfirmed_reply
     pretext=""
     pretext=@textfields[0].text if @textfields!=nil
     lastindex=nil
     lastindex=@form.index if @form!=nil
     index=-1
-    return unless getcache
+    unless getcache
+      if after_unconfirmed_reply
+        @form.index = first_unread_or_last_index
+        @form.focus
+      end
+      return
+    end
     begin
       @sponsors = EltenLink::Admins.users(elten_link, "sponsors")
     rescue EltenLink::Error
@@ -3964,6 +3968,12 @@ end
       end
     end
 
+    if after_unconfirmed_reply
+      # Keep the existing reply controls, including any recording and uploaded attachments.
+      @fields.concat(reply_fields)
+      return focus_thread_form(first_unread_or_last_index)
+    end
+
     index = @readposts * POST_FIELDS if index == -1 && @query == :first_unread && @readposts < @postscount
     index = 0 if index == -1
     index = @lastpostindex if @lastpostindex != nil
@@ -3991,6 +4001,7 @@ end
       if @noteditable == false && @type != 1
         @reply_draft ||= Draft.new("thread:#{@thread}", config_key: "ForumDrafts", collection: "forum_drafts")
         data = @reply_draft.restore({ "text" => pretext, "markdown" => markdown })
+        @reply_submission ||= EltenLink::Forum::Submission.new(data["submission"])
         @textfields[0].set_text(data["text"]) if @textfields[0].text != data["text"]
         @textfields[3].checked = data["markdown"] == true && holds_premiumpackage("courier")
       end
@@ -4016,6 +4027,16 @@ end
         @fields.push(Button.new(p_("Forum", "Return")))
     index=lastindex if lastindex!=nil && index<@form.fields.size
     @attachments = []
+    focus_thread_form(index)
+  end
+
+  def first_unread_or_last_index
+    return @type == 2 ? 0 : 1 if @posts.empty?
+    last = @posts.length - 1
+    (@readposts.between?(0, last) ? @readposts : last) * POST_FIELDS
+  end
+
+  def focus_thread_form(index)
     @form = Form.new(@fields, index: index, quiet: true)
     @form.hide(@fields.size-2) if @threadclass.forum.group.preventattachments
     @form.bind_context(p_("Forum", "Forum")) {|menu|context(menu)}
@@ -4025,7 +4046,9 @@ end
 
   def bind_reply_draft
     return if @reply_draft == nil
-    @reply_draft.bind(@form, @textfields[0]) { { "text" => @textfields[0].text, "markdown" => @textfields[3].checked } }
+    @reply_draft.bind(@form, @textfields[0]) {
+      { "text" => @textfields[0].text, "markdown" => @textfields[3].checked, "submission" => @reply_submission.state }
+    }
   end
   
   def forum_signature_mode
@@ -4121,28 +4144,21 @@ end
     if (@form.fields[@postscount * POST_FIELDS + 3]!=nil && @form.fields[@postscount * POST_FIELDS + 3].pressed?) or (key_pressed?(:key_enter) and key_held?(0x11) and @form.index == @postscount * POST_FIELDS + 1)
       return if ![1,2].include?(@threadclass.forum.group.role) and !canjoin
       text=@form.fields[@postscount * POST_FIELDS + 1].text
-      attachments = nil
-      if @attachments.size > 0
-        atts = ""
-        for f in @attachments
-          atts += send_attachment(f) + ","
-        end
-        atts.chop! if atts[-1..-1] == ","
-        attachments = atts
-      end
       format = 0
       if @form.fields[@postscount * POST_FIELDS + 4]!=nil
         format = @form.fields[@postscount * POST_FIELDS + 4].checked
         end
-      if forum_attempt(nil) {
-        EltenLink::Forum.create_post(elten_link, thread_id: @thread, text: text, attachments: attachments, format: format, questions: @reply_questions)
+      if forum_attempt(nil, on_already_seen: -> { refresh(after_unconfirmed_reply: true) }) {
+        attachments = @reply_submission.attachment_ids(elten_link, @attachments)
+        EltenLink::Forum.create_post(elten_link, thread_id: @thread, text: text, attachments: attachments,
+                                    format: format, questions: @reply_questions, submission: @reply_submission)
       }
         @form.fields[@postscount * POST_FIELDS + 1].set_text("")
         @reply_questions.clear
         @reply_draft&.sent
         alert(p_("Forum", "The post was created."))
+        return main
       end
-      return main
     end
   end
 
@@ -4161,8 +4177,9 @@ end
         alert(_("Error"))
         return $scene = Scene_Main.new
       end
-      if forum_attempt(nil, p_("Forum", "Post creation failure.")) {
-        EltenLink::Forum.create_audio_post(elten_link, thread_id: @thread, audio: fl, questions: @reply_questions)
+      @reply_submission ||= EltenLink::Forum::Submission.new
+      if forum_attempt(nil, p_("Forum", "Post creation failure."), on_already_seen: -> { refresh(after_unconfirmed_reply: true) }) {
+        EltenLink::Forum.create_audio_post(elten_link, thread_id: @thread, audio: fl, questions: @reply_questions, submission: @reply_submission)
       }
         @reply_questions.clear
               f.delete_audio(true)

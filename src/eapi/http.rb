@@ -1308,7 +1308,13 @@ module EltenAPI
           return readurl_sync(uri.merge(response[:redirect]).to_s, method, body, headers, data, redirects + 1, cancellation_token: cancellation_token)
         end
         status = response[:status].to_i
-        return { body: :error, headers: response[:headers] } if status < 200 || status >= 300
+        if status < 200 || status >= 300
+          # Forum submissions need the API error code to recover a previously accepted request.
+          content_type = header_value(response[:headers], "Content-Type").to_s.downcase
+          unless header_value(request_headers, "X-Elten-Operation-ID") && content_type.start_with?("application/json")
+            return { body: :error, headers: response[:headers] }
+          end
+        end
         { body: decode_body(response[:body], response[:headers]), headers: response[:headers] }
       end
 

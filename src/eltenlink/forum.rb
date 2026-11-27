@@ -45,6 +45,79 @@ module EltenLink
   end
 
   module Forum
+    class Submission
+      attr_reader :state
+
+      def initialize(state = nil)
+        @uploads = {}
+        return unless state.is_a?(Hash)
+        ids = state.values_at("operation_id", "request_id")
+        @state = state if ids.all? { |id| id.is_a?(String) && /\A[A-Za-z0-9]{48}\z/.match?(id) }
+      end
+
+      def attachment_ids(client, files)
+        return nil if files.empty?
+        files.map do |file|
+          stat = File.stat(file)
+          @uploads[[file, stat.size, stat.mtime]] ||= Attachments.send_file(client, file)
+        end
+      end
+
+      def post(client, path, params, audio: nil, questions: nil)
+        # A multipart boundary changes on each attempt. Identify the recording by its contents.
+        content = [Client.session_auth_params["name"], path, params, questions, audio && Digest::SHA256.hexdigest(audio)]
+        fingerprint = Digest::SHA256.hexdigest(JSON.generate(content))
+        if @state.nil? || @state["fingerprint"] != fingerprint
+          @state = { "fingerprint" => fingerprint, "operation_id" => SecureRandom.alphanumeric(Client::REQUEST_ID_LENGTH),
+                     "request_id" => SecureRandom.alphanumeric(Client::REQUEST_ID_LENGTH) }
+        end
+        headers = { Client::OPERATION_ID_HEADER => @state["operation_id"] }
+        headers[Client::REQUEST_ID_HEADER] = @state["request_id"] if Client.cache_response_for_method?("POST")
+        begin
+          data = if audio
+                   body, content_headers = audio_question_payload(audio, questions)
+                   client.api_binary_data("POST", path, body, headers.merge(content_headers), params)
+                 else
+                   client.api_data("POST", path, params, headers: headers)
+                 end
+        rescue Error => error
+          request_id = headers[Client::REQUEST_ID_HEADER]
+          raise unless request_id && (error.code == Client::ALREADY_SEEN || (400..499).cover?(error.status.to_i))
+          data = original_result(client, request_id, path)
+          raise if data.nil?
+        end
+        @state = nil
+        @uploads.clear
+        data
+      end
+
+      private
+
+      def original_result(client, request_id, path)
+        client.cached_operation_data(request_id, path)
+      rescue Error => original
+        # A retry can be rejected before deduplication (for example by a rate limit).
+        # Only a cached rejection establishes what happened to the original submission.
+        status = original.status.to_i
+        @state = nil if (400..499).cover?(status) && status != 408 && original.code != Client::ALREADY_SEEN
+        raise
+      end
+
+      def audio_question_payload(audio, questions)
+        audio = audio.to_s.b
+        return [audio, { "Content-Type" => "application/octet-stream" }] if questions == nil || questions.empty?
+        definition = JSON.generate(questions).b
+        begin
+          boundary = "Elten#{SecureRandom.hex(16)}"
+        end while audio.include?(boundary) || definition.include?(boundary)
+        body = "--#{boundary}\r\nContent-Disposition: form-data; name=\"questions\"\r\n\r\n".b
+        body << definition << "\r\n--#{boundary}\r\n".b
+        body << "Content-Disposition: form-data; name=\"file\"; filename=\"post.opus\"\r\nContent-Type: audio/ogg\r\n\r\n".b
+        body << audio << "\r\n--#{boundary}--\r\n".b
+        [body, { "Content-Type" => "multipart/form-data; boundary=#{boundary}" }]
+      end
+    end
+
     FEATURED_THREAD_FIELDS = %i[
       thread_introductions
       thread_hydepark
@@ -356,8 +429,8 @@ module EltenLink
         true
       end
 
-      def create_thread(client, forumid:, name:, text:, follow: false, polls: nil, attachments: nil, format: 0, questions: nil)
-        data = client.api_data("POST", "/api/v1/forum", clean_hash(
+      def create_thread(client, forumid:, name:, text:, follow: false, polls: nil, attachments: nil, format: 0, questions: nil, submission: Submission.new)
+        params = clean_hash(
           "forum" => forumid.to_i,
           "thread_name" => name,
           "text" => text,
@@ -366,42 +439,22 @@ module EltenLink
           "questions" => questions,
           "attachments" => csv_value(attachments),
           "format" => format
-        ))
-        data["thread"].to_i
-      end
-
-      def create_audio_thread(client, forumid:, name:, audio:, follow: false, questions: nil)
-        body, headers = audio_question_payload(audio, questions)
-        data = client.api_binary_data(
-          "POST",
-          "/api/v1/forum",
-          body,
-          headers,
-          clean_hash("forum" => forumid.to_i, "thread_name" => name, "audio" => 1, "follow" => truth_param(follow))
         )
-        data["thread"].to_i
+        submission.post(client, "/api/v1/forum", params)["thread"].to_i
       end
 
-      def create_post(client, thread_id:, text:, attachments: nil, format: 0, questions: nil)
-        data = client.api_data("POST", "/api/v1/forum/#{thread_id.to_i}", clean_hash(
-          "text" => text,
-          "questions" => questions,
-          "attachments" => csv_value(attachments),
-          "format" => format
-        ))
-        data["id"].to_i
+      def create_audio_thread(client, forumid:, name:, audio:, follow: false, questions: nil, submission: Submission.new)
+        params = { "forum" => forumid.to_i, "thread_name" => name, "audio" => 1, "follow" => truth_param(follow) }
+        submission.post(client, "/api/v1/forum", params, audio: audio, questions: questions)["thread"].to_i
       end
 
-      def create_audio_post(client, thread_id:, audio:, questions: nil)
-        body, headers = audio_question_payload(audio, questions)
-        data = client.api_binary_data(
-          "POST",
-          "/api/v1/forum/#{thread_id.to_i}",
-          body,
-          headers,
-          clean_hash("audio" => 1)
-        )
-        data["id"].to_i
+      def create_post(client, thread_id:, text:, attachments: nil, format: 0, questions: nil, submission: Submission.new)
+        params = clean_hash("text" => text, "questions" => questions, "attachments" => csv_value(attachments), "format" => format)
+        submission.post(client, "/api/v1/forum/#{thread_id.to_i}", params)["id"].to_i
+      end
+
+      def create_audio_post(client, thread_id:, audio:, questions: nil, submission: Submission.new)
+        submission.post(client, "/api/v1/forum/#{thread_id.to_i}", { "audio" => 1 }, audio: audio, questions: questions)["id"].to_i
       end
 
       def post_questions(client, post_id:)
@@ -1014,20 +1067,6 @@ module EltenLink
         return "" unless audio.is_a?(Hash) && audio["url"].to_s != ""
 
         Client.absolute_api_url(audio["url"])
-      end
-
-      def audio_question_payload(audio, questions)
-        audio = audio.to_s.b
-        return [audio, { "Content-Type" => "application/octet-stream" }] if questions == nil || questions.empty?
-        definition = JSON.generate(questions).b
-        begin
-          boundary = "Elten#{SecureRandom.hex(16)}"
-        end while audio.include?(boundary) || definition.include?(boundary)
-        body = "--#{boundary}\r\nContent-Disposition: form-data; name=\"questions\"\r\n\r\n".b
-        body << definition << "\r\n--#{boundary}\r\n".b
-        body << "Content-Disposition: form-data; name=\"file\"; filename=\"post.opus\"\r\nContent-Type: audio/ogg\r\n\r\n".b
-        body << audio << "\r\n--#{boundary}--\r\n".b
-        [body, { "Content-Type" => "multipart/form-data; boundary=#{boundary}" }]
       end
 
       def clean_hash(hash)
