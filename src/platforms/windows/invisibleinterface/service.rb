@@ -137,6 +137,7 @@ module EltenAPI
       def stop
         ensure_state
         @stopped = true
+        cancel_feed_reply_request
         Hotkeys.stop
         NativeDialogs.close_all
         @jobs << [:stop]
@@ -166,12 +167,18 @@ module EltenAPI
 
       def reset_feeds
         ensure_state
+        cancel_feed_reply_request
+        @feed_replies = @feed_reply = nil
         @feed_id = nil
         @feed_lasttext = nil
       end
 
       def set_feed_id(id)
         ensure_state
+        if @feed_id != id.to_i
+          cancel_feed_reply_request
+          @feed_replies = @feed_reply = nil
+        end
         @feed_id = id.to_i
       end
 
@@ -230,6 +237,8 @@ module EltenAPI
           reset_session
         when :message_result
           handle_message_result(job[1], job[2], job[3])
+        when :feed_replies_result
+          finish_feed_reply_request(*job.drop(1))
         when :message_submit
           start_message_submit(job[1])
         when :message_submit_result
@@ -287,8 +296,7 @@ module EltenAPI
         @message_lasttext = nil
         @message_lastsubject = nil
         @message_lastrecipient = nil
-        @feed_id = nil
-        @feed_lasttext = nil
+        reset_feeds
       end
 
       def default_categories
@@ -328,6 +336,7 @@ module EltenAPI
           index = @categories.find_index { |category| @cards.include?(category.to_s) } || 0
         end
         index = (index + change.to_i) % @categories.size
+        cancel_feed_reply_request if @category == "feed" && @categories[index] != "feed"
         @category = @categories[index]
         if !category_available?
           if origin == index
@@ -497,6 +506,19 @@ module EltenAPI
 
       def navigate_feed(action)
         case action
+        when :pagedown
+          open_feed_replies
+        when :stop
+          cancel_feed_reply_request
+        when :pageup
+          if @feed_replies || @feed_reply_request
+            cancel_feed_reply_request
+            @feed_replies = @feed_reply = nil
+            quick_audio_stop
+            announce_feed(current_feed)
+          else
+            play_border
+          end
         when :up
           read_feed(:next)
         when :down
@@ -516,18 +538,62 @@ module EltenAPI
         end
       end
 
+      def open_feed_replies
+        feed = current_feed
+        return play_border if @feed_replies || @feed_reply_request || !feed || feed.responses.to_i.zero?
+
+        token = @feed_reply_request = EltenAPI::Tasks::CancellationToken.new
+        id = feed.id
+        session = session_name
+        Thread.new do
+          Thread.current.report_on_exception = false
+          replies = error = nil
+          begin
+            replies = EltenLink::Feeds.responses(EltenLink::Client.new, id, cancellation_token: token)
+          rescue StandardError => e
+            error = e
+          ensure
+            @jobs << [:feed_replies_result, token, id, session, replies, error]
+          end
+        end
+      rescue ThreadError => error
+        finish_feed_reply_request(token, id, session, nil, error)
+      end
+
+      def cancel_feed_reply_request
+        @feed_reply_request&.cancel
+        @feed_reply_request = nil
+      end
+
+      def finish_feed_reply_request(token, id, session, replies, error)
+        return unless token.equal?(@feed_reply_request)
+        @feed_reply_request = nil
+        return unless @category == "feed" && @feed_id == id && session_name == session
+        if error
+          Log.warning("Invisible Interface feed replies: #{error.message}")
+          say(_("Error"))
+          return
+        end
+        replies = replies.select { |reply| reply.id != id && (!reply.message.to_s.empty? || !feed_audio_url(reply).empty?) }
+        return play_border if replies.empty?
+
+        @feed_replies = replies
+        read_feed(:first)
+      end
+
       def read_feed(action)
-        feeds = feed_values
+        feeds = (@feed_replies || feed_values).select { |feed| navigable_feed?(feed) }
         if feeds.empty?
           play_border
           return
         end
         @feed_id = feeds.last.id if @feed_id == nil || @feed_id.to_i == 0
+        id = @feed_reply ? @feed_reply.id : @feed_id.to_i
         feed = case action
         when :prev
-          feeds.select { |f| f.id.to_i < @feed_id.to_i }.max_by { |f| f.id.to_i }
+          feeds.select { |f| f.id.to_i < id.to_i }.max_by { |f| f.id.to_i }
         when :next
-          feeds.select { |f| f.id.to_i > @feed_id.to_i }.min_by { |f| f.id.to_i }
+          feeds.select { |f| f.id.to_i > id.to_i }.min_by { |f| f.id.to_i }
         when :first
           feeds.min_by { |f| f.id.to_i }
         when :last
@@ -535,9 +601,14 @@ module EltenAPI
         end
         if feed != nil
           quick_audio_stop
-          @feed_id = feed.id
-          Scene_Main.feed_id = feed.id if defined?(Scene_Main)
-          @feed_lasttext = feed.user.to_s + ": " + feed.message.to_s
+          if @feed_replies
+            @feed_reply = feed
+          else
+            cancel_feed_reply_request if @feed_id != feed.id
+            @feed_id = feed.id
+            Scene_Main.feed_id = feed.id if defined?(Scene_Main)
+            @feed_lasttext = feed.user.to_s + ": " + feed.message.to_s
+          end
           play_move
           announce_feed(feed)
         else
@@ -579,6 +650,7 @@ module EltenAPI
       end
 
       def current_feed
+        return @feed_reply if @feed_reply
         return nil if @feed_id == nil || @feed_id.to_i == 0
         feeds = feed_values
         feed = feeds.find { |current| current.id.to_i == @feed_id.to_i }
@@ -613,6 +685,13 @@ module EltenAPI
           return
         end
         text = feed.user.to_s + ": " + feed.message.to_s
+        if feed.responses.to_i > 0
+          if Configuration.soundthemeactivation == true
+            play_sound("listbox_itemcontaining")
+          else
+            text = p_("FeedViewer", "Show responses") + ": " + text
+          end
+        end
         if feed_audio_url(feed) != ""
           if Configuration.soundthemeactivation == true
             play_sound("file_audio")
