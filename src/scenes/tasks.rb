@@ -304,7 +304,7 @@ module TasksSceneHelpers
                elsif goal && parent.due?
                  parent.plantime
                else
-                 Time.now
+                 EltenLink::TimeZones.local_times(timezone, today, 23, 59, 59, resolve: true).last
                end
     due_time = EltenLink::TimeZones.local(timezone, due_time)
     min_year = [due_time.year, Time.now.year].min
@@ -318,17 +318,21 @@ module TasksSceneHelpers
       due_entries = [[parent_due_label, :inherit]]
       if parent.due?
         due_entries += task_due_presets(today, task_date(parent.plantime))
-        due_entries << [p_("Tasks", "Custom due date"), :custom]
+        due_entries << [p_("Tasks", "Custom due date and time"), :custom]
       end
     else
       due_entries = [[p_("Tasks", "No due date"), :none]] +
                     task_due_presets(today) +
-                    [[p_("Tasks", "Custom due date"), :custom]]
+                    [[p_("Tasks", "Custom due date and time"), :custom]]
     end
     due_index = 0
     if task != nil && task.due? && (!goal || parent.due?)
       current_date = task_date(due_time)
-      due_index = due_entries.index { |_, value| value == current_date } || due_entries.size - 1
+      due_index = if [due_time.hour, due_time.min, due_time.sec] == [23, 59, 59]
+                    due_entries.index { |_, value| value == current_date } || due_entries.size - 1
+                  else
+                    due_entries.size - 1
+                  end
     end
     repeat_values = [0, 1, 7, -1, :custom]
     repeat_labels = [
@@ -364,7 +368,7 @@ module TasksSceneHelpers
         header: goal ? p_("Tasks", "Goal due date") : p_("Tasks", "Due date"),
         index: due_index
       ),
-      btn_due = DateField.new(p_("Tasks", "Custom due date"), date: due_time, years: (min_year..max_year)),
+      btn_due = DateField.new(p_("Tasks", "Custom due date and time"), date: due_time, years: (min_year..max_year), include_time: true),
       lst_repeat = ListBox.new(repeat_labels, header: p_("Tasks", "Repeat"), index: repeat_index),
       edt_repeat_days = EditBox.new(p_("Tasks", "Number of days"), type: EditBox::Flags::Numbers, text: custom_repeat, quiet: true),
       btn_save = Button.new(task == nil ? p_("Tasks", "Add task") : _("Save")),
@@ -395,23 +399,32 @@ module TasksSceneHelpers
     accepted = false
     plantime = nil
     frequency = 0
-    init_name = edt_name.text.to_s
-    init_desc = edt_description.text.to_s
-    init_repeat_index = lst_repeat.index.to_i
-    init_repeat_days = edt_repeat_days.text.to_s
-    unchanged = proc do
-      edt_name.text.to_s == init_name &&
-        edt_description.text.to_s == init_desc &&
-        lst_repeat.index.to_i == init_repeat_index &&
-        (!custom_repeat_selected.call || edt_repeat_days.text.to_s == init_repeat_days)
+    current_state = proc do
+      due = selected_due.call
+      deadline = if due == :custom
+                   value = [btn_due.date, btn_due.hour, btn_due.minute]
+                   second = if value == [due_time.to_date, due_time.hour, due_time.min]
+                              due_time.sec
+                            else
+                              btn_due.hour == 23 && btn_due.minute == 59 ? 59 : 0
+                            end
+                   value + [second]
+                 elsif due.is_a?(Date)
+                   [due, 23, 59, 59]
+                 else
+                   due
+                 end
+      [edt_name.text.to_s, edt_description.text.to_s, lst_project.index, lst_performer.index,
+       deadline, lst_repeat.index, custom_repeat_selected.call ? edt_repeat_days.text.to_s : nil]
     end
+    initial_state = current_state.call
     dialog_open
     loop do
       loop_update
       form.update
       if key_pressed?(:key_escape) ||
           ((key_pressed?(:key_enter) || key_pressed?(:key_space)) && fields[form.index] == btn_cancel)
-        break if unchanged.call || confirm(p_("Tasks", "Are you sure you want to close without saving?"))
+        break if current_state.call == initial_state || confirm(p_("Tasks", "Are you sure you want to close without saving?"))
       end
       if (key_pressed?(:key_enter) || key_pressed?(:key_space)) && fields[form.index] == btn_save
         if edt_name.text.to_s.strip.empty?
@@ -419,13 +432,11 @@ module TasksSceneHelpers
           edt_name.focus
         else
           due = selected_due.call
-          due = btn_due.date if due == :custom
-          if due.is_a?(Date)
-            plantime = if task&.due? && due == due_time.to_date
-                         task.plantime
-                       else
-                         EltenLink::TimeZones.local_times(timezone, due, 23, 59, 59, resolve: true).last
-                       end
+          if due == :custom
+            plantime = task_due_time(timezone, btn_due.date, btn_due.hour, btn_due.minute, due_time)
+            next if plantime == nil
+          elsif due.is_a?(Date)
+            plantime = EltenLink::TimeZones.local_times(timezone, due, 23, 59, 59, resolve: true).last
           else
             plantime = nil
           end
@@ -471,7 +482,31 @@ module TasksSceneHelpers
   end
 
   def task_date_label(time)
-    format_localized_date(task_date(time))
+    "#{format_localized_date(task_date(time))}, #{time.strftime("%H:%M")}"
+  end
+
+  def task_due_time(timezone, date, hour, minute, previous=nil)
+    if previous != nil && [previous.to_date, previous.hour, previous.min] == [date, hour, minute]
+      return previous
+    end
+
+    second = hour == 23 && minute == 59 ? 59 : 0
+    times = EltenLink::TimeZones.local_times(timezone, date, hour, minute, second)
+    return times.first if times.size == 1
+
+    labels = times.map { |time| "#{time.strftime("%H:%M %Z")} (#{EltenLink::TimeZones.offset_label(time.utc_offset)})" }
+    selected = selector(
+      labels,
+      header: p_("Tasks", "%{time} occurs twice in this time zone. Choose which occurrence to use.") % {
+        time: "#{date} #{format("%02d:%02d", hour, minute)}"
+      },
+      cancel_index: -1,
+      start_index: 0
+    )
+    selected >= 0 ? times[selected] : nil
+  rescue TZInfo::PeriodNotFound
+    alert(p_("Tasks", "This time does not exist in the selected time zone because the clocks move forwards. Choose another time."))
+    nil
   end
 
   def task_repeat_label(task)
