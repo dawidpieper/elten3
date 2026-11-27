@@ -125,7 +125,8 @@ class Scene_Programs
         [p_("Programs", "Name"), p_("Programs", "Description"), p_("Programs", "Installed version"),
           p_("Programs", "Latest version"), p_("Programs", "Active installations"), p_("Programs", "Author"),
           p_("Programs", "Status")],
-        @items.map{|program|program_row(program)}, index: index, header: header, empty_label: empty, quiet: true
+        @items.map{|program|program_row(program)}, index: index, column: position[:column].to_i,
+        header: header, empty_label: empty, quiet: true
       )
       @items.each_with_index do |program, row|
         installed=installed_program_for(program)
@@ -135,7 +136,6 @@ class Scene_Programs
           @sel.set_row_status(row, "listbox_itemnew", p_("Programs", "Update available")+":", p_("Programs", "Update available"))
         end
       end
-      @sel.column=position[:column].to_i
     else
       @sel=ListBox.new(options, index: index, header: header, empty_label: empty, quiet: true)
     end
