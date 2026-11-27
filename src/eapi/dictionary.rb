@@ -5,7 +5,6 @@
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
 
 require_relative "resources" if !defined?(EltenAPI::Resources)
-require_relative "dictionary_plural_rule"
 
 module EltenAPI
   module Dictionary
@@ -45,6 +44,150 @@ module EltenAPI
       end
     end
     Catalogs = CatalogRegistry.new
+
+    class PluralRule
+      MAX_PERIOD_ENTRIES = 256
+      OPERATORS = [%w[||], %w[&&], %w[== !=], %w[< <= > >=], %w[+ -], %w[* / %]].each(&:freeze).freeze
+
+      def initialize(expression)
+        source = expression.to_s
+        raise ArgumentError, "Invalid plural expression" if source.empty? || source.bytesize > 2048
+        @tokens = source.scan(/\d+|n|&&|\|\||==|!=|<=|>=|\S/)
+        raise ArgumentError, "Invalid plural expression" if @tokens.size > 256
+        @position = 0
+        @tree = expression_tree
+        raise ArgumentError, "Unexpected plural token" if @position != @tokens.size
+        @tokens = nil
+        cycle = eventual_period(@tree)
+        if cycle
+          @cycle_start, @period = cycle
+          @indices = Array.new(@cycle_start + @period) { |count| interpret(count) }.freeze
+        end
+        freeze
+      end
+
+      def index(count)
+        if @indices && count.is_a?(Integer) && count >= 0
+          return @indices[count] if count < @indices.size
+          return @indices[@cycle_start + (count - @cycle_start) % @period]
+        end
+        interpret(count)
+      end
+
+      private
+
+      def interpret(count)
+        evaluate(@tree, count)
+      rescue ZeroDivisionError
+        nil
+      end
+
+      # For nonnegative n, the value repeats every period once n reaches start.
+      # Recognize bare n in a comparison with a literal or a remainder by a literal.
+      def eventual_period(tree)
+        return [0, 1] if tree.is_a?(Integer)
+        return nil if tree == :n
+
+        operator, left, right = tree
+        case operator
+        when "%"
+          return [0, right] if left == :n && right.is_a?(Integer) && right.between?(1, MAX_PERIOD_ENTRIES)
+        when "==", "!=", "<", "<=", ">", ">="
+          bound = right if left == :n
+          bound = left if right == :n
+          return [bound + 1, 1] if bound.is_a?(Integer) && bound < MAX_PERIOD_ENTRIES - 1
+        end
+
+        # Once every operand repeats, their combination repeats at the common period.
+        start = 0
+        period = 1
+        tree.drop(1).each do |operand|
+          cycle = eventual_period(operand)
+          return nil unless cycle
+          start = [start, cycle[0]].max
+          period = period.lcm(cycle[1])
+          return nil if start + period > MAX_PERIOD_ENTRIES
+        end
+        [start, period]
+      end
+
+      def take(token)
+        return false if @tokens[@position] != token
+        @position += 1
+        true
+      end
+
+      def expect(token)
+        raise ArgumentError, "Invalid plural expression" if !take(token)
+      end
+
+      def expression_tree
+        tree = binary_tree(0)
+        if take("?")
+          positive = expression_tree
+          expect(":")
+          tree = ["?", tree, positive, expression_tree]
+        end
+        tree
+      end
+
+      def binary_tree(level)
+        return unary_tree if level == OPERATORS.size
+        tree = binary_tree(level + 1)
+        while OPERATORS[level].include?(@tokens[@position])
+          operator = @tokens[@position]
+          @position += 1
+          tree = [operator, tree, binary_tree(level + 1)]
+        end
+        tree
+      end
+
+      def unary_tree
+        return ["!", unary_tree] if take("!")
+        return ["negate", unary_tree] if take("-")
+        return unary_tree if take("+")
+        if take("(")
+          tree = expression_tree
+          expect(")")
+          return tree
+        end
+        token = @tokens[@position]
+        raise ArgumentError, "Invalid plural operand" if token == nil || (token != "n" && !token.match?(/\A\d+\z/))
+        @position += 1
+        token == "n" ? :n : token.to_i
+      end
+
+      def evaluate(tree, count)
+        return count if tree == :n
+        return tree if tree.is_a?(Integer)
+        operator, left, right, other = tree
+        a = evaluate(left, count)
+        case operator
+        when "?" then evaluate(a != 0 ? right : other, count)
+        when "!" then a == 0 ? 1 : 0
+        when "negate" then -a
+        when "&&" then a != 0 && evaluate(right, count) != 0 ? 1 : 0
+        when "||" then a != 0 || evaluate(right, count) != 0 ? 1 : 0
+        else
+          b = evaluate(right, count)
+          case operator
+          when "+" then a + b
+          when "-" then a - b
+          when "*" then a * b
+          when "/", "%"
+            quotient = a.abs.div(b.abs)
+            quotient = -quotient if (a < 0) != (b < 0)
+            operator == "/" ? quotient : a - quotient * b
+          when "==" then a == b ? 1 : 0
+          when "!=" then a != b ? 1 : 0
+          when "<" then a < b ? 1 : 0
+          when "<=" then a <= b ? 1 : 0
+          when ">" then a > b ? 1 : 0
+          when ">=" then a >= b ? 1 : 0
+          end
+        end
+      end
+    end
 
     class Catalog
       def initialize(data)
@@ -95,6 +238,13 @@ module EltenAPI
         freeze
       end
 
+      def singular_label(key)
+        entry = @entries[key]
+        return unless entry
+        value = entry[1][0]
+        value if value && !value.empty?
+      end
+
       def translate(forms, count = nil)
         entry = @entries[forms.first]
         return nil if entry == nil
@@ -114,7 +264,7 @@ module EltenAPI
         index if index != nil && index >= 0 && index < @plural_count
       end
     end
-    private_constant :Catalog, :CatalogRegistry, :Catalogs, :CatalogMutex
+    private_constant :PluralRule, :Catalog, :CatalogRegistry, :Catalogs, :CatalogMutex
   def locale_text(value)
     str=value.to_s.dup
     if str.encoding==Encoding::UTF_8
@@ -217,7 +367,7 @@ end
 
 def p_(context, src)
   source = locale_text(src)
-  translate_contextual_message([source], context) || source
+  translate_contextual_label(source, context) || source
 end
 def s_(str)
   s=_(str)
@@ -287,6 +437,24 @@ rescue StandardError
   nil
 end
 
+def translate_contextual_label(source, context)
+  key = "#{locale_text(context)}\004#{source}"
+  programs = nil
+  value = nil
+  CatalogMutex.synchronize do
+    hosts = Catalogs.host
+    index = 0
+    while (catalog = hosts[index])
+      value = catalog.singular_label(key)
+      break if value
+      index += 1
+    end
+    programs = Catalogs.programs_for_key(key) unless value
+  end
+  value = programs[program_translation_runtime]&.singular_label(key) if programs
+  value&.dup
+end
+
 def translate_contextual_message(forms, context, count = nil)
   return nil if forms.empty?
   key = "#{locale_text(context)}\004#{forms.first}"
@@ -296,9 +464,11 @@ def translate_contextual_message(forms, context, count = nil)
     programs = Catalogs.programs_for_key(key)
     Catalogs.host
   end
-  host.each do |catalog|
+  index = 0
+  while (catalog = host[index])
     value = catalog.translate(forms, count)
     return value if value != nil
+    index += 1
   end
   if programs
     catalog = programs[program_translation_runtime]
@@ -330,7 +500,17 @@ def translate_message(forms, count = nil)
 end
 
 def plural_arguments(params)
-  [params.grep(String).map { |value| locale_text(value) }, params.grep(Integer).last || 0]
+  forms = []
+  count = 0
+  params.each do |argument|
+    case argument
+    when String
+      forms << locale_text(argument)
+    when Integer
+      count = argument
+    end
+  end
+  [forms, count]
 end
 
 def plural_source(forms, count)
