@@ -13,7 +13,10 @@ class Scene_Main
   @@acselindex=nil
   @@notification_index=0
   @@notifications_last_visible_time=0
+  FeedSelection = Struct.new(:id, :generation)
+  private_constant :FeedSelection
   @@feed_id=-1
+  @@return_feed_selection=nil
   @@focus=:actions
   @@specials=[]
 
@@ -25,6 +28,10 @@ class Scene_Main
   def main
     if @@feed_id==-1
       @@feed_id = LocalConfig['MainFeedId', type: :numeric]
+    end
+    if @@return_feed_selection
+      @requested_feed_selection = @@return_feed_selection
+      @@return_feed_selection = nil
     end
     if !Session.logged? && $preinitialized!=true
       $scene=Scene_Loading.new
@@ -67,7 +74,6 @@ class Scene_Main
     $main_notifications_changed = false
     notifications_load(false, focus_policy: entry_notification_focus_policy)
     acsel_load(false)
-    feeds_load(false)
     @program_ui_revision = program_ui_revision
     focus_current_control
     @from_feed = false
@@ -92,7 +98,6 @@ class Scene_Main
         end
       end
       announce_notifications_after_restore_if_active
-      feeds_load if Session.feeds_updated?
       update_current_main_control
       if key_pressed?(0x9)
         if key_held?(0x10)
@@ -117,7 +122,9 @@ class Scene_Main
     end
     @@notification_index=@notifications_sel.index if @notifications_sel!=nil
     @@acselindex=@acsel.index if @acsel!=nil
-    @@feed_id = @feeds[@feedsel.index].id if @feeds.size>0
+    unless @@return_feed_selection
+      @@feed_id = pending_feed_selection&.id || (@feedsel && @feeds[@feedsel.index]&.id) || @@feed_id
+    end
     LocalConfig['MainFeedId'] = @@feed_id
   end
 
@@ -263,6 +270,7 @@ def focus_current_control
   when :actions
     @acsel.focus if @acsel!=nil
   when :feed
+    refresh_feed_list
     if @from_feed
       @feedsel&.focus(announce_header: false)
     else
@@ -283,7 +291,8 @@ def say_current_option
   when :actions
     @acsel.sayoption if @acsel!=nil
   when :feed
-    @feedsel.sayoption if @feedsel!=nil
+    refresh_feed_list
+    @feedsel.sayoption
   when :empty
     empty_main_control.sayoption
   else
@@ -334,7 +343,8 @@ def update_current_main_control
   when :actions
     @acsel.update if @acsel!=nil
   when :feed
-    @feedsel.update if @feedsel!=nil
+    refresh_feed_list
+    @feedsel.update
   when :empty
     empty_main_control.update
   else
@@ -499,20 +509,23 @@ def feed_update
   if @feeds.size>0
     if @feedsel.selected?
       feedshow(@feeds[@feedsel.index])
-      @feedsel.focus if $scene == self
+      if $scene == self
+        refresh_feed_list
+        @feedsel.focus
+      end
       loop_update
     end
     if @feedsel.expanded?
       feed=@feeds[@feedsel.index]
-      if feed.responses>0
+      if feed && feed.responses>0
         open_feed_responses(feed)
       end
     end
   end
 end
 def open_feed_responses(feed)
-  parent = Scene_Main.new(notification_focus: :keep_current)
-  $scene = Scene_FeedViewer.new(feed, feed_parent: parent)
+  @notification_focus = :keep_current
+  $scene = Scene_FeedViewer.new(feed, feed_parent: self)
 end
 
 def qacindex
@@ -703,44 +716,148 @@ def action_add
   end
 end
 def feeds_load(fc=false)
-  @@feed_id = @feeds[@feedsel.index].id if @feeds.is_a?(Array) && @feeds.size>0 && @feedsel!=nil
-  @feeds=[]
-  ind=-1
-  for f in Session.feeds.keys.sort.reverse
-    feed=Session.feeds[f]
-    @feeds.push(feed) if feed!=nil && feed.message!=""
-    ind=@feeds.size-1 if ind==-1 && @@feed_id>0 && feed.id<=@@feed_id
-  end
-  ind=0 if ind==-1
-selt=@feeds.map{|f|
-parts=[utf8(f.user)]
-parts << EltenAPI::SpeechCommands::SoundCommand.new("listbox_itemliked", " "+p_("EAPI_Speech", "Liked")+": ", "(like)", immediate: true) if f.liked
-parts << ": "+utf8(f.message)+" "
-parts << "("+utf8(np_("Main", "%{count} user likes it", "%{count} users like it", f.likes)%{:count=>f.likes})+") " if f.likes>0
-begin
-parts << utf8(format_date(Time.at(f.time)))
-rescue Exception
-  end
-parts << EltenAPI::SpeechCommands::SoundCommand.new("listbox_itemcontaining", " "+p_("EAPI_Speech", "Containing")+": ", "->", immediate: true) if f.responses>0
-EltenAPI::SpeechSequence.new(parts)
-}
-  if @feedsel==nil
-  @feedsel = ListBox.new(selt, header: p_("Main", "Feed"), index: ind)
-  @feedsel.bind_context{|menu|feeds_context(menu)}
-  @feedsel.on(:move) {
-  if @feeds.size>0
-  feed=@feeds[@feedsel.index]
-  if feed!=nil
-    EltenAPI::InvisibleInterface.set_feed_id(feed.id) if defined?(EltenAPI::InvisibleInterface)
-  end
-  end
-  }
-else
-  @feedsel.options = selt
-    @feedsel.index = ind
+  refresh_feed_list(force: true)
+  @feedsel.focus if fc
 end
-configure_feed_list_audio(@feedsel, @feeds)
-@feedsel.focus if fc
+
+def refresh_feed_list(force: false)
+  batch = Session.take_feed_changes(@feed_revision)
+  generation = Session.feed_generation
+  request = pending_feed_selection
+  if request && @feed_generation == generation && (index = @feed_positions[request.id])
+    # If this batch removes the requested entry, restore focus from that entry.
+    @feedsel.index = index
+    @applied_feed_selection = request
+    request = nil
+  end
+  language = Configuration.language
+  soundtheme = Configuration.soundthemeactivation == true
+  refresh_all = force || !@feedsel || @feed_generation != generation || @feed_language != language || @feed_soundtheme != soundtheme
+  if batch || refresh_all
+    revision, changes = batch
+    records = Session.feeds
+    selected_id = @feedsel && @feeds[@feedsel.index]&.id
+    if @feed_generation != generation
+      if @feedsel
+        unless @feed_owner_name == Session.name && @feed_owner_token == Session.token
+          selected_id = nil
+          @@feed_id = -1
+        end
+        @feedsel.clear_options
+        @feedsel = nil
+        @feed_audio_status = nil
+      end
+      @feed_owner_name = Session.name.dup
+      @feed_owner_token = Session.token.dup
+    end
+    @@feed_id = selected_id if selected_id
+    selected_id ||= @@feed_id
+    if refresh_all || changes == :reset
+      rows = records.values.select { |feed| feed && feed.message != "" }.sort_by!(&:id).reverse!
+      set_feed_rows(rows, rows.map { |feed| feed_option(feed) }, records, selected_id)
+      @feed_audio_status = configure_feed_list_audio(@feedsel, @feeds, previous_status: @feed_audio_status)
+      @feed_language = language.dup
+      @feed_soundtheme = soundtheme
+    else
+      update_feed_rows(changes, records, selected_id)
+    end
+    @feed_generation = generation
+    @feed_revision = revision if batch
+  end
+
+  if request && !@feeds.empty?
+    # The invisible interface picks the lowest visible ID at or above its target.
+    newer_count = @feeds.bsearch_index { |feed| feed.id < request.id } || @feeds.size
+    @feedsel.index = newer_count - 1 if newer_count > 0
+    @applied_feed_selection = request
+  end
+end
+
+def update_feed_rows(changes, records, selected_id)
+  additions = []
+  removals = {}
+  changes.each do |id|
+    index = @feed_positions[id]
+    feed = records[id]
+    if feed && feed.message != ""
+      if index
+        @feeds[index] = feed
+        @feedsel.replace_option(index, feed_option(feed))
+      else
+        additions << feed
+      end
+    elsif index
+      removals[id] = true
+    end
+  end
+
+  unless additions.empty? && removals.empty?
+    additions.sort_by!(&:id)
+    rows = []
+    @feeds.each do |feed|
+      rows << additions.pop while !additions.empty? && additions.last.id > feed.id
+      rows << feed unless removals.key?(feed.id)
+    end
+    rows.concat(additions.reverse)
+    options = rows.map do |feed|
+      previous = @feed_positions[feed.id]
+      previous ? @feedsel.options[previous] : feed_option(feed)
+    end
+    set_feed_rows(rows, options, records, selected_id)
+  end
+  changes.each do |id|
+    index = @feed_positions[id]
+    configure_feed_item_audio(@feedsel, index, @feeds[index], status: @feed_audio_status) if index
+  end
+end
+
+def set_feed_rows(rows, options, records, selected_id)
+  @feeds = rows
+  ids = rows.map(&:id)
+  @feed_positions = {}
+  ids.each_with_index { |id, index| @feed_positions[id] = index }
+  index = feed_restore_index(selected_id, records)
+  if @feedsel
+    @feedsel.header = p_("Main", "Feed")
+    @feedsel.update_options(options, keys: ids)
+    @feedsel.index = index
+  else
+    @feedsel = ListBox.new(options, header: p_("Main", "Feed"), keys: ids, index: index)
+    @feedsel.bind_context { |menu| feeds_context(menu) }
+    @feedsel.on(:move) do
+      feed = @feeds[@feedsel.index]
+      EltenAPI::InvisibleInterface.set_feed_id(feed.id) if feed && defined?(EltenAPI::InvisibleInterface)
+    end
+  end
+end
+
+def feed_restore_index(id, records)
+  return 0 unless id && id > 0
+  return @feed_positions[id] if @feed_positions.key?(id)
+
+  # The old list visits empty messages when restoring focus. A deleted entry
+  # therefore selects the visible entry just above it, if one exists.
+  target = nil
+  records.each_key { |key| target = key if key <= id && (!target || key > target) }
+  return 0 unless target
+  return @feed_positions[target] if @feed_positions.key?(target)
+
+  older = @feeds.bsearch_index { |feed| feed.id < target } || @feeds.size
+  [older - 1, 0].max
+end
+
+def feed_option(feed)
+  parts = [utf8(feed.user)]
+  parts << EltenAPI::SpeechCommands::SoundCommand.new("listbox_itemliked", " " + p_("EAPI_Speech", "Liked") + ": ", "(like)", immediate: true) if feed.liked
+  parts << ": " + utf8(feed.message) + " "
+  parts << "(" + utf8(np_("Main", "%{count} user likes it", "%{count} users like it", feed.likes) % { count: feed.likes }) + ") " if feed.likes > 0
+  begin
+    parts << utf8(format_date(Time.at(feed.time)))
+  rescue StandardError
+    # Keep entries with timestamps outside the supported range.
+  end
+  parts << EltenAPI::SpeechCommands::SoundCommand.new("listbox_itemcontaining", " " + p_("EAPI_Speech", "Containing") + ": ", "->", immediate: true) if feed.responses > 0
+  EltenAPI::SpeechSequence.new(parts)
 end
 
 def utf8(value)
@@ -799,19 +916,20 @@ dialog_close
     response=feed.response if feed.response>0
     feed_new(users.uniq, response)
     }
-    s=p_("Main", "Like this message")
-    s=p_("Main", "Dislike this message") if feed.liked
-    menu.option(s, nil, "k") {
-    begin
-      EltenLink::Feeds.set_liked(elten_link, feed.id, !feed.liked)
-    rescue EltenLink::Error => e
-      Log.warning("Feed like toggle failed: #{e.message}")
-    alert(_("Error"))
-  else
-    st=(feed.liked)?(p_("Main", "Message disliked")):(p_("Main", "Message liked"))
-    feed.liked=!feed.liked
-    alert(st)
-    end
+    feed_generation = @feed_generation
+    liked = !feed.liked
+    label = liked ? p_("Main", "Like this message") : p_("Main", "Dislike this message")
+    menu.option(label, nil, "k") {
+      next unless feed_generation == Session.feed_generation
+      begin
+        EltenLink::Feeds.set_liked(elten_link, feed.id, liked)
+      rescue EltenLink::Error => e
+        Log.warning("Feed like toggle failed: #{e.message}")
+        alert(_("Error"))
+      else
+        Session.confirm_feed_like(feed, liked, generation: feed_generation)
+        alert(liked ? p_("Main", "Message liked") : p_("Main", "Message disliked"))
+      end
     }
     if feed.user==Session.name
     menu.option(_("Delete"), nil, :del) {
@@ -834,13 +952,23 @@ dialog_close
 def feed_new(users=[], response=0)
   compose_feed(users, response)
 end
-def feed_id=(f)
-  for i in 0...@feeds.size
-    @feedsel.index=i if @feeds[i].id>=f
-    end
+def pending_feed_selection
+  request = @requested_feed_selection
+  request if request && !request.equal?(@applied_feed_selection) && request.generation == Session.feed_generation
+end
+
+def feed_id=(id)
+  @requested_feed_selection = FeedSelection.new(id, Session.feed_generation)
+  refresh_feed_list if Thread.current == $mainthread && current_main_section == :feed
+end
+
+def self.feed_id=(id)
+  @@feed_id = id
+  scene = $scene
+  if scene.is_a?(Scene_Main)
+    scene.feed_id = id
+  else
+    @@return_feed_selection = FeedSelection.new(id, Session.feed_generation)
   end
-def self.feed_id=(f)
-  @@feed_id=f
-  $scene.feed_id=f if $scene.is_a?(Scene_Main)
-  end
+end
 end

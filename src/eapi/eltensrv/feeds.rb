@@ -24,18 +24,36 @@ module EltenAPI
     end
 
     def feed_audio_status
-      ListBox.item_status("file_audio", p_("FeedViewer", "Audio content")+":", p_("FeedViewer", "Audio content"))
+      label = p_("FeedViewer", "Audio content")
+      ListBox.item_status("file_audio", label + ":", label)
     end
 
-    def configure_feed_list_audio(list, feeds)
-      return if list==nil
-      list.item_audio_autoplay=false
-      list.item_audio_space_mode=:stop
+    def configure_feed_list_audio(list, feeds, previous_status: nil)
+      return unless list
+
+      list.item_audio_autoplay = false
+      list.item_audio_space_mode = :stop
+      status = feed_audio_status
       feeds.to_a.each_with_index do |feed, index|
-        url=feed_audio_url(feed)
-        next if url==""
-        list.set_item_state(index, feed_audio_status)
-        list.set_item_audio(index, url)
+        configure_feed_item_audio(list, index, feed, status: status, previous_status: previous_status)
+      end
+      status
+    end
+
+    def configure_feed_item_audio(list, index, feed, status: nil, previous_status: nil)
+      url = feed_audio_url(feed)
+      if url.empty?
+        list.clear_item_audio(index) if list.item_audio?(index)
+        return if list.item_states_for(index).empty?
+      end
+
+      status ||= feed_audio_status
+      list.clear_item_state(index, previous_status) if previous_status && previous_status != status
+      if url.empty?
+        list.clear_item_state(index, status)
+      else
+        list.set_item_state(index, status) unless list.item_state?(index, status)
+        list.set_item_audio(index, url) unless list.item_audio_url(index) == url
       end
     end
 
@@ -156,7 +174,6 @@ module EltenAPI
       EltenLink::Feeds.follow(elten_link, user, follow: follow)
       NotificationService.reset_feeds
       EltenAPI::InvisibleInterface.reset_feeds if defined?(EltenAPI::InvisibleInterface)
-      Session.feeds_clear
       true
     rescue EltenLink::Error => e
       Log.warning("Feed follow toggle failed: #{e.message}")

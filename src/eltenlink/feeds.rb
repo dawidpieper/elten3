@@ -91,6 +91,19 @@ module EltenLink
         true
       end
 
+      def apply_liked(feed, liked)
+        return false if feed.liked == liked
+        feed.liked = liked
+        feed.likes = [feed.likes + (liked ? 1 : -1), 0].max
+        true
+      end
+
+      def same_message?(previous, current)
+        previous && previous.id == current.id && previous.user == current.user && previous.time == current.time &&
+          previous.message == current.message && previous.response == current.response && previous.responses == current.responses &&
+          previous.liked == current.liked && previous.likes == current.likes && previous.audio_url == current.audio_url
+      end
+
       def message_from_row(row, message_class=FeedMessage)
         audio = row["audio"]
         audio = audio["url"] || audio[:url] if audio.is_a?(Hash)

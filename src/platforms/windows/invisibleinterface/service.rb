@@ -547,13 +547,13 @@ module EltenAPI
       end
 
       def like_current_feed
+        generation = Session.feed_generation
         feed = current_feed
-        return if feed == nil
+        return if feed == nil || generation != Session.feed_generation
         liked = !feed.liked
         EltenLink::Feeds.set_liked(elten_link, feed.id, liked)
         status = liked ? p_("FeedViewer", "Message liked") : p_("FeedViewer", "Message disliked")
-        feed.likes = [feed.likes.to_i + (liked ? 1 : -1), 0].max if feed.respond_to?(:likes=)
-        feed.liked = liked
+        Session.confirm_feed_like(feed, liked, generation: generation)
         say(status)
       rescue Exception => e
         Log.error("InvisibleInterface feed like: #{e.class}: #{e.message}")

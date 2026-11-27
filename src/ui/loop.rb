@@ -148,7 +148,16 @@ end
        end
        begin
          NotificationService.start
-         NotificationService.drain_events.each do |d|
+         events = NotificationService.drain_events
+         # A notification callback can re-enter the loop and drain a newer batch.
+         # Apply the data from this batch before running those callbacks.
+         events.delete_if do |event|
+           next false unless event["func"] == "feeds"
+           Session.apply_feed_event(event)
+           true
+         end
+         events.each do |d|
+           next if d.key?("feed_generation") && d["feed_generation"] != Session.feed_generation
            batch_sounds = d.delete("batch_sounds")
            if d['func']=="app_notification"
              program, notification, presentation = Programs.receive_app_notification(d["notification"])
@@ -200,13 +209,6 @@ end
              show_missed_call(d['caller'])
            elsif d['func']=='premiumpackages'
              update_premiumpackages(d['premiumpackages'].to_s.split(","))
-           elsif d['func']=="feeds"
-             changed_feeds = d['changed'].is_a?(String) ? JSON.parse(d['changed']) : Array(d['changed'])
-             for f in changed_feeds
-               feed = FeedMessage.new(f['id'], f['user'], f['time'], f['message'], f['response'], f['responses'], f['liked'], f['likes'], f['audio_url'])
-               Session.feeds[feed.id]=feed
-             end
-             Session.feeds_update
            elsif d['func']=="notifications"
              $main_notifications_changed = true
              Session.notifications_update

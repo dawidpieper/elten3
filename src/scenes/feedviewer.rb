@@ -23,6 +23,7 @@ class Scene_FeedViewer
   end
 
   def main
+    @feed_generation = Session.feed_generation
     previous_index = @sel&.index
     previous_id = @feeds[previous_index]&.id if previous_index
     begin
@@ -146,19 +147,21 @@ dialog_close
     response=feed.response if feed.response>0
     feed_new(users.uniq, response)
     }
-    s=p_("FeedViewer", "Like this message")
-    s=p_("FeedViewer", "Dislike this message") if feed.liked
-    menu.option(s, nil, "k") {
-    begin
-      EltenLink::Feeds.set_liked(elten_link, feed.id, !feed.liked)
-    rescue EltenLink::Error => e
-      Log.warning("Feed like toggle failed: #{e.message}")
-    alert(_("Error"))
-  else
-    st=(feed.liked)?(p_("FeedViewer", "Message disliked")):(p_("FeedViewer", "Message liked"))
-    feed.liked=!feed.liked
-    alert(st)
-    end
+    generation = @feed_generation
+    liked = !feed.liked
+    label = liked ? p_("FeedViewer", "Like this message") : p_("FeedViewer", "Dislike this message")
+    menu.option(label, nil, "k") {
+      next unless generation == Session.feed_generation
+      begin
+        EltenLink::Feeds.set_liked(elten_link, feed.id, liked)
+      rescue EltenLink::Error => e
+        Log.warning("Feed like toggle failed: #{e.message}")
+        alert(_("Error"))
+      else
+        Session.confirm_feed_like(feed, liked, generation: generation)
+        EltenLink::Feeds.apply_liked(feed, liked)
+        alert(liked ? p_("FeedViewer", "Message liked") : p_("FeedViewer", "Message disliked"))
+      end
     }
   if feed.user==Session.name
     menu.option(_("Delete"), nil, :del) {

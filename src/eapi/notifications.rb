@@ -98,14 +98,7 @@ module EltenAPI
 
       def reset_feeds
         ensure_state
-        @feed_request_pending = false
-        @feed_request_id = nil
-        @ag_feed = 0
-        @ag_feedtime = 0
-        @feedstime = 0
-        @notificationtime = 0
-        @lastfeeds = nil
-        $feeds = {}
+        Session.feeds_clear
       end
 
       def drain_events(limit=50)
@@ -263,7 +256,6 @@ module EltenAPI
         @next_virtual_update_check_at = 0.0
         @feedstime = 0
         @notificationtime = 0
-        $feeds = {}
         @next_request_at = monotonic_time
         @stream_generation = 0
         @stream_supported = nil
@@ -360,9 +352,7 @@ module EltenAPI
         @wnlasttime = nil
         @next_notification_expiration_at = 0.0
         @ag_msg = nil
-        @ag_feed = 0
-        @ag_feedtime = 0
-        @feedstime = 0
+        @feed_generation = nil
         @notificationtime = 0
         @lastfeeds = nil
         @sigids = []
@@ -962,12 +952,7 @@ module EltenAPI
       end
 
       def handle_feed_counter(response, key)
-        feed = response["feed"].to_i
-        feedtime = response["feedtime"].to_i
-        return if @feed_request_pending == true
-        return if @lastfeeds != nil && @ag_feed == feed && @ag_feedtime >= feedtime
-
-        fetch_feeds(key, feed: feed, feedtime: feedtime)
+        fetch_feeds(key, feed: response["feed"].to_i, feedtime: response["feedtime"].to_i)
       end
 
       def handle_notification_counter(response, calibrating=false)
@@ -1112,8 +1097,21 @@ module EltenAPI
         true
       end
 
-      def fetch_feeds(key, feed: nil, feedtime: nil)
-        return if @feed_request_pending == true
+      def fetch_feeds(key, feed: 0, feedtime: 0)
+        generation = Session.feed_generation_for(key)
+        return unless generation
+        if generation != @feed_generation
+          @feed_generation = generation
+          @feed_request_pending = false
+          @feed_request_id = nil
+          @ag_feed = 0
+          @ag_feedtime = 0
+          @feedstime = 0
+          @notificationtime = 0
+          @lastfeeds = nil
+        end
+        return if @feed_request_pending || (@lastfeeds && @ag_feed == feed && @ag_feedtime >= feedtime)
+
         name, token = key
         @feed_request_serial = @feed_request_serial.to_i + 1
         @feed_request_id = @feed_request_serial
@@ -1126,7 +1124,8 @@ module EltenAPI
           "limit" => 1500
         }
         path = EltenLink::Client.append_query("/api/v1/feeds/followed", params)
-        request_data = { "session_key" => key, "feed" => feed.to_i, "feedtime" => feedtime.to_i, "feed_request_id" => @feed_request_id }
+        request_data = { "session_key" => key, "feed" => feed.to_i, "feedtime" => feedtime.to_i,
+          "feed_request_id" => @feed_request_id, "feed_generation" => generation, "like_revision" => Session.feed_like_revision }
         elten_link.e_json_request("GET", path, {}, request_data) do |answer, data|
           @background_responses << ["feeds", answer, data]
         rescue Exception
@@ -1202,9 +1201,10 @@ module EltenAPI
         )
       end
       def handle_feeds_response(answer, request_data)
-        return if !current_feed_request?(request_data)
-        key = request_data.is_a?(Hash) ? request_data["session_key"] : request_data
-        return if key != @session_key || !answer.is_a?(String)
+        return unless request_data.is_a?(Hash) && current_feed_request?(request_data)
+        key = request_data["session_key"]
+        generation = request_data["feed_generation"]
+        return unless generation && generation == Session.feed_generation_for(key) && key == @session_key && answer.is_a?(String)
         body = answer.dup.force_encoding("UTF-8").encode("UTF-8", invalid: :replace, undef: :replace)
         payload = JSON.load(body)
         return unless payload.is_a?(Hash) && payload["success"] == true
@@ -1215,28 +1215,37 @@ module EltenAPI
           feed = EltenLink::Feeds.message_from_row(row, feed_message_class)
           result[feed.id] = feed if feed.id > 0
         end
-        current_feeds = @lastfeeds == nil ? feeds : @lastfeeds.dup
-        changed = []
+        reset = @lastfeeds.nil?
+        changed = {}
+        pending_likes = Session.pending_feed_likes
         played = false
         feeds.each do |id, current|
-          previous = @lastfeeds == nil ? nil : @lastfeeds[id]
-          next if previous != nil && previous.message == current.message && previous.responses == current.responses && previous.likes == current.likes && previous.liked == current.liked && previous.audio_url == current.audio_url
-          if previous == nil && @lastfeeds != nil && current.message != "" && mention?(current.message)
-            enqueue_event("func" => "notif", "sound" => "feed_mention") if !EltenAPI::UI.notifications_muted?
+          previous = @lastfeeds && @lastfeeds[id]
+          next if !pending_likes.key?(id) && EltenLink::Feeds.same_message?(previous, current)
+          if !previous && !reset && current.message != ""
+            if mention?(current.message) && !EltenAPI::UI.notifications_muted?
+              enqueue_event("func" => "notif", "sound" => "feed_mention", "feed_generation" => generation)
+            end
+            unless played
+              played = true
+              if !EltenAPI::UI.notifications_muted? && Configuration.disablefeednotifications != true
+                enqueue_event("func" => "notif", "sound" => "feed_update", "feed_generation" => generation)
+              end
+            end
           end
-          if played == false && previous == nil && @lastfeeds != nil && current.message != ""
-            played = true
-            enqueue_event("func" => "notif", "sound" => "feed_update") if !EltenAPI::UI.notifications_muted? && Configuration.disablefeednotifications != true
-          end
-          changed << current
-          current_feeds[id] = current
+          changed[id] = current
         end
+        return unless generation == Session.feed_generation_for(key)
         @feedstime = [@feedstime.to_i, response_data["feedtime"].to_i, @ag_feedtime.to_i].max
-        @ag_feed = request_data["feed"].to_i if request_data.is_a?(Hash)
-        @ag_feedtime = [@ag_feedtime.to_i, request_data.is_a?(Hash) ? request_data["feedtime"].to_i : 0, @feedstime.to_i].max
-        $feeds = current_feeds
-        enqueue_event("func" => "feeds", "changed" => changed.map { |feed| feed.to_h }) if changed.size > 0
-        @lastfeeds = current_feeds
+        @ag_feed = request_data["feed"].to_i
+        @ag_feedtime = [@ag_feedtime.to_i, request_data["feedtime"].to_i, @feedstime.to_i].max
+        if reset || !changed.empty?
+          snapshot = reset ? feeds : @lastfeeds.merge(changed)
+          return unless Session.publish_feed_snapshot(generation, snapshot)
+          @lastfeeds = snapshot
+          enqueue_event("func" => "feeds", "changed" => changed.values.map(&:to_h),
+            "reset" => reset, "feed_generation" => generation, "like_revision" => request_data.fetch("like_revision"))
+        end
       rescue Exception
         Log.error("Notification feed error: #{$!.class}: #{$!.message}")
       end

@@ -1841,9 +1841,12 @@ class Scene_WelcomeWizard
       end
     end
     if followed_feed_users.any? || @state[:feed_greeting]
-      NotificationService.reset_feeds if defined?(NotificationService)
+      if defined?(NotificationService)
+        NotificationService.reset_feeds
+      elsif Session.respond_to?(:feeds_clear)
+        Session.feeds_clear
+      end
       EltenAPI::InvisibleInterface.reset_feeds if defined?(EltenAPI::InvisibleInterface)
-      Session.feeds_clear if Session.respond_to?(:feeds_clear)
     end
   end
 
