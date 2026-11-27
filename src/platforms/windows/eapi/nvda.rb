@@ -21,26 +21,41 @@ class NVDA < SpeechOutput
   LookupAccountNameW = Fiddle::Function.new(ADVAPI32["LookupAccountNameW"], [F_PTR, F_PTR, F_PTR, F_PTR, F_PTR, F_PTR, F_PTR], F_INT, FIDDLE_ABI)
   CloseHandle = Fiddle::Function.new(KERNEL32["CloseHandle"], [F_HANDLE], F_INT, FIDDLE_ABI)
   WriteFile = Fiddle::Function.new(KERNEL32["WriteFile"], [F_HANDLE, F_PTR, F_INT, F_PTR, F_PTR], F_INT, FIDDLE_ABI)
+  CancelIoEx = Fiddle::Function.new(KERNEL32["CancelIoEx"], [F_HANDLE, F_PTR], F_INT, FIDDLE_ABI)
   # The NVDA bridge polls both input pipes every 25 ms. PeekNamedPipe returns
   # immediately, so releasing the GVL here only adds Ruby thread contention.
   PeekNamedPipe=Fiddle::Function.new(KERNEL32["PeekNamedPipe"], [F_HANDLE, F_PTR, F_INT, F_PTR, F_PTR, F_PTR], F_INT, FIDDLE_ABI, need_gvl: true)
   ReadFile = Fiddle::Function.new(KERNEL32["ReadFile"], [F_HANDLE, F_PTR, F_INT, F_PTR, F_PTR], F_INT, FIDDLE_ABI)
   GetCurrentProcessId = Fiddle::Function.new(KERNEL32["GetCurrentProcessId"], [], F_INT, FIDDLE_ABI)
+  PIPE_POLL_INTERVAL = 0.025
+  MAX_UNACKNOWLEDGED = 10
+  @write_mutex = Mutex.new
+  @write_ready = ConditionVariable.new
+  @lifecycle_mutex = Mutex.new
+  @writes = []
+  @queued_stops = 0
+  @reads = {}
+
   class <<self
     @@lastid=0
+
     def init
-      @waiting=0
-                  @lastwrite=""
-      @checked=nil
-      @prepared=false
-      @gestures=[]
-            @checktime=0
-            @cbckindexing=false
-            @index=nil
-            @indid=nil
-            @iswaiting=true
-      destroy if @initialized==true
-      @initialized=true        
+      @lifecycle_mutex.synchronize { start_pipes }
+    end
+
+    private def start_pipes
+      close_pipes if @initialized
+      @in_flight = []
+      @checked = nil
+      @prepared = false
+      @gestures = []
+      @checktime = 0
+      @cbckindexing = false
+      @index = nil
+      @indid = nil
+      @iswaiting = true
+      @exiting = nil
+      @initialized = true
       @pipename="elten"+rand(36**48).to_s(36)
       
      us = [0].pack("I")
@@ -79,83 +94,140 @@ SetSecurityDescriptorDacl.call(sd, 1, acl, 0)
       #SetSecurityInfo.call(pipe, 6, 4, nil, nil, nil, nil)
       }
       
-                  File.binwrite(pipefile, @pipename)
-                  Log.debug("NVDA pipes registered: #{@pipein.to_s}, #{@pipeout.to_s}")
-                                    @writes||=[]
-                                    @reads||={}
-            @starttime=Time.now.to_f
-            @pipethread=Thread.new {
-            pid = GetCurrentProcessId.call
-      begin
-              dwritten=[0].pack("i")
-      loop {
-      if !FileTest.exists?(pipefile)
-        play_sound('right')
-        Thread.new {init}
-        break
+      File.binwrite(pipefile, @pipename)
+      Log.debug("NVDA pipes registered: #{@pipein}, #{@pipeout}")
+      @starttime = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      @pipethread = Thread.new { run_pipes(pipefile) }
+    end
+
+    private def run_pipes(pipefile)
+      pid = GetCurrentProcessId.call
+      written = [0].pack("i")
+      replies = +""
+      statuses = +""
+      next_poll = 0
+      write_failed = false
+      sent_since_poll = false
+      frame_command = nil
+      frame = nil
+      partially_written = false
+      loop do
+        break if @exiting == :close
+        now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        if now >= next_poll
+          unless File.exist?(pipefile)
+            unless @exiting
+              play_sound("right")
+              worker = Thread.current
+              Thread.new do
+                @lifecycle_mutex.synchronize { start_pipes if @pipethread == worker && !@exiting }
+              end
+            end
+            break
+          end
+
+          @iswaiting = false if @iswaiting && now - @starttime > 1
+          if (size = avail) > 0
+            each_pipe_message(replies, read(size)) do |reply|
+              @reads[reply["id"]] = reply if acknowledge(reply["id"])
+            end
+          end
+          if (size = availst) > 0
+            each_pipe_message(statuses, readst(size)) { |status| receive_status(status, pid) }
+          end
+          next_poll = Process.clock_gettime(Process::CLOCK_MONOTONIC) + PIPE_POLL_INTERVAL
+          write_failed = false
+          sent_since_poll = false
         end
-      if @iswaiting && Time.now.to_f-@starttime>1
-@iswaiting=false
+
+        while !write_failed && @in_flight.size < MAX_UNACKNOWLEDGED && @exiting != :close
+          command = partially_written ? frame_command : next_pipe_write
+          break unless command
+          unless frame_command.equal?(command)
+            frame = JSON.generate(command) + "\n"
+            frame_command = command
           end
-            while @writes.size>0 and @pipeout!=nil and @waiting<10
-              if !(@writes.size>1 && (@writes[0]['ac']=="speak" || @writes[0]['ac']=="stop") && @writes[1...-1].map{|x|x['ac']}.include?("stop"))
-                              w=JSON.generate(@writes.first)+"\n"
-                                                WriteFile.call(@pipeout, w, w.bytesize, dwritten, 0)
-                                                                    @waiting+=1
-                                                                    end
-                                  @writes.delete_at(0)
-                                end
-                                if @exiting==true
-                                  @exited=true
-                                  break
-                                  end
-                                        if @pipein!=nil and (lv=avail)>0
-                    r=read(lv)
-                    while r[-1..-1]!="\n"
-                      sleep(0.001)
-                      r+=read(avail)
-                    end
-                    @checktime=Time.now.to_f
-                      b=r.split("\n")
-                      for l in b
-              j=JSON.load(l)
-              @waiting-=1
-                                         @reads[j['id']]=j
-                                         end
-                                       end
-            if @pipest!=nil and (lv=availst)>0
-                    r=readst(lv)
-                    while r[-1..-1]!="\n"
-                      sleep(0.001)
-                      r+=readst(availst)
-                    end
-                    @checktime=Time.now.to_f
-                                        if !@prepared
-                                  @prepared=true
-                                  end
-                    b=r.split("\n")
-                      for l in b
-              j=JSON.load(l)
-if j['msgtype']==1
-  @waiting-=1
-              elsif j['msgtype']==2
-  @gestures+=j['gestures']
-elsif j['msgtype']==3
-  @index=j['indexes'][-1]['index']
-  @indid=j['indexes'][-1]['indid']
-elsif j['msgtype']==4
-  write({'ac'=>'init', 'pid'=>pid},nil,true) if j['statuses'].include?("connected")
-  @cbckindexing=true if j['statuses'].include?("cbckindexing")
-  end
-                                         end
-                                       end
-                        sleep(0.025)
-      }
-    rescue Exception
-      Log.error("NVDA: #{$!.to_s}, #{$@.to_s}")
+          ok = WriteFile.call(@pipeout, frame, frame.bytesize, written, 0)
+          count = written.unpack1("I")
+          if ok == 0 || count == 0
+            # The add-on may not have opened its end of the pipe yet.
+            write_failed = true
+          elsif count < frame.bytesize
+            partially_written = true
+            frame = frame.byteslice(count..)
+          else
+            partially_written = false
+            frame_command = frame = nil
+            @write_mutex.synchronize { shift_pipe_write }
+            @in_flight << command["id"]
+            sent_since_poll = true
+          end
+        end
+        break if @exiting
+
+        @write_mutex.synchronize do
+          if !@writes.empty? && @in_flight.size == MAX_UNACKNOWLEDGED && sent_since_poll
+            # Check for ACKs once on filling the window. An unanswered poll waits normally.
+            next_poll = 0
+          elsif !@exiting && (@writes.empty? || write_failed || @in_flight.size == MAX_UNACKNOWLEDGED)
+            remaining = next_poll - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+            @write_ready.wait(@write_mutex, remaining) if remaining > 0
+          end
+        end
       end
-      }
-          end
+    rescue StandardError => e
+      Log.error("NVDA: #{e.class}: #{e.message}, #{e.backtrace}")
+    end
+
+    private def next_pipe_write
+      @write_mutex.synchronize do
+        while (command = @writes.first)
+          action = command["ac"]
+          break command unless action == "speak" || action == "stop"
+          # Only a later stop followed by another command supersedes this one.
+          later_stops = @queued_stops - (action == "stop" ? 1 : 0)
+          break command if later_stops == 0 || (later_stops == 1 && @writes.last["ac"] == "stop")
+          shift_pipe_write
+        end
+      end
+    end
+
+    # Called with @write_mutex held.
+    private def shift_pipe_write
+      @queued_stops -= 1 if @writes.shift["ac"] == "stop"
+    end
+
+    private def acknowledge(id)
+      index = @in_flight.index(id)
+      @in_flight.delete_at(index) if index
+    end
+
+    private def each_pipe_message(buffer, chunk)
+      # Keep a split JSON line for the next poll so it cannot block outbound speech.
+      buffer << chunk
+      last_newline = buffer.rindex("\n")
+      return unless last_newline
+      @checktime = Time.now.to_f
+      buffer.slice!(0..last_newline).each_line { |line| yield JSON.parse(line) }
+    end
+
+    private def receive_status(status, pid)
+      @prepared = true
+      case status["msgtype"]
+      when 1
+        acknowledge(status["id"])
+      when 2
+        @gestures.concat(status["gestures"])
+      when 3
+        last = status["indexes"].last
+        @index = last["index"]
+        @indid = last["indid"]
+      when 4
+        write({ "ac" => "init", "pid" => pid }, nil, true) if status["statuses"].include?("connected")
+        @cbckindexing = true if status["statuses"].include?("cbckindexing")
+      end
+    end
+
     def initialized?
               @initialized==true
             end
@@ -361,79 +433,113 @@ end
         dread = [0].pack("i")
       buf="\0"*size
         ReadFile.call(@pipein, buf, size, dread, nil)        
-        return "" if dread.unpack("i").first==0
-        return buf[0..dread.unpack("i").first-1]
+        buf.byteslice(0, dread.unpack1("I"))
       end
     def write(ac, timelimit=nil, async=false)
-                              if timelimit==nil
-              s=0
-              ac.values.each {|x| s+=x.to_s.size}
-              if s<1000
-                timelimit=1
-              else
-                timelimit=8
-                end
+      unless async
+        return unless @initialized && ac.is_a?(Hash) && check
+        if timelimit.nil?
+          size = ac.each_value.sum { |value| value.to_s.size }
+          timelimit = size < 1000 ? 1 : 8
         end
-            return if async==false and (!@initialized or !ac.is_a?(Hash) or check==false)
-      st=nil
-                                                                                                                                                                              ac['tp']=1
-      ac['id']=(@@lastid||0)+1 if ac['id']==nil
-      @@lastid=ac['id']
-      ac['async']=true if async
-                                                                                                                                                                                                @writes.push(ac)
-                                                                                                                                                                                                return if async
-                                                tm=Time.now.to_f
-                        loop {
-                sleep(0.001)
-                        break if @reads[ac['id']]!=nil or Time.now.to_f-tm>timelimit
-                  }
-                  sleep(0.01) if @reads[ac['id']]==nil
-                                                                                                          if @reads[ac['id']]!=nil
-                                                  r=@reads[ac['id']]
-                                                  @reads.delete(ac['id'])
-                                                  st=r
-                                                else
-                                                                                                                                                          Log.warning("NVDA is not responding...")
-              end
-              return st
-            end
+      end
+
+      @write_mutex.synchronize do
+        ac["tp"] = 1
+        ac["id"] ||= @@lastid + 1
+        @@lastid = ac["id"]
+        ac["async"] = true if async
+        wake_sender = @writes.empty?
+        @writes << ac
+        @queued_stops += 1 if ac["ac"] == "stop"
+        @write_ready.signal if wake_sender
+      end
+      return if async
+
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timelimit
+      loop do
+        sleep(0.001)
+        break if @reads.key?(ac["id"]) || Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+      end
+      sleep(0.01) unless @reads.key?(ac["id"])
+      reply = @reads.delete(ac["id"])
+      Log.warning("NVDA is not responding...") unless reply
+      reply
+    end
+
             def availst
               dtotal = [0].pack("I")
               PeekNamedPipe.call(@pipest, nil, 0, nil, dtotal, nil)
               dtotal.unpack1("I")
         end
         def readst(size=nil)
-            size=avail_st if size==nil
+            size=availst if size==nil
             return "" if size==0
         dread = [0].pack("i")
       buf="\0"*size
         ReadFile.call(@pipest, buf, size, dread, nil)        
-        return "" if dread.unpack("i").first==0
-        return buf[0..dread.unpack("i").first-1]
+        buf.byteslice(0, dread.unpack1("I"))
       end
     def waiting?
       return (@iswaiting==true)
     end
     def destroy
-      pipefile=EltenPath.join(Dirs.temp, "nvda.pipe")
-      File.delete(pipefile) if FileTest.exists?(pipefile)
-              @pipethread.exit if @pipethread!=nil
-        @pipethread=nil
-              @initialized=false
-        CloseHandle.call(@pipein) if @pipein!=nil
-        CloseHandle.call(@pipeout) if @pipeout!=nil
-        CloseHandle.call(@pipest) if @pipest!=nil
-        @pipein=nil
-        @pipeout=nil
-        @pipest=nil
+      @lifecycle_mutex.synchronize { close_pipes }
+    end
+
+    private def request_pipe_stop(mode)
+      @write_mutex.synchronize do
+        @exiting = mode
+        @write_ready.signal
       end
+    end
+
+    # Called with the lifecycle mutex held so these handles belong to this worker.
+    private def stop_pipe_worker
+      request_pipe_stop(:close)
+      while @pipethread&.alive?
+        # A synchronous write may start just after an earlier cancellation attempt.
+        CancelIoEx.call(@pipeout, nil) if @pipeout
+        @pipethread.join(PIPE_POLL_INTERVAL)
+      end
+    end
+
+    private def close_pipes
+      return unless @initialized
+      stop_pipe_worker
+      @pipethread = nil
+      pipefile = EltenPath.join(Dirs.temp, "nvda.pipe")
+      File.delete(pipefile) if File.exist?(pipefile)
+      @initialized = false
+      CloseHandle.call(@pipein) if @pipein
+      CloseHandle.call(@pipeout) if @pipeout
+      CloseHandle.call(@pipest) if @pipest
+      @pipein = @pipeout = @pipest = nil
+    end
+
     def join
-      @exiting=true
-      loop_update while !@exited
-            pipefile=EltenPath.join(Dirs.temp, "nvda.pipe") if Dirs.temp!=nil
-            File.delete(pipefile) if pipefile!=nil && FileTest.exists?(pipefile)
-      delay(0.1)
+      worker = @lifecycle_mutex.synchronize do
+        request_pipe_stop(:drain) if @pipethread && @exiting != :close
+        @pipethread
       end
+      return unless worker
+
+      # Give the last queued commands time to reach a responsive add-on.
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 0.25
+      while worker.alive? && Process.clock_gettime(Process::CLOCK_MONOTONIC) < deadline
+        loop_update
+      end
+      @lifecycle_mutex.synchronize do
+        if @pipethread == worker
+          stop_pipe_worker if worker.alive?
+          if Dirs.temp
+            pipefile = EltenPath.join(Dirs.temp, "nvda.pipe")
+            File.delete(pipefile) if File.exist?(pipefile)
+          end
+        end
+      end
+      delay(0.1)
+    end
 
     def available?
       true
