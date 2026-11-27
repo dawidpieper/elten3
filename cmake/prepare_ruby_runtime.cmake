@@ -325,6 +325,15 @@ function(repair_msys2_toolchain_links)
 
   set(mingw_bin "${msys_root}/${mingw_prefix}/bin")
   set(target_bin "${msys_root}/${mingw_prefix}/${target_triplet}/bin")
+
+  # Ruby's mkmf uses the target-prefixed pkg-config name. MSYS2 ships it
+  # as a hardlink, which can be missing on shared Windows build directories.
+  copy_file_if_missing("${mingw_bin}/pkgconf.exe" "${mingw_bin}/pkg-config.exe")
+  copy_file_if_missing("${mingw_bin}/pkg-config.exe" "${mingw_bin}/${target_triplet}-pkg-config.exe")
+  if(INSTALL_GEMS AND NOT EXISTS "${mingw_bin}/${target_triplet}-pkg-config.exe")
+    message(FATAL_ERROR "MSYS2 pkg-config was not prepared: ${mingw_bin}/${target_triplet}-pkg-config.exe")
+  endif()
+
   if(ARCH STREQUAL "arm64")
     foreach(tool clang clang++ clang-cpp gcc g++)
       copy_file_if_missing("${mingw_bin}/cc.exe" "${mingw_bin}/${tool}.exe")
