@@ -137,7 +137,7 @@ class Scene_Conference
         end
       }
       }
-      menu.option(p_("Conference", "VST chain"), nil, "t") {
+      menu.option(premium_feature_label(p_("Conference", "VST chain"), "director"), nil, "t") {
       if requires_premiumpackage("director")
   insert_scene(Scene_Conference_VSTS.new(user.id))
 end
@@ -182,7 +182,7 @@ end
       end
       if Conference.channel.administrators.include?(Session.name)
         if user.supervisor==nil || user.supervisor==0
-                menu.option(p_("Conference", "Take over this user's stream")) {
+                menu.option(premium_feature_label(p_("Conference", "Take over this user's stream"), "director")) {
                 if requires_premiumpackage("director") && user.id!=Conference.userid
       Conference.supervise(user.id)
     end
@@ -673,7 +673,7 @@ for preset in presets
     chk_predictiondisabled = CheckBox.new(p_("Conference", "Disable encoding prediction"), checked: channel.prediction_disabled==true),    
     lst_channels = ListBox.new(["Mono", "Stereo"], header: p_("Conference", "Channels"), index: channel.channels-1),
     lst_spatialization = ListBox.new(["Panning", "HRTF", p_("Conference", "Round table")], header: p_("Conference", "Spatial audio mode"), index: channel.spatialization),
-    chk_conference = CheckBox.new(p_("Conference", "Enable conference mode (only channel administrators and allowed users can speak)"), checked: channel.conference_mode>0),
+    chk_conference = CheckBox.new(premium_feature_label(p_("Conference", "Enable conference mode (only channel administrators and allowed users can speak)"), "director"), checked: channel.conference_mode>0),
     chk_p2p = CheckBox.new(p_("Conference", "Enable peer-to-peer connections"), checked: channel.p2p_enabled),
     edt_p2p_limit = EditBox.new(p_("Conference", "P2P participant limit (0 for unlimited)"), type: EditBox::Flags::Numbers, text: channel.p2p_participants_limit.to_s, quiet: true),
     chk_waiting = CheckBox.new(p_("Conference", "Enable waiting room"), checked: channel.waiting_type>0),
@@ -683,10 +683,10 @@ for preset in presets
       p_("Conference", "Channel creator's blacklist"),
       p_("Conference", "Blacklists of all channel administrators")
     ], header: p_("Conference", "Block users from joining based on"), index: channel.blacklist_policy),
-chk_hidden = CheckBox.new(p_("Conference", "Make this channel hidden"), checked: !channel.public),
-    chk_permanent = CheckBox.new(p_("Conference", "Make this a permanent channel"), checked: channel.permanent),
-    edt_width = EditBox.new(p_("Conference", "Channel width"), type: EditBox::Flags::Numbers, text: channel.width.to_s, quiet: true),
-    edt_height = EditBox.new(p_("Conference", "Channel height"), type: EditBox::Flags::Numbers, text: channel.height.to_s, quiet: true),
+chk_hidden = CheckBox.new(premium_feature_label(p_("Conference", "Make this channel hidden"), "director"), checked: !channel.public),
+    chk_permanent = CheckBox.new(premium_feature_label(p_("Conference", "Make this a permanent channel"), holds_premiumpackage("director") ? nil : "audiophile"), checked: channel.permanent),
+    edt_width = EditBox.new(premium_feature_label(p_("Conference", "Channel width"), "director"), type: EditBox::Flags::Numbers, text: channel.width.to_s, quiet: true),
+    edt_height = EditBox.new(premium_feature_label(p_("Conference", "Channel height"), "director"), type: EditBox::Flags::Numbers, text: channel.height.to_s, quiet: true),
     edt_password = EditBox.new(p_("Conference", "Channel password (leave this field blank to set a channel without a password)"), type: 0, text: channel.password||"", quiet: true),
     lst_encryption = ListBox.new(["AES 256 CTR", "AES 192 CTR", "AES 128 CTR", p_("Conference", "None")], header: p_("Conference", "Channel encryption"), index: kl),
     btn_create = Button.new(p_("Conference", "Create")),
@@ -948,7 +948,7 @@ sel.focus
   def getobject
     objs = []
     lst_objects = ListBox.new([], header: p_("Conference", "Available objects"), keys: [])
-    btn_upload = Button.new(p_("Conference", "Upload new sound"))
+    btn_upload = Button.new(premium_feature_label(p_("Conference", "Upload new sound"), "director"))
     lst_position = ListBox.new([p_("Conference", "Here"), p_("Conference", "Everywhere")], header: p_("Conference", "Object position"))
     btn_ok = Button.new(p_("Conference", "Place object"))
     btn_cancel = Button.new(_("Cancel"))
@@ -991,7 +991,7 @@ sel.focus
     end
     btn_upload.on(:press, &upload)
     lst_objects.bind_context do |menu|
-      menu.option(p_("Conference", "Upload new sound"), &upload) if can_upload
+      menu.option(premium_feature_label(p_("Conference", "Upload new sound"), "director"), &upload) if can_upload
       obj = objs[lst_objects.index]
       if obj && obj['owner'] == Session.name && Conference.channel.objects.none?{|o| o.resid == obj['resid']}
         menu.option(p_("Conference", "Delete")) do
@@ -1314,13 +1314,13 @@ formats+=[".avi", ".mp4", ".mov", ".mkv"] if holds_premiumpackage("audiophile")
 }
 end
   if Conference.shoutcast?
-    menu.option(p_("Conference", "Remove shoutcast stream")) {
+    menu.option(premium_feature_label(p_("Conference", "Remove shoutcast stream"), "director")) {
     if requires_premiumpackage("director")
     Conference.remove_shoutcast
     end
     }
   else
-    menu.option(p_("Conference", "Stream this conference to a shoutcast server")) {
+    menu.option(premium_feature_label(p_("Conference", "Stream this conference to a shoutcast server"), "director")) {
     if requires_premiumpackage("director")
     bitrates=[96, 128, 192, 256, 320]
     form = Form.new([
@@ -1432,7 +1432,7 @@ end
     m.option(p_("Conference", "Save mixed stream to a file"), nil, "s") {
     save
     }
-    m.option(p_("Conference", "Save separate streams (experimental)"), nil, "S") {
+    m.option(premium_feature_label(p_("Conference", "Save separate streams (experimental)"), "audiophile"), nil, "S") {
     if requires_premiumpackage("audiophile")
     fullsave
     end
@@ -1459,7 +1459,7 @@ pushtotalk_setkeys
 @form.focus
 }
   }
-  menu.option(p_("Conference", "VST chain"), nil, "T") {
+  menu.option(premium_feature_label(p_("Conference", "VST chain"), "audiophile"), nil, "T") {
   if requires_premiumpackage("audiophile")
   insert_scene(Scene_Conference_VSTS.new)
   end
@@ -1471,7 +1471,7 @@ self.class.custom_diceroll
   }
     }
   menu.option(p_("Conference", "Show status")) {showstatus}
-menu.option(p_("Conference", "Change output sound card")) {
+menu.option(premium_feature_label(p_("Conference", "Change output sound card"), "director")) {
 if requires_premiumpackage("director")
       cards=[p_("Conference", "Use Elten sound card")]+Bass.soundcards[2..-1].map{|c|c.name}
       cardid=-1

@@ -494,24 +494,24 @@ def context(menu, submenu=false)
   c=Proc.new {|menu|
   if (@flags&Flags::Formattable)>0
     menu.submenu(p_("EAPI_Form", "Format")) {|m|
-    m.option(p_("EAPI_Form", "Bold"), nil, "b") {
+    m.option(premium_feature_label(p_("EAPI_Form", "Bold"), "scribe"), nil, "b") {
     if requires_premiumpackage("scribe")
     setformatting(Element::Bold)
     end
     }
-    m.option(p_("EAPI_Form", "Italic"), nil, "i") {
+    m.option(premium_feature_label(p_("EAPI_Form", "Italic"), "scribe"), nil, "i") {
     if requires_premiumpackage("scribe")
     setformatting(Element::Italic)
     end
     }
-    m.option(p_("EAPI_Form", "Underline"), nil, "u") {
+    m.option(premium_feature_label(p_("EAPI_Form", "Underline"), "scribe"), nil, "u") {
     if requires_premiumpackage("scribe")
     setformatting(Element::Underline)
     end
     }
     m.submenu(p_("EAPI_Form", "Heading")) {|n|
         for i in 1..6
-      n.option(p_("EAPI_Form", "Heading level %{level}")%{:level=>i}, i, i.to_s) {|level|
+      n.option(premium_feature_label(p_("EAPI_Form", "Heading level %{level}")%{:level=>i}, "scribe"), i, i.to_s) {|level|
       if requires_premiumpackage("scribe")
       a, b = line_bounds(@vindex, true)
       del=[]
@@ -536,7 +536,7 @@ def context(menu, submenu=false)
     }
     }
     menu.submenu(p_("EAPI_Form", "Insert")) {|m|
-    m.option(p_("EAPI_Form", "Link")) {
+    m.option(premium_feature_label(p_("EAPI_Form", "Link"), "scribe")) {
       if requires_premiumpackage("scribe")
     form=Form.new([
     EditBox.new(p_("EAPI_Form", "URL"), type: 0, text: "", quiet: true),
@@ -592,7 +592,7 @@ eundo
 eredo
   }
   if defined?(SpellCheck) && (!SpellCheck.respond_to?(:available?) || SpellCheck.available?)
-    menu.option(p_("EAPI_Form", "Spell check"), nil, "S") {
+    menu.option(premium_feature_label(p_("EAPI_Form", "Spell check"), "scribe"), nil, "S") {
     if requires_premiumpackage("scribe")
   espellcheck
   end
@@ -614,12 +614,12 @@ eredo
 search
     }
   end
-  menu.option(p_("EAPI_Form", "Quick translation"), nil, "t") {
+  menu.option(premium_feature_label(p_("EAPI_Form", "Quick translation"), "scribe"), nil, "t") {
   if requires_premiumpackage("scribe")
   espeech(translatetext(0,Configuration.language,get_check_or_all))
   end
   }
-    menu.option(p_("EAPI_Form", "Translate"), nil, "T") {
+    menu.option(premium_feature_label(p_("EAPI_Form", "Translate"), "scribe"), nil, "T") {
     if requires_premiumpackage("scribe")
   translator(get_check_or_all)
   end

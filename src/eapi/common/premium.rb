@@ -11,6 +11,11 @@ module EltenAPI
   def update_premiumpackages(packages)
     @@premiumpackages=packages if packages.is_a?(Array)
     end
+    def premium_feature_label(label, package)
+      return label if !package || holds_premiumpackage(package)
+      p_("EAPI_Common", "%{feature} (Sponsorship package)") % {feature: label}
+    end
+
   def holds_premiumpackage(package)
     return false unless Session.logged?
     return @@premiumpackages.include?(package)
