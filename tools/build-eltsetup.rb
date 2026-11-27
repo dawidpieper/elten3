@@ -15,8 +15,6 @@ require_relative "../src/eapi/program_package_metadata"
 SETUP_TYPE = "application"
 CODE_MAGIC = "Elten3AppPackage".b
 PROJECT_ROOT = File.expand_path("..", __dir__)
-SOUND_EXTENSIONS = %w[.ogg .opus .wav .wave .mp3 .flac .aac .m4a .wma .spx .webm].freeze
-LANGUAGE_EXTENSIONS = %w[.mo].freeze
 NATIVE_EXTENSIONS = %w[.so .bundle .dll .dylib .manifest].freeze
 RUNTIME_ROOTS = {
   "windows-x64" => ENV["ELTEN_RUNTIME_ROOT_WINDOWS_X64"] || File.join(PROJECT_ROOT, "build", "launcher-windows-x64", "ruby", "windows-x64"),
@@ -45,12 +43,12 @@ def extract_manifest(code, source)
   JSON.parse(rest[0...end_match.begin(0)].to_s)
 end
 
-def manifest_file(source_dir)
+def manifest_file(source_dir, sources)
   default = File.join(source_dir, "__app.rb")
-  return default if File.file?(default)
+  return default if File.file?(default) && !sources.excluded?("__app.rb")
 
-  matches = Dir.glob(File.join(source_dir, "**", "*.rb")).select do |file|
-    File.binread(file).match?(MANIFEST_BEGIN)
+  matches = sources.files.select do |file|
+    File.extname(file) == ".rb" && File.binread(file).match?(MANIFEST_BEGIN)
   end
   raise "More than one Elten3AppInfo block found" if matches.size > 1
   raise "No Elten3AppInfo block found" if matches.empty?
@@ -71,14 +69,6 @@ end
 
 def write_bytes(io, data)
   io.respond_to?(:write) ? io.write(data) : io << data
-end
-
-def language_code(relative)
-  return nil if !relative.start_with?("locale/")
-  return nil if !LANGUAGE_EXTENSIONS.include?(File.extname(relative).downcase)
-  code = File.basename(relative, File.extname(relative))[0, 2].to_s
-  return nil if code !~ /\A[a-zA-Z]{2}\z/
-  code.upcase
 end
 
 def gem_declarations(metadata)
@@ -227,7 +217,7 @@ def write_named_record(buffer, type, name, content)
   buffer << content
 end
 
-def build_code_container(source_dir, metadata, signing_options)
+def build_code_container(source_dir, sources, metadata, signing_options)
   buffer = +"".b
   buffer << CODE_MAGIC
   compressed_metadata = Zstd.compress(JSON.generate(metadata).b, level: 19)
@@ -237,17 +227,16 @@ def build_code_container(source_dir, metadata, signing_options)
   gem_specs = collect_gem_specs(metadata)
   puts "Bundling gems: #{gem_specs.map(&:full_name).join(", ")}" if !gem_specs.empty?
 
-  Dir.glob(File.join(source_dir, "**", "*")).sort.each do |file|
-    next if !File.file?(file)
+  sources.files.each do |file|
     relative = normalize(file.delete_prefix(source_dir + File::SEPARATOR))
     ext = File.extname(relative).downcase
     if ext == ".rb"
       content = Zstd.compress(File.binread(file).b, level: 19)
       type = 1
-    elsif relative.start_with?("Audio/") && SOUND_EXTENSIONS.include?(ext)
+    elsif Programs::PackageSources.sound?(relative)
       content = File.binread(file).b
       type = 2
-    elsif (code = language_code(relative)) != nil
+    elsif (code = Programs::PackageSources.language_code(relative)) != nil
       content = Zstd.compress(File.binread(file).b, level: 19)
       type = 3
     else
@@ -374,10 +363,11 @@ if signing_options[:sign] && !Programs::ProgramSigning.signing_available?(signin
   raise "Program signing certificate or key is missing. Use --cert/--key or --unsigned."
 end
 
-main_file = manifest_file(source_dir)
+sources = Programs::PackageSources.new(source_dir)
+main_file = manifest_file(source_dir, sources)
 metadata = extract_manifest(File.binread(main_file), main_file)
-metadata["main"] = normalize(main_file.delete_prefix(source_dir + File::SEPARATOR)) if metadata["main"].to_s == ""
-metadata = Programs::ProgramPackageMetadata.prepare(metadata, :source_dir => source_dir,
+metadata = Programs::ProgramPackageMetadata.prepare(metadata, :source_dir => source_dir, :sources => sources,
+  :default_main => normalize(main_file.delete_prefix(source_dir + File::SEPARATOR)),
   :warning => ->(message) { warn "Warning: #{message}" })
 
 code_name = "#{File.basename(output, ".eltsetup")}.eltenapp"
@@ -389,15 +379,14 @@ setup_manifest = {
 FileUtils.mkdir_p(File.dirname(output))
 writer = EltsetupZipWriter.new(output)
 writer.add("__manifest.json", JSON.pretty_generate(setup_manifest) + "\n")
-writer.add(code_name, build_code_container(source_dir, metadata, signing_options))
+writer.add(code_name, build_code_container(source_dir, sources, metadata, signing_options))
 
-Dir.glob(File.join(source_dir, "**", "*")).sort.each do |file|
-  next if !File.file?(file)
+sources.files.each do |file|
   relative = normalize(file.delete_prefix(source_dir + File::SEPARATOR))
   ext = File.extname(relative).downcase
   next if ext == ".rb" || ext == ".eltenapp"
   next if relative == "__manifest.json"
-  next if relative.start_with?("Audio/") && SOUND_EXTENSIONS.include?(ext)
+  next if Programs::PackageSources.sound?(relative)
   next if relative.start_with?("locale/")
   writer.add(relative, File.binread(file).b, File.mtime(file))
 end

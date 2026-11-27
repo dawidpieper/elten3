@@ -9,8 +9,6 @@ require_relative "../src/EAPI/ProgramSigning"
 require_relative "../src/eapi/program_package_metadata"
 
 MAGIC = "Elten3AppPackage".b
-SOUND_EXTENSIONS = %w[.ogg .opus .wav .wave .mp3 .flac .aac .m4a .wma .spx .webm].freeze
-LANGUAGE_EXTENSIONS = %w[.mo].freeze
 MANIFEST_BEGIN = /^\=begin[ \t]+Elten3AppInfo[ \t]*\r?\n/.freeze
 MANIFEST_END = /^\=end[ \t]+Elten3AppInfo[ \t]*$/m.freeze
 
@@ -32,12 +30,12 @@ def extract_manifest(code, source)
   JSON.parse(rest[0...end_match.begin(0)].to_s)
 end
 
-def manifest_file(source_dir)
+def manifest_file(source_dir, sources)
   default = File.join(source_dir, "__app.rb")
-  return default if File.file?(default)
+  return default if File.file?(default) && !sources.excluded?("__app.rb")
 
-  matches = Dir.glob(File.join(source_dir, "**", "*.rb")).select do |file|
-    File.binread(file).match?(MANIFEST_BEGIN)
+  matches = sources.files.select do |file|
+    File.extname(file) == ".rb" && File.binread(file).match?(MANIFEST_BEGIN)
   end
   raise "More than one Elten3AppInfo block found" if matches.size > 1
   raise "No Elten3AppInfo block found" if matches.empty?
@@ -70,14 +68,6 @@ def write_named_record(io, type, name, content)
   write_bytes(io, content)
 end
 
-def language_code(relative)
-  return nil if !relative.start_with?("locale/")
-  return nil if !LANGUAGE_EXTENSIONS.include?(File.extname(relative).downcase)
-  code = File.basename(relative, File.extname(relative))[0, 2].to_s
-  return nil if code !~ /\A[a-zA-Z]{2}\z/
-  code.upcase
-end
-
 options = {
   :sign => true,
   :certificate => Programs::ProgramSigning.default_certificate_path,
@@ -98,24 +88,24 @@ if options[:sign] && !Programs::ProgramSigning.signing_available?(options[:certi
   raise "Program signing certificate or key is missing. Use --cert/--key or --unsigned."
 end
 
-main_file = manifest_file(source_dir)
+sources = Programs::PackageSources.new(source_dir)
+main_file = manifest_file(source_dir, sources)
 metadata = extract_manifest(File.binread(main_file), main_file)
-metadata["main"] = normalize(main_file.delete_prefix(source_dir + File::SEPARATOR)) if metadata["main"].to_s == ""
-metadata = Programs::ProgramPackageMetadata.prepare(metadata, :source_dir => source_dir,
+metadata = Programs::ProgramPackageMetadata.prepare(metadata, :source_dir => source_dir, :sources => sources,
+  :default_main => normalize(main_file.delete_prefix(source_dir + File::SEPARATOR)),
   :warning => ->(message) { warn "Warning: #{message}" })
 
 files = []
-Dir.glob(File.join(source_dir, "**", "*")).sort.each do |file|
-  next if !File.file?(file)
+sources.files.each do |file|
   relative = normalize(file.delete_prefix(source_dir + File::SEPARATOR))
   ext = File.extname(relative).downcase
   if ext == ".rb"
     content = Zstd.compress(File.binread(file).b, level: 19)
     files << [1, relative, content]
-  elsif relative.start_with?("Audio/") && SOUND_EXTENSIONS.include?(ext)
+  elsif Programs::PackageSources.sound?(relative)
     content = File.binread(file).b
     files << [2, relative, content]
-  elsif (code = language_code(relative)) != nil
+  elsif (code = Programs::PackageSources.language_code(relative)) != nil
     content = Zstd.compress(File.binread(file).b, level: 19)
     files << [3, code, content]
   end

@@ -252,6 +252,7 @@ src/eapi/speechtofile.rb
 src/eapi/audio/mediaextractors.rb
 src/eapi/programsigning.rb
 src/eapi/runner.rb
+src/eapi/package_sources.rb
 src/eapi/program_package_metadata.rb
 src/eapi/unsigned_package_builder.rb
 src/eapi/program.rb

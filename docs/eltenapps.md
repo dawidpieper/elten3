@@ -325,7 +325,7 @@ sound.wait if sound != nil
 
 Translations are read from `locale/<language>.mo`, where the package format currently records a two-letter language code. The `_metadata.json` files described above are consumed into manifest metadata by builders rather than loaded as gettext catalogs. Native entries are selected by the exact platform target and materialised into the application cache before loading.
 
-`required_assets` can make loading fail early with an informative error instead of failing later in the interaction. The recognised groups are `sounds`, `files`, `locales` and `native`:
+`required_assets` can make loading fail early with an informative error instead of failing later in the interaction. The recognised groups are `sounds`, `files`, `languages` and `native`:
 
 ```json
 {
@@ -667,6 +667,20 @@ For an installable package, use the full setup builder:
 
 ```sh
 bundle exec ruby tools/build-eltsetup.rb --unsigned path/to/source dist/example.eltsetup
+```
+
+### Excluding development files
+
+Place an optional `.eltenignore` in the source directory. The command-line and unsigned developer builders apply its rules to Ruby code, sounds, translations, localised metadata and other setup files. The manifest's main Ruby file must be included, including when specified by the older `file` field. A build also fails if the rules remove a required project file or the last source for a required sound or language.
+
+Write one pattern per line. Blank lines and lines beginning with `#` are ignored. A name such as `*.log` matches at any depth. Patterns with a slash are relative to the source directory, and a leading slash anchors a name there. A trailing slash matches directories. Use `**/` to match any number of directories. Prefix a rule with `!` to include a match again. Later matching rules take precedence.
+
+```text
+test/
+/build/
+*.log
+assets/**/*.wav
+!assets/release/intro.wav
 ```
 
 ### Gems supplied by Elten 3.0
