@@ -372,8 +372,8 @@ class Scene_Forum
     activity
   end
 
-  def activity_date(timestamp)
-    format_localized_date(Time.at(timestamp), include_weekday: false) if timestamp.positive?
+  def activity_date(timestamp, translation_cache = {})
+    format_localized_date(Time.at(timestamp), include_weekday: false, translation_cache: translation_cache) if timestamp.positive?
   end
 
   def forum_row_title(forum, group=@group)
@@ -2792,6 +2792,7 @@ break
     end
     index = @sthreads.size - 1 if index!=nil && index >= @sthreads.size
     setindex=nil
+    date_translations = {}
     thrselt = @sthreads.map{|thread|
     if setindex==nil
       if id!=-11
@@ -2806,7 +2807,7 @@ break
       tmp[2]=thread.posts.to_s
       tmp[3]=(thread.posts - thread.readposts).to_s
       tmp[4]="(#{thread.forum.fullname}, #{thread.forum.group.name})" if id==-11
-      tmp << activity_date(thread.lastupdate)
+      tmp << activity_date(thread.lastupdate, date_translations)
       tmp
     }
     index=@sthreads.index(setindex)||0 if index==nil

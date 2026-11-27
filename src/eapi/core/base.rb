@@ -148,10 +148,11 @@ def format_date(date, justdate=false, secs=true)
   return str
   end
 
-def format_localized_date(date, include_weekday: true)
+# Supply a fresh translation cache when formatting a list in one language and catalog context.
+def format_localized_date(date, include_weekday: true, translation_cache: {})
   return "" if date == nil || !date.respond_to?(:year) || !date.respond_to?(:month) || !date.respond_to?(:day)
 
-  weekdays = [
+  weekdays = translation_cache[:weekdays] ||= [
     p_("EAPI_Date_Weekday", "Monday"),
     p_("EAPI_Date_Weekday", "Tuesday"),
     p_("EAPI_Date_Weekday", "Wednesday"),
@@ -160,7 +161,7 @@ def format_localized_date(date, include_weekday: true)
     p_("EAPI_Date_Weekday", "Saturday"),
     p_("EAPI_Date_Weekday", "Sunday")
   ]
-  months = [
+  months = translation_cache[:months] ||= [
     p_("EAPI_Date_Month_Genitive", "January"),
     p_("EAPI_Date_Month_Genitive", "February"),
     p_("EAPI_Date_Month_Genitive", "March"),
@@ -174,7 +175,9 @@ def format_localized_date(date, include_weekday: true)
     p_("EAPI_Date_Month_Genitive", "November"),
     p_("EAPI_Date_Month_Genitive", "December")
   ]
-  day = localized_date_day(date.day)
+  days = translation_cache[:days] ||= {}
+  day_number = date.day
+  day = days[day_number] ||= localized_date_day(day_number)
   weekday_index = if date.respond_to?(:cwday)
                     date.cwday.to_i - 1
                   else
@@ -187,9 +190,9 @@ def format_localized_date(date, include_weekday: true)
     year: date.year.to_i
   }
   template = if include_weekday
-               p_("EAPI_Date_Format", "%{weekday}, %{month} %{day}, %{year}")
+               translation_cache[:with_weekday] ||= p_("EAPI_Date_Format", "%{weekday}, %{month} %{day}, %{year}")
              else
-               p_("EAPI_Date_Format", "%{month} %{day}, %{year}")
+               translation_cache[:without_weekday] ||= p_("EAPI_Date_Format", "%{month} %{day}, %{year}")
              end
   template % values
 rescue ArgumentError, KeyError, TypeError
