@@ -56,7 +56,7 @@ module EltenAPI
         text = "#{@header}: #{text}" if @header != ""
         text += " ... " + p_("EAPI_Form", "Date, use arrows to change") if spk && Configuration.controlspresentation != :sound_only
         speak(text, pan: lpos) if spk
-        NVDA.braille(text) if defined?(NVDA) && NVDA.check
+        show_braille(text)
       end
 
       def update
@@ -173,8 +173,13 @@ module EltenAPI
       def changed(text)
         play_sound("listbox_focus", volume: 100, pitch: 100, pan: lpos) if !@silent
         speak(text, pan: lpos)
-        NVDA.braille(full_label) if defined?(NVDA) && NVDA.check
+        show_braille(full_label)
         trigger(:change, date)
+      end
+
+      def show_braille(text)
+        out = braille_output
+        out.braille(text) if out != nil
       end
 
       def segment_label(with_name=false)
