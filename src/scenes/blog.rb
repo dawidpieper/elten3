@@ -4,89 +4,94 @@
 # Elten is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. 
 # You should have received a copy of the GNU General Public License along with Elten. If not, see <https://www.gnu.org/licenses/>. 
 
+module BlogTreeNavigation
+  def enter_from_blog_tree
+    @from_blog_tree = true
+    self
+  end
+
+  private
+
+  def focus_blog_list
+    announce_header = !@from_blog_tree
+    @from_blog_tree = false
+    @sel.focus(announce_header: announce_header)
+  end
+
+  def return_to_blog_parent(scene)
+    scene.enter_from_blog_tree if scene.is_a?(BlogTreeNavigation)
+    $scene = scene
+  end
+end
+
 class Scene_Blog
+  include BlogTreeNavigation
+
   def initialize(index=0)
     index=0 if index==6
     @index=index
-    end
+  end
+
   def main
-        @sel = ListBox.new([p_("Blog", "Managed blogs"),p_("Blog", "Recently updated blogs"),p_("Blog", "Frequently updated blogs"),p_("Blog", "Frequently commented blogs"),p_("Blog", "Followed blogs"), p_("Blog", "Blogs popular with my friends"), p_("Blog", "Open an external WordPress blog"), p_("Blog", "Followed blog posts"), p_("Blog", "Received mentions"), p_("Blog", "Blogs library")],header: p_("Blog", "Blogs"),index: @index)
-  unless Session.logged?
-    @sel.disable_item(0)
-    @sel.index=1
-    @sel.disable_item(4)
-    @sel.disable_item(5)
-    @sel.disable_item(7)
-    @sel.disable_item(8)
-  @sel.disable_item(9)
+    @sel = ListBox.new([p_("Blog", "Managed blogs"),p_("Blog", "Recently updated blogs"),p_("Blog", "Frequently updated blogs"),p_("Blog", "Frequently commented blogs"),p_("Blog", "Followed blogs"), p_("Blog", "Blogs popular with my friends"), p_("Blog", "Open an external WordPress blog"), p_("Blog", "Followed blog posts"), p_("Blog", "Received mentions"), p_("Blog", "Blogs library")],header: p_("Blog", "Blogs"),index: @index)
+    unless Session.logged?
+      [0, 4, 5, 7, 8, 9].each { |index| @sel.disable_item(index) }
     end
-    @sel.focus
+    focus_blog_list
     loop do
-    loop_update
-    @sel.update
-    update
-    break if $scene != self
+      loop_update
+      @sel.update
+      update
+      break if $scene != self
     end
   end
+
   def update
     if key_pressed?(:key_escape)
-            $scene = Scene_Main.new
+      $scene = Scene_Main.new
+      return
     end
     if key_pressed?(:key_enter) or key_pressed?(:key_right)
-     case @sel.index
-     when 0
-       $bloglistindex=0
-      $scene = Scene_Blog_List.new(Session.name)
-      when 1
-        $bloglistindex=0        
-        $scene = Scene_Blog_List.new
-        when 2
-        $bloglistindex=0        
-        $scene = Scene_Blog_List.new(1)
-        when 3
-        $bloglistindex=0        
-        $scene = Scene_Blog_List.new(2)
-        when 4
-          $bloglistindex=0
-        $scene = Scene_Blog_List.new(3)
-        when 5
-                    $bloglistindex=0
-        $scene = Scene_Blog_List.new(4)
-        when 6
-          u=input_text(p_("Blog", "Type blog address"), flags: 0, text: "", escapable: true)
-          if u!=nil
-            u.gsub!(/http(s?)\:\/\//, "")
-            u.delete!("/")
-                        r="[*"+u+"]"
-         $bloglistindex=0
-                        $scene = Scene_Blog_List.new(5, self, r)
-                      end
-        when 7
-          if requires_premiumpackage("courier")
-          $scene = Scene_Blog_Posts.new(Session.name,"FOLLOWED")
-          end
-          when 8
-          if requires_premiumpackage("courier")
-            $scene = Scene_Blog_Posts.new(Session.name,"MENTIONED")
-            end
-          when 9
-            $bloglistindex=0        
-        $scene = Scene_Blog_List.new(8, nil, :library)
-   end
-   end
+      @index = @sel.index
+      case @index
+      when 0
+        $scene = Scene_Blog_List.new(Session.name, self).enter_from_blog_tree
+      when 1..5
+        $scene = Scene_Blog_List.new(@index - 1, self).enter_from_blog_tree
+      when 6
+        address = input_text(p_("Blog", "Type blog address"), flags: 0, text: "", escapable: true)
+        if address
+          address.gsub!(/http(s?)\:\/\//, "")
+          address.delete!("/")
+          $scene = Scene_Blog_List.new(5, self, "[*#{address}]")
+        else
+          @sel.focus
+        end
+      when 7, 8
+        if requires_premiumpackage("courier")
+          filter = @index == 7 ? "FOLLOWED" : "MENTIONED"
+          $scene = Scene_Blog_Posts.new(Session.name, filter, parent: self).enter_from_blog_tree
+        end
+      when 9
+        $scene = Scene_Blog_List.new(8, self, :library).enter_from_blog_tree
+      end
     end
+  end
 end
 
 class Scene_Blog_Main
+  include BlogTreeNavigation
+
   def initialize(owner=Session.name,categoryselindex=0,scene=nil,check=false)
     @owner=owner
     @categoryselindex = categoryselindex
     @postselindex = 0
-    @isowner=(blogowners(owner)||"").include?(Session.name)
     @check=check
-    $blogreturnscene=scene
-    end
+    @scene=scene
+  end
+
   def main
+    @isowner = (blogowners(@owner) || []).include?(Session.name)
     if @check==true    
 begin
 exist = EltenLink::Blog.exists?(elten_link, blog: @owner)
@@ -100,8 +105,7 @@ if !exist
     $scene = Scene_Blog_Create.new
   else
     alert(p_("Blog", "The blog cannot be found."))
-    $scene=$blogreturnscene
-    $scene=Scene_Main.new if $scene==nil
+    $scene = @scene || Scene_Main.new
     end
   return
 end
@@ -114,13 +118,20 @@ rescue EltenLink::Error
   return
 end
 @blogname=blogname=blogtemp.name
+index = @sel ? @sel.index : @categoryselindex
+selected_category = @categories[index-1] if @categories && index.positive?
 @categories = []
 for c in blogtemp.categories
   @categories.push(c)  if @isowner or c.posts>0
 end
 sel = [[p_("Blog", "All posts"), nil]] + @categories.map{|c|[c.name, c.posts.to_s]}
-@sel = TableBox.new([nil, p_("Blog", "Posts")], sel, index: @categoryselindex, header: blogname, quiet: false)
-  @sel.bind_context{|menu|context(menu)}
+if selected_category
+  restored = @categories.index { |category| category.id == selected_category.id }
+  index = restored + 1 if restored
+end
+@sel = TableBox.new([nil, p_("Blog", "Posts")], sel, index: index.clamp(0, sel.size - 1), header: blogname, quiet: true)
+@sel.bind_context{|menu|context(menu)}
+focus_blog_list
 loop do
   loop_update
   @sel.update
@@ -130,18 +141,17 @@ loop do
 end
 def update
   if key_pressed?(:key_escape) or (key_pressed?(:key_left) and !key_held?(0x10))
-    $scene=$blogreturnscene    
-    $scene = Scene_Main.new if $scene==nil
+    return return_to_blog_parent(@scene || Scene_Main.new)
   end
   if key_pressed?(:key_enter) or (key_pressed?(:key_right) and !key_held?(0x10))
     bopen
-            end
-            end
-            def bopen
-              c=0
-              c=@categories[@sel.index-1].id if @sel.index>0
-      $scene = Scene_Blog_Posts.new(@owner,c,@sel.index)
-                end
+  end
+end
+
+def bopen
+  category = @sel.index.zero? ? 0 : @categories[@sel.index - 1].id
+  $scene = Scene_Blog_Posts.new(@owner, category, @sel.index, parent: self).enter_from_blog_tree
+end
   def categorynew
                           name = ""
       name = input_text(p_("Blog", "Category name"),flags: 0,text: "",escapable: true)         while name == ""
@@ -262,18 +272,22 @@ $scene=Scene_Blog_Options.new(blog_id, @scene)
 end
 
 class Scene_Blog_Posts
+  include BlogTreeNavigation
+
   SORT_POSTS_BY_BLOG = "blog"
   SORT_POSTS_BY_DATE = "date"
-  def initialize(owner,id,categoryselindex=0,postselindex=0,search=nil,page=0)
+  def initialize(owner,id,categoryselindex=0,postselindex=0,search=nil,page=0, parent: nil)
     @owner=owner
     @id = id
     @categoryselindex = categoryselindex
     @postselindex = postselindex
     @search=search
-    @topage=page
-    @isowner=(@id.is_a?(Integer)&&(blogowners(owner)||"").include?(Session.name))
-    end
+    @page = [page, 1].max
+    @parent = parent
+  end
+
   def main
+    @isowner = @id.is_a?(Integer) && (blogowners(@owner) || []).include?(Session.name)
     @mentions=[]
     if @id=="MENTIONED" or @id=="NEWMENTIONED"
       begin
@@ -292,19 +306,10 @@ class Scene_Blog_Posts
                     @mentions.push(mention)
                   end
       end
-        id = @id
-        id=0 if @id==-1
-        @page=1
-        @post = []
-        @sel = TableBox.new(["", p_("Blog", "Author"), p_("Blog", "Comments")], [], index: 0, header: "")
-if @topage==0
-        load_posts(@page)
-      else
-        for i in 1..@topage
-          load_posts(i)
-        end
-        @page=@topage
-        end
+    index = @sel ? @sel.index : @postselindex
+    selected = @post[index] if @post
+    @sel = TableBox.new(["", p_("Blog", "Author"), p_("Blog", "Comments")], [], index: 0, header: "")
+    return unless reload_post_pages
 if @post.size==0 and @id=="NEW"
   alert(p_("Blog", "No new comments on your blog."))
   $scene=Scene_Notifications.new
@@ -322,8 +327,14 @@ if @post.size==0 and @id=="NEW"
   $scene=Scene_Notifications.new
   return
 end
-@sel.index=@postselindex
-@sel.focus
+if selected
+  restored = @post.index do |post|
+    post.id == selected.id && post.owner == selected.owner && post.mention&.id == selected.mention&.id
+  end
+  index = restored if restored
+end
+@sel.index = index.clamp(0, [@sel.rows.size - 1, 0].max)
+focus_blog_list
 @sel.on(:move) {play_sound("file_audio", volume: 50, pitch: 50, pan: @sel.lpos) if @post[@sel.index]!=nil && (@post[@sel.index].audio || @post[@sel.index].audio_url.to_s!="")}
 @sel.trigger(:move)
 @sel.bind_context{|menu|context(menu)}
@@ -336,37 +347,43 @@ loop do
 end
 def update
   if key_pressed?(:key_escape) or (key_pressed?(:key_left) and !key_held?(0x10))
-    if @id!=-1
-    if @id == "NEW" or @id == "NEWFOLLOWED" or @id=="NEWFOLLOWEDBLOGS"
-      $scene = Scene_Notifications.new
-      elsif @id == "FOLLOWED"
-      $scene = Scene_Blog.new(7)
-      elsif @id == "MENTIONED"
-      $scene = Scene_Blog.new(8)
-      else
-    $scene = Scene_Blog_Main.new(@owner,@categoryselindex,$blogreturnscene)
-  end
-else
-  $scene=Scene_Blog_List.new
-  end
+    return return_to_blog_parent(@parent) if @parent
+    parent = case @id
+    when "NEW", "NEWFOLLOWED", "NEWFOLLOWEDBLOGS", "NEWMENTIONED"
+      Scene_Notifications.new
+    when "FOLLOWED" then Scene_Blog.new(7)
+    when "MENTIONED" then Scene_Blog.new(8)
+    when -1 then Scene_Blog_List.new
+    else Scene_Blog_Main.new(@owner, @categoryselindex)
+    end
+    return return_to_blog_parent(parent)
   end
   if key_pressed?(:key_enter) or (key_pressed?(:key_right) and !key_held?(0x10))
       bopen
     end
   end
+  def reload_post_pages
+    @post = []
+    1.upto(@page) do |page|
+      load_posts(page)
+      return false if $scene != self
+      break unless @sel.rows.size > @post.size
+    end
+    true
+  end
+
   def load_posts(page)
     id=@id
     id=0 if @id==-1
-    @owner=Session.name if id.to_i.to_s!=id.to_s
+    owner = id.to_i.to_s == id.to_s ? @owner : Session.name
     begin
-    blogtemp = EltenLink::Blog.posts(elten_link, blog: @owner, category_id: id, page: page, search: @search)
+    blogtemp = EltenLink::Blog.posts(elten_link, blog: owner, category_id: id, page: page, search: @search)
 rescue EltenLink::Error
   alert(_("Error"))
   $scene = Scene_Main.new
   return
 end
-post=nil
-@post = [] if @id == "NEWFOLLOWEDBLOGS"
+first_new_index = @post.size
 for source in blogtemp.posts
   post=Struct_Blog_Post.new(source.id)
   post.name = source.name
@@ -390,7 +407,9 @@ for source in blogtemp.posts
   @post.push(post)
   end
 end
+first_new = @post[first_new_index]
 if @id == "NEWFOLLOWEDBLOGS" and LocalConfig["BlogPostsSortBy", SORT_POSTS_BY_BLOG, type: :string] == SORT_POSTS_BY_DATE
+  first_new = @post.drop(first_new_index).max_by(&:date)
   @post = @post.sort_by { |p| p.date * -1 }
 end
 @sel.rows=@post.map{|s|
@@ -414,16 +433,22 @@ new_status=ListBox.item_status("listbox_itemnew", p_("Blog", "New"), p_("Blog", 
 @post.each_with_index do |post, i|
   @sel.set_row_state(i, new_status) if post.unread
 end
+@page = page
+first_new
 end
-def bopen
-  if @sel.index<@post.size
-  $scene = Scene_Blog_Read.new(@post[@sel.index],@id,@categoryselindex,@sel.index, nil,@page, @search)
-else
-  @page+=1
-  load_posts(@page)
-  @sel.say_option
+
+  def bopen
+    if @sel.index < @post.size
+      $scene = Scene_Blog_Read.new(@post[@sel.index], @id, @categoryselindex, @sel.index, self, @page, @search)
+    elsif @sel.index < @sel.rows.size
+      first_new = load_posts(@page + 1)
+      return if $scene != self
+      @sel.index = @post.index(first_new) || [@sel.rows.size - 1, 0].max
+      @sel.focus(announce_header: false)
+      @sel.trigger(:move)
+    end
   end
-  end
+
   def postdelete
     confirm(p_("Blog", "Are you sure you want to delete post %{post}?")%{ :post => @post[@sel.index].name}) {
     begin
@@ -447,10 +472,10 @@ else
     if @post.size>0 && @sel.index < @post.size
       if @isowner
     menu.option(p_("Blog", "Edit"), nil, "e") {
-      $scene = Scene_Blog_PostEditor.new(@owner,@post[@sel.index].id,@id,@categoryselindex,@sel.index)
+      $scene = Scene_Blog_PostEditor.new(@owner,@post[@sel.index].id,@id,@categoryselindex,@sel.index, return_scene: self)
     }
     menu.option(p_("Blog", "Move to another blog")) {
-      $scene = Scene_Blog_Post_Move.new(@owner,@id,@post[@sel.index].id,@categoryselindex,@sel.index)
+      $scene = Scene_Blog_Post_Move.new(@owner,@id,@post[@sel.index].id,@categoryselindex,@sel.index, return_scene: self)
     }
     menu.option(_("Delete"), nil, :del) {
       postdelete
@@ -470,7 +495,8 @@ else
       LocalConfig["BlogPostsSortBy"] = SORT_POSTS_BY_BLOG
       info = p_("Blog", "Posts sorted by blog.")
     end
-    load_posts(@page)
+    next unless reload_post_pages
+    @sel.index = @sel.index.clamp(0, [@sel.rows.size - 1, 0].max)
     alert(info)
     }
     end # if @id=="NEWFOLLOWEDBLOGS"
@@ -550,7 +576,7 @@ else
   end
 if @isowner and @id != "NEW" and @id != "FOLLOWED" and @id != "NEWFOLLOWED"
   menu.option(p_("Blog", "New post"), nil, "n") {
-$scene = Scene_Blog_PostEditor.new(@owner,0,@id,@categoryselindex)
+$scene = Scene_Blog_PostEditor.new(@owner,0,@id,@categoryselindex, return_scene: self)
 }
 end
         end
@@ -658,6 +684,7 @@ else
   else
     $scene = @scene
     end
+  return
 end
 if Session.logged?
   @comment_field = EditBox.new(p_("Blog", "Your comment"), type: EditBox::Flags::MultiLine, text: @comment_field&.text.to_s, quiet: true)
@@ -678,7 +705,7 @@ else
   @fields.push(nil)
   end
 @fields.push(Button.new(p_("Blog", "Return")))
-@postcur=@knownposts+2 if @first_unread && @knownposts<@posts.size
+@postcur = first_unread_comment_field || 0 if @first_unread
 @form = Form.new(@fields,index: @postcur,quiet: true)
 if @comments==0
   @form.fields[-3]=nil
@@ -733,7 +760,7 @@ if (key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form.index == @fo
   return if !confirm_comment_discard
   @form.fields[0]
   txt = @form.fields[0].text
-    $scene = Scene_Blog_PostEditor.new(@post.owner,@post.id,@category,@categoryselindex,@postselindex)
+    $scene = Scene_Blog_PostEditor.new(@post.owner,@post.id,@category,@categoryselindex,@postselindex, return_scene: (@scene if @scene.is_a?(Scene_Blog_Posts)))
     end
   if key_pressed?(:key_escape) or ((key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form.index == @form.fields.size - 1)
   if confirm_comment_discard
@@ -745,6 +772,11 @@ if @scene == nil
     end
   end
 end
+def first_unread_comment_field
+  entry_index = [@knownposts, 1].max
+  entry_index + 2 if entry_index < @posts.size
+end
+
 def confirm_comment_discard
   @comment_draft == nil || @comment_draft.close
 end
@@ -827,9 +859,9 @@ def context(menu)
       @form.index=@postcur=@form.fields.size-5
       @form.focus
     }
-    if @knownposts<@posts.size
+    if (field = first_unread_comment_field)
         m.option(p_("Blog", "Go to first unread comment"), nil, "u") {
-      @form.index=@postcur=@knownposts+2
+      @form.index=@postcur=field
       @form.focus
     }
     end
@@ -946,19 +978,20 @@ end
 
 
 class Scene_Blog_List
+  include BlogTreeNavigation
+
   def initialize(type=0, scene=nil, blog=nil)
     @type=type
     @scene=scene
     @blog=blog
     end
   def main
+index = @sel&.index || 0
 @sel = TableBox.new([nil,nil,p_("Blog", "Author"), p_("Blog", "Posts"), p_("Blog", "Comments"), p_("Blog", "Last post")],[],index: 0,header: p_("Blog", "Blogs list"))
 @sel.bind_context{|menu|context(menu)}
-refresh
-@sel.index=$bloglistindex||0
-@sel.index=0 if @sel.index>=@sel.options.size
-@sel.focus
-$bloglistindex=0
+refresh(index)
+return if $scene != self
+focus_blog_list
 loop do
   loop_update
   @sel.update
@@ -968,21 +1001,19 @@ loop do
 end
 def update
   if key_pressed?(:key_escape) or (!key_held?(0x10)&&key_pressed?(:key_left))
-    if @scene==nil
-    t=0
-    t=@type+1 if @type.is_a?(Integer)
-    $scene = Scene_Blog.new(t)
-  else
-    $scene=@scene
-    end
+    parent = @scene || Scene_Blog.new(@type.is_a?(Integer) ? @type + 1 : 0)
+    return return_to_blog_parent(parent)
   end
-      if (key_pressed?(:key_enter) or key_pressed?(:key_right)) && !key_held?(0x10) and @blogs.size>0
-     $bloglistindex = @sel.index
-        $scene = Scene_Blog_Main.new(@blogs[@sel.index].id,0,$scene)
-      end
-    end
+  if (key_pressed?(:key_enter) || key_pressed?(:key_right)) && !key_held?(0x10) && !@blogs.empty?
+    open_blog
+  end
+end
+
+def open_blog
+  $scene = Scene_Blog_Main.new(@blogs[@sel.index].id, 0, self).enter_from_blog_tree
+end
+
 def blogfollowers
-  $bloglistindex = @sel.index
              $scene = Scene_Blog_Followers.new(@blogs[@sel.index].id,$scene)
 end
 def blogcoworkers
@@ -1037,7 +1068,8 @@ def blogdelete
   }
   } 
 end
-def refresh
+def refresh(index = @sel.index)
+selected = @blogs[index] if @blogs
 @blogs=[]
   sel = []
   if @blog==:library
@@ -1102,7 +1134,7 @@ sel.push([b.name, b.description, b.id[2..-2], nil, nil, nil])
    end
    knownlanguages = Session.languages.split(",").map{|lg|lg.upcase}
 items=blogtemp.size
-if @scene!=nil && items==0
+if @scene && !@scene.is_a?(Scene_Blog) && items==0
   alert(p_("Blog", "No blogs found"))
   $scene=@scene
   return
@@ -1133,6 +1165,11 @@ end
 end
 @sel.rows=sel
 @sel.reload
+if selected
+  restored = @blogs.index { |blog| blog.id == selected.id }
+  index = restored if restored
+end
+@sel.index = index.clamp(0, [@blogs.size - 1, 0].max)
 end
 def addlib(blog)
     langs=[]
@@ -1176,18 +1213,17 @@ if blog.elten
 b.each{|u| menu.useroption(u)}
 end
 menu.option(p_("Blog", "Open")) {
-  $bloglistindex = @sel.index
-        $scene = Scene_Blog_Main.new(@blogs[@sel.index].id,0,$scene)
+  open_blog
 }
 menu.option(p_("Blog", "Show all posts"), nil, :shift_enter) {
-$bloglistindex = @sel.index
-$scene = Scene_Blog_Posts.new(@blogs[@sel.index].id,-1,0,0)
+  $scene = Scene_Blog_Posts.new(@blogs[@sel.index].id, -1, parent: self).enter_from_blog_tree
 }
 menu.option(p_("Blog", "Search"), nil, "f") {
 phrase = input_text(p_("Blog", "Enter text to search"), flags: 0, text: "", escapable: true)
 if phrase!=nil
-$bloglistindex = @sel.index
-$scene = Scene_Blog_Posts.new(@blogs[@sel.index].id,-1,0,0,phrase)
+  $scene = Scene_Blog_Posts.new(@blogs[@sel.index].id, -1, 0, 0, phrase, parent: self)
+else
+  @sel.focus
 end
 }
 if blog.elten
@@ -1211,12 +1247,12 @@ if b.include?(Session.name)
     else
     alert(p_("Blog", "Blog left"))
   end
-  $scene=Scene_Blog_List.new(@type, @scene)
+    refresh
+    @sel.focus if $scene == self
     }
     }
     end
       menu.option(p_("Blog", "Recategorize")) {
-  $bloglistindex = @sel.index
   $scene = Scene_Blog_Recategorize.new(@blogs[@sel.index].id,$scene)
   }
   if b[0]==Session.name
@@ -1310,7 +1346,6 @@ menu.option(p_("Blog", "Create new blog"), nil, "n") {
   end
   next if !managed.empty? && !requires_premiumpackage("scribe")
 
-  $bloglistindex = @sel.index
   $scene = Scene_Blog_Create.new(true, $scene)
 }
 if !@type.is_a?(String)
@@ -1508,7 +1543,8 @@ end
 end
 
 class Scene_Blog_Post_Move
-  def initialize(owner,category,post,categoryselindex=0,postselindex=0)
+  def initialize(owner,category,post,categoryselindex=0,postselindex=0, return_scene: nil)
+    @return_scene = return_scene
     @owner=owner
     @category=category
     @post=post
@@ -1546,7 +1582,7 @@ break
           end
         break if key_pressed?(:key_escape) or @form.fields[3].pressed?
                   end
-    $scene = Scene_Blog_Posts.new(@owner,@category,@categoryselindex,@postselindex)
+    $scene = @return_scene || Scene_Blog_Posts.new(@owner,@category,@categoryselindex,@postselindex)
   end
 end
 
@@ -2014,7 +2050,8 @@ class Scene_Blog_Tags
     end
   
 class Scene_Blog_PostEditor
-  def initialize(owner,post=0,category=0,categoryselindex=0,postselindex=0)
+  def initialize(owner,post=0,category=0,categoryselindex=0,postselindex=0, return_scene: nil)
+    @return_scene = return_scene
   @owner=owner
   @post=post
   @category = category
@@ -2402,7 +2439,7 @@ if suc
       end
       end
   end
-    $scene = Scene_Blog_Posts.new(@owner,@category,@categoryselindex,@postselindex)
+    $scene = @return_scene || Scene_Blog_Posts.new(@owner,@category,@categoryselindex,@postselindex)
   ensure
     @draft&.detach
   end
