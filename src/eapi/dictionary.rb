@@ -10,10 +10,41 @@ require_relative "dictionary_plural_rule"
 module EltenAPI
   module Dictionary
     private
-    Catalogs = {nil => [].freeze}
     CatalogMutex = Mutex.new
     Docs={}
     Languages=[]
+
+    class CatalogRegistry
+      attr_accessor :host
+      attr_reader :programs
+
+      def initialize
+        @host = [].freeze
+        @programs = {}.freeze
+        @key_counts = Hash.new(0)
+      end
+
+      # Readers keep this immutable map after releasing CatalogMutex.
+      def programs_for_key(key)
+        @programs if @key_counts.key?(key)
+      end
+
+      def programs=(catalogs)
+        @programs.each_pair do |runtime, old|
+          next if !old || old.equal?(catalogs[runtime])
+          old.each_context_key do |key|
+            @key_counts[key] -= 1
+            @key_counts.delete(key) if @key_counts[key].zero?
+          end
+        end
+        catalogs.each_pair do |runtime, catalog|
+          next if !catalog || catalog.equal?(@programs[runtime])
+          catalog.each_context_key { |key| @key_counts[key] += 1 }
+        end
+        @programs = catalogs.freeze
+      end
+    end
+    Catalogs = CatalogRegistry.new
 
     class Catalog
       def initialize(data)
@@ -66,11 +97,16 @@ module EltenAPI
 
       def translate(forms, count = nil)
         entry = @entries[forms.first]
-        return nil if entry == nil || entry[0].size < forms.size || entry[0][0, forms.size] != forms
+        return nil if entry == nil
+        return nil if forms.size > 1 && entry[0][0, forms.size] != forms
         index = count == nil ? 0 : plural_index(count)
         return nil if index == nil
         value = entry[1][index]
         value.dup if value != nil && !value.empty?
+      end
+
+      def each_context_key
+        @entries.each_key { |key| yield key if key.include?("\004") }
       end
 
       def plural_index(count)
@@ -78,7 +114,7 @@ module EltenAPI
         index if index != nil && index >= 0 && index < @plural_count
       end
     end
-    private_constant :Catalog, :Catalogs, :CatalogMutex
+    private_constant :Catalog, :CatalogRegistry, :Catalogs, :CatalogMutex
   def locale_text(value)
     str=value.to_s.dup
     if str.encoding==Encoding::UTF_8
@@ -141,11 +177,9 @@ def setlocale(code)
   return if lang == nil
   catalog = Catalog.new(lang.mo)
   CatalogMutex.synchronize do
-    catalogs = {nil => [catalog].freeze}
-    Catalogs.each_key do |runtime|
-      catalogs[runtime] = read_program_catalog(runtime, code) if runtime != nil
-    end
-    Catalogs.replace(catalogs)
+    programs = Catalogs.programs.to_h { |runtime, _| [runtime, read_program_catalog(runtime, code)] }
+    Catalogs.programs = programs
+    Catalogs.host = [catalog].freeze
     Docs.replace(lang.docs)
   end
 rescue ArgumentError, EncodingError => e
@@ -160,7 +194,7 @@ end
 def loadmo(data, reset=true)
   catalog = Catalog.new(data)
   CatalogMutex.synchronize do
-    Catalogs[nil] = (reset ? [catalog] : Catalogs[nil] + [catalog]).freeze
+    Catalogs.host = (reset ? [catalog] : Catalogs.host + [catalog]).freeze
   end
   true
 rescue ArgumentError, EncodingError => e
@@ -173,17 +207,17 @@ def _doc(d)
   end
 def _(src)
   source = locale_text(src)
-  translate_message([source], implicit: true) || source
+  translate_message([source]) || source
 end
 
 def n_(*params)
   forms, count = plural_arguments(params)
-  translate_message(forms, count, implicit: true) || plural_source(forms, count)
+  translate_message(forms, count) || plural_source(forms, count)
 end
 
 def p_(context, src)
   source = locale_text(src)
-  translate_message([source], context: locale_text(context)) || source
+  translate_contextual_message([source], context) || source
 end
 def s_(str)
   s=_(str)
@@ -195,7 +229,7 @@ def s_(str)
   end
 def np_(context, src, *params)
   forms, count = plural_arguments([src.to_s, *params])
-  translate_message(forms, count, context: locale_text(context)) || n_(src, *params)
+  translate_contextual_message(forms, context, count) || n_(src, *params)
 end
 def ns_(context, src, *params)
   str=n_(context+"|"+src, *params)
@@ -253,19 +287,33 @@ rescue StandardError
   nil
 end
 
-def translation_catalogs(runtime)
-  CatalogMutex.synchronize do
-    host = Catalogs[nil]
-    catalog = Catalogs[runtime] if runtime != nil
-    catalog == nil ? host : host + [catalog]
+def translate_contextual_message(forms, context, count = nil)
+  return nil if forms.empty?
+  key = "#{locale_text(context)}\004#{forms.first}"
+  forms[0] = key
+  programs = nil
+  host = CatalogMutex.synchronize do
+    programs = Catalogs.programs_for_key(key)
+    Catalogs.host
+  end
+  host.each do |catalog|
+    value = catalog.translate(forms, count)
+    return value if value != nil
+  end
+  if programs
+    catalog = programs[program_translation_runtime]
+    catalog&.translate(forms, count)
   end
 end
 
-def translate_message(forms, count = nil, context: nil, implicit: false)
+def translate_message(forms, count = nil)
   return nil if forms.empty?
   runtime = program_translation_runtime
-  catalogs = translation_catalogs(runtime)
-  context = runtime.manifest.name if implicit && runtime != nil && runtime.manifest != nil
+  catalogs = CatalogMutex.synchronize do
+    program = Catalogs.programs[runtime]
+    program ? Catalogs.host + [program] : Catalogs.host
+  end
+  context = runtime.manifest.name if runtime != nil && runtime.manifest != nil
   if context != nil
     contextual = forms.dup
     contextual[0] = locale_text(context) + "\004" + forms.first.to_s
@@ -273,7 +321,6 @@ def translate_message(forms, count = nil, context: nil, implicit: false)
       value = catalog.translate(contextual, count)
       return value if value != nil
     end
-    return nil if !implicit
   end
   catalogs.each do |catalog|
     value = catalog.translate(forms, count)
@@ -289,18 +336,27 @@ end
 def plural_source(forms, count)
   index = count == 1 ? 0 : 1
   if forms.size > 2
-    catalog = CatalogMutex.synchronize { Catalogs[nil].first }
+    catalog = CatalogMutex.synchronize { Catalogs.host.first }
     index = catalog.plural_index(count) || index if catalog != nil
   end
   forms[index] || forms.last
 end
 
 def load_program_locale(runtime, code)
-  CatalogMutex.synchronize { Catalogs[runtime] = read_program_catalog(runtime, code, Catalogs[runtime]) }
+  CatalogMutex.synchronize do
+    catalog = read_program_catalog(runtime, code, Catalogs.programs[runtime])
+    Catalogs.programs = Catalogs.programs.merge(runtime => catalog)
+    catalog
+  end
 end
 
 def remove_program_locale(runtime)
-  CatalogMutex.synchronize { Catalogs.delete(runtime) }
+  CatalogMutex.synchronize do
+    programs = Catalogs.programs.dup
+    removed = programs.delete(runtime)
+    Catalogs.programs = programs
+    removed
+  end
 end
 
 def read_program_catalog(runtime, code, previous = nil)
