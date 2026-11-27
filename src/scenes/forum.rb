@@ -445,7 +445,7 @@ LocalConfig["ForumSort"]=sort
 if type==0
 command=@grpsel.options[@grpsel.index]
 @grpindex[type] = @grpsel.index
-      groupsload(cat)
+      return unless groupsload(cat)
 @grpsel.index=@grpsel.options.find_index(command)||0
 @grpsel.focus
 else
@@ -472,24 +472,25 @@ m.option(p_("Forum", "By unread posts (descending)")) {makesort(type,cat,SORT_UN
 }
 end
 
-  def groupsmain(type = -1)
+  def groupsmain(type = -1, announce_header: true)
     type = (@lastlist || 0) if type == -1
     ll = @lastlist
     @lastlist = type
     index = 0
     @cat = type
-    groupsload(type, ll)
+    return unless groupsload(type, ll, announce_header: announce_header)
+    return groupsmain(0, announce_header: announce_header) if type == 4 && @sgroups.empty?
+    @grpsel.focus(announce_header: announce_header)
     loop do
-      return groupsmain(0) if type == 4 && @sgroups.empty?
       loop_update
       @grpsel.update
      LocalConfig["ForumColumnGroup"] = @grpsel.column if LocalConfig["ForumColumnGroup", type: :numeric] != @grpsel.column
       return $scene=Scene_Main.new if key_pressed?(:key_escape) and type==0
-      return groupsmain(0) if (key_pressed?(:key_escape) or (key_pressed?(:key_left) and !key_held?(0x10))) and type!=0
+      return groupsmain(0, announce_header: false) if (key_pressed?(:key_escape) or (key_pressed?(:key_left) and !key_held?(0x10))) and type!=0
       break if $scene!=self
-      if (key_pressed?(:key_enter) or key_pressed?(:key_right) and !key_held?(0x10))
+      if !@grpsel.options.empty? && (key_pressed?(:key_enter) || (key_pressed?(:key_right) && !key_held?(0x10)))
         list = @grpsel
-        groupopen(list.index, type, false)
+        groupopen(list.index, type, announce_header: false)
         break if $scene != self
         list.focus if @grpsel.equal?(list)
       end
@@ -497,7 +498,21 @@ end
     end
   end
   
-  def groupsload(type, ll=nil)
+  def group_list_header(type)
+    case type
+    when 1 then p_("Forum", "Recently active groups")
+    when 2 then p_("Forum", "Recommended groups")
+    when 3 then p_("Forum", "Open groups")
+    when 4 then p_("Forum", "Group invitations")
+    when 5 then p_("Forum", "Moderated groups")
+    when 6 then p_("Forum", "All groups")
+    when 7 then p_("Forum", "Recently created groups")
+    when 8 then p_("Forum", "Groups popular with my friends")
+    else p_("Forum", "Forum")
+    end
+  end
+
+  def groupsload(type, ll=nil, announce_header: true)
     if ll==nil
       ll=@lastll
     else
@@ -506,7 +521,10 @@ end
     knownlanguages = (Session.languages||"").split(",").map{|lg|lg.upcase}
     pinned=[]
         pinned=LocalConfig["ForumGroupsPinned", [], type: :array_of_numerics] if holds_premiumpackage("courier")
-    return $scene = Scene_Main.new if @groups == nil || @forums == nil || @threads == nil
+    if @groups == nil || @forums == nil || @threads == nil
+      $scene = Scene_Main.new
+      return
+    end
     @group_last_update = latest_activity_by { |forum| forum.group.id }
     case type
     when 0
@@ -745,7 +763,8 @@ end
         end
       if @sgroups.empty?
         alert(p_("Forum", "No groups popular with your friends"))
-        return groupsmain(0)
+        groupsmain(0, announce_header: announce_header)
+        return
       end
       @grpheadindex = 0
       grpselt = []
@@ -764,11 +783,10 @@ end
     @sgroups.each_with_index do |group, i|
       grpselt[@grpheadindex + i] << activity_date(@group_last_update[group.id])
     end
-    @grpsel = TableBox.new(grpselh, grpselt, index: @grpindex[type], header: p_("Forum", "Forum"))
+    @grpsel = TableBox.new(grpselh, grpselt, index: @grpindex[type], header: group_list_header(type))
     @grpsel.trigger(:move)
     @grpsel.column = LocalConfig["ForumColumnGroup", type: :numeric] if LocalConfig["ForumColumnGroup", type: :numeric] != nil
     @grpsel.bind_context(p_("Forum", "Forum")) { |menu| context_groups(menu, type) }
-    @grpsel.focus
     return [@sgroups, @grpheadindex]
   end
   
@@ -787,42 +805,29 @@ result*=-1 if sort.end_with?("_descending")
 return result
     end
 
-  def groupopen(index, type, allThreads=false)
+  def groupopen(index, type, allThreads=false, announce_header: true)
     @grpindex[type] = index
     @group=nil
+    category_offset = index - (@grpheadindex + @sgroups.size)
     if index == @grpheadindex - 3
-      return threadsmain(-1)
+      return threadsmain(-1, announce_header: announce_header)
     elsif index == @grpheadindex - 2
-      return forumsmain(-5)
-      elsif index == @grpheadindex - 1
-      return threadsmain(-10)
-    elsif index == @grpheadindex + @sgroups.size
-      return groupsmain(1)
-      elsif index == @grpheadindex + @sgroups.size + 1
-      return groupsmain(2)
-    elsif index == @grpheadindex + @sgroups.size + 2
-      return groupsmain(3)
-    elsif index == @grpheadindex + @sgroups.size + 3
-      return groupsmain(4)
-    elsif index == @grpheadindex + @sgroups.size + 4
-      return groupsmain(5)
-    elsif index == @grpheadindex + @sgroups.size + 5
-      return groupsmain(6)
-    elsif index == @grpheadindex + @sgroups.size + 6
-      return groupsmain(7)
-    elsif index == @grpheadindex + @sgroups.size + 7
-      return groupsmain(8)
-    elsif index == @grpheadindex + @sgroups.size + 8
-      return threadsmain(-8)
-    elsif index == @grpheadindex + @sgroups.size + 9
-      return threadsmain(-11)
-      elsif index == @grpheadindex + @sgroups.size + 10
-      return threadsmain(-12)
-      elsif index == @grpheadindex + @sgroups.size + 11
-      return threadsmain(-9)
-    elsif index == @grpheadindex + @sgroups.size + 12
+      return forumsmain(-5, announce_header: announce_header)
+    elsif index == @grpheadindex - 1
+      return threadsmain(-10, announce_header: announce_header)
+    elsif (0...8).cover?(category_offset)
+      return groupsmain(category_offset + 1, announce_header: announce_header)
+    elsif category_offset == 8
+      return threadsmain(-8, announce_header: announce_header)
+    elsif category_offset == 9
+      return threadsmain(-11, announce_header: announce_header)
+    elsif category_offset == 10
+      return threadsmain(-12, announce_header: announce_header)
+    elsif category_offset == 11
+      return threadsmain(-9, announce_header: announce_header)
+    elsif category_offset == 12
       @query = searcher_getquery
-            if @query != nil
+      if @query != nil
         usequery
         return threadsmain(-3)
       end
@@ -831,6 +836,7 @@ return result
       group_table = @grpsel
       group_row = group_table.rows[index]
       if g.role == 5 && !allThreads
+        announce_header = true
         choice = selector(
           [p_("Forum", "Browse"), p_("Forum", "Accept invitation"), p_("Forum", "Decline invitation"), _("Cancel")],
           header: p_("Forum", "Invitation to %{groupname}") % { groupname: g.name },
@@ -845,15 +851,18 @@ return result
           return
         end
       end
-      groupmotddlg(g, false) if g.hasnewmotd && (g.role == 1 || g.role == 2)
+      if g.hasnewmotd && (g.role == 1 || g.role == 2)
+        groupmotddlg(g, false)
+        announce_header = true
+      end
       if g.role == 1 or g.role == 2 or g.public
         if allThreads
           @query = g
           usequery
-          threadsmain(-3)
+          threadsmain(-3, announce_header: announce_header)
         else
-           forumsmain(g.id) if g.role == 1 or g.role == 2 or g.public
-         end
+          forumsmain(g.id, announce_header: announce_header)
+        end
         # Returning through groupsmain can replace the table while this call is still active.
         if @grpsel.equal?(group_table) && group_table.rows[index].equal?(group_row) && group_row && group_row.size >= 2
           group_row[-2] = (g.posts - g.readposts).to_s
@@ -880,7 +889,7 @@ return result
     @grpindex[type] = @grpsel.index
     @grpsetindex = group.id
     getcache
-    groupsload(type)
+    @grpsel.focus if groupsload(type)
   end
 
   def context_groups(menu, type)
@@ -1920,7 +1929,7 @@ rfr.call
         sel.update
         if key_pressed?(:key_escape)
           loop_update
-          @grpsel.focus
+          @grpsel.focus unless chrfr
           break
         end
                 if key_pressed?(:key_enter) and users.size>0
@@ -2067,16 +2076,17 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
     end
   end
 
-  def forumsmain(group = -1)
+  def forumsmain(group = -1, announce_header: true)
     group = @group if group == -1
     group = 0 if group == -1
     if group.nil?
       forum = @forums.find { |f| f.id == @frmsetid } if @frmsetid != nil && @forums != nil
-      return groupsmain if forum.nil?
+      return groupsmain(announce_header: announce_header) if forum.nil?
       group = forum.group.id
     end
     @group = group
     forumsload(group)
+    @frmsel.focus(announce_header: announce_header)
     loop do
       loop_update
       @frmsel.update
@@ -2085,12 +2095,12 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
         return $scene=Scene_Main.new if @pre==nil && @preparam.is_a?(Integer)
         @frmindex = nil
         @forum=nil
-        return groupsmain
+        return groupsmain(announce_header: false)
       end
       break if $scene!=self
       if (key_pressed?(:key_enter) or (key_pressed?(:key_right) and !key_held?(0x10))) and @sforums.size > 0
         @frmindex = @frmsel.index
-        return threadsmain(@sforums[@frmsel.index].id)
+        return threadsmain(@sforums[@frmsel.index].id, announce_header: false)
       end
       break if $scene!=self
     end
@@ -2133,15 +2143,19 @@ chk_transcriptions.checked=false if !requires_premiumpackage("courier")
     end
     @frmindex = 0 if @frmindex == nil
     frmselh = [nil, p_("Forum", "Threads"), p_("Forum", "posts"), p_("Forum", "Unread"), nil, p_("Forum", "Last activity")]
-    @frmsel = TableBox.new(frmselh, frmselt, index: @frmindex, header: p_("Forum", "Select forum"))
+    header = if group == -5
+      np_("Forum", "Followed forum", "Followed forums", @sforums.size)
+    else
+      @groups.find { |candidate| candidate.id == group }&.name || p_("Forum", "Forums")
+    end
+    @frmsel = TableBox.new(frmselh, frmselt, index: @frmindex, header: header)
     @sforums.each_with_index do |forum, i|
       apply_forum_row_states(i, forum)
     end
     @frmsel.trigger(:move)
     @frmsel.column = LocalConfig["ForumColumnForum", type: :numeric] if LocalConfig["ForumColumnForum", type: :numeric] != nil
-          @frmsel.bind_context(p_("Forum", "Forum")) { |menu| context_forums(menu) }
-    @frmsel.focus
-    end
+    @frmsel.bind_context(p_("Forum", "Forum")) { |menu| context_forums(menu) }
+  end
   
     def forumsorter(a,b)
     result=0
@@ -2404,7 +2418,6 @@ form.focus
               getcache
               forumsload(@group)
 @frmsel.index=@frmsel.options.find_index(command)||0
-@frmsel.focus
 @grpsetindex=@group
 break
             end
@@ -2480,6 +2493,7 @@ break
 @@lastCacheIdent=nil
     next unless getcache
       forumsload(@group)
+      @frmsel.focus
     }
   end
 
@@ -2512,7 +2526,26 @@ break
     end
   end
 
-  def threadsmain(id)
+  def thread_list_header(id, forum)
+    return forum.fullname if forum
+
+    case id
+    when -1 then np_("Forum", "Followed thread", "Followed threads", @sthreads.size)
+    when -2 then p_("Forum", "New posts in followed threads")
+    when -3 then @query.is_a?(Struct_Forum_Group) ? @query.name : p_("Forum", "Search results")
+    when -4 then p_("Forum", "New threads on followed forums")
+    when -6 then p_("Forum", "New posts on followed forums")
+    when -7 then p_("Forum", "New mentions")
+    when -8 then p_("Forum", "Threads popular with my friends")
+    when -9 then p_("Forum", "My threads")
+    when -10 then np_("Forum", "Marked thread", "Marked threads", @sthreads.size)
+    when -11 then p_("Forum", "Received mentions")
+    when -12 then np_("Forum", "Thread offered to my group", "Threads offered to my groups (%{count})", @sthreads.size) % { count: @sthreads.size }
+    else p_("Forum", "Threads")
+    end
+  end
+
+  def threadsmain(id, announce_header: true)
     # Fetch remote lists before changing the current list or its selection.
     if [-7, -11].include?(id)
       mentions = forum_fetch(nil) { EltenLink::Forum.list_mentions(elten_link, all: id == -11) }
@@ -2532,10 +2565,8 @@ break
     @forum = id
     index = @lastthreadindex
     @lastthreadindex = nil
-    @forumtype = 0
-    for forum in @forums
-      @forumtype = forum.type if forum.id == id
-    end
+    target_forum = @forums.find { |candidate| candidate.id == id }
+    @forumtype = target_forum&.type || 0
     @sthreads = []
     rsl=[]
     if id==-3
@@ -2701,23 +2732,21 @@ break
     @pre = nil
     @preparam = nil
     end
-    header = p_("Forum", "Select thread")
-    header = "" if id == -2 or id == -4 or id == -6 or id == -7
     thrselh = [nil, p_("Forum", "Author"), p_("Forum", "posts"), p_("Forum", "Unread")]
     thrselh[4]=nil if id==-11
     thrselh << p_("Forum", "Last activity")
-    @thrsel = TableBox.new(thrselh, thrselt, index: index, header: header, quiet: true, flags: ListBox::Flags::Tagged)
+    @thrsel = TableBox.new(thrselh, thrselt, index: index, header: thread_list_header(id, target_forum), quiet: true, flags: ListBox::Flags::Tagged)
     @sthreads.each_with_index do |thread, i|
       apply_thread_row_states(i, thread, id)
     end
     @thrsel.trigger(:move)
     @thrsel.column = LocalConfig["ForumColumnThread", type: :numeric] if LocalConfig["ForumColumnThread", type: :numeric] != nil
-          @thrsel.bind_context(p_("Forum", "Forum")) { |menu| context_threads(menu) }
-    if @tag!=nil
-          @thrsel.tag=@tag
-          @tag=nil
-          end
-          @thrsel.focus
+    @thrsel.bind_context(p_("Forum", "Forum")) { |menu| context_threads(menu) }
+    if @tag != nil
+      @thrsel.tag = @tag
+      @tag = nil
+    end
+    @thrsel.focus(announce_header: announce_header)
     loop do
       loop_update
       @thrsel.update
@@ -2727,16 +2756,16 @@ break
         return $scene=Scene_Main.new if @pre==nil && forum_target?(@preparam)
         if forum_id?(id)
           @frmsetid = id
-          return forumsmain
+          return forumsmain(announce_header: false)
         elsif id == -2 or id == -4 or id == -6 or id == -7
           return $scene = Scene_Main.new
         else
           @grpsetindex = @query.groupid if id == -3 && @query.is_a?(Struct_Forum_SearchQuery)
-          return groupsmain
+          return groupsmain(announce_header: false)
         end
       end
-      if key_pressed?(:key_enter) or (key_pressed?(:key_right) and !key_held?(0x10)) and @sthreads.size > 0
-threadopen(@thrsel.index)
+      if (key_pressed?(:key_enter) || (key_pressed?(:key_right) && !key_held?(0x10))) && !@sthreads.empty?
+        threadopen(@thrsel.index)
       end
       break if $scene!=self
     end
