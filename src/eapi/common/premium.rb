@@ -16,22 +16,25 @@ module EltenAPI
     return @@premiumpackages.include?(package)
     end
 
-    def requires_premiumpackage(package)
+    def requires_premiumpackage(package, description = nil)
       return true if holds_premiumpackage(package)
-      package_name=''
-      case package
-      when "courier"
-        package_name=p_("EAPI_Common", "Courier")
-when "audiophile"
-        package_name=p_("EAPI_Common", "Audiophile")
-        when "scribe"
-        package_name=p_("EAPI_Common", "Scribe")
-when "director"
-        package_name=p_("EAPI_Common", "Director")
+      message = p_("EAPI_Common", "This feature is unavailable with your current account. It is included in the Sponsorship package.")
+      text = [message, description].compact.join("\n\n")
+      info = EditBox.new(p_("EAPI_Common", "About this feature"), type: EditBox::Flags::ReadOnly | EditBox::Flags::MultiLine, text: text, quiet: true)
+      purchase = Button.new(p_("PremiumPackages", "Buy the Sponsorship package"))
+      close = Button.new(_("Close"))
+      form = Form.new([info, purchase, close], silent: true, quiet: true)
+      form.hide(purchase) unless Session.logged?
+      form.cancel_button = close
+      close.on(:press) { form.resume }
+      buy = false
+      purchase.on(:press) do
+        buy = true
+        form.resume
       end
-      confirm(p_("EAPI_Common", "This feature requires the %{package} premium package. Would you like to see the available premium packages?")%{:package=>package_name}) {insert_scene(Scene_PremiumPackages.new)
-      }
-      return false
-      end
+      form.wait
+      Scene_PremiumPackages.new.buy_sponsorship if buy
+      false
+    end
   end
 end

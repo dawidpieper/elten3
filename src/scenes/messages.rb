@@ -859,7 +859,7 @@ if @sel_messages.index<@messages.size and @messages[@sel_messages.index].receive
   s=p_("Messages", "Protect")
 s=p_("Messages", "Unprotect") if @messages[@sel_messages.index].protected==1  
 menu.option(s, nil, "c") {
-if @messages[@sel_messages.index].protected==1   || requires_premiumpackage("courier")
+if @messages[@sel_messages.index].protected==1   || requires_premiumpackage("courier", p_("Messages", "Protect a private message against accidental deletion."))
   if @messages[@sel_messages.index].protected==0
     begin
       EltenLink::Messages.set_protected(elten_link, @messages[@sel_messages.index].id, true)
@@ -1024,7 +1024,7 @@ def audiolimit
            @fields[6].bind_context{|menu|
            if @polls.size<3
              menu.option(p_("Messages", "Attach a poll"), nil, "n") {
-             if requires_premiumpackage("courier")
+             if requires_premiumpackage("courier", p_("Messages", "Include a poll when sending a private message."))
         begin
           polls = EltenLink::Polls.by_me(elten_link)
         rescue EltenLink::Error
