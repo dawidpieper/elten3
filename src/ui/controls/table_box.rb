@@ -17,10 +17,10 @@ module EltenAPI
          attr_reader :row_audio_completion_labels
          attr_accessor :header
          attr_reader :column
-                           def initialize(columns=[], rows=[], index: 0, header: "", quiet: true, flags: 0, empty_label: nil)
+         def initialize(columns=[], rows=[], index: 0, header: "", quiet: true, flags: 0, empty_label: nil, column: 0)
            @columns, @rows = columns, rows
            @flags=flags
-           @column=0
+           @column = column.is_a?(Integer) && column.between?(0, @columns.size - 1) ? column : 0
            @row_states=[]
            @row_audio_urls=[]
            @row_audio_sources=[]
@@ -157,26 +157,29 @@ module EltenAPI
            @sel.say_option
            end
 alias sayoption say_option
-           def format_rows(col=0)
-           opts=[]
-           for r in @rows
-             if r==nil or r.count(nil)==r.size
-               o=nil
-                              else
-             o=""
-                          o=row_speech_value(r[col]) if r[col]!=nil
-             for c in 0...@columns.size
-               if c!=col&&r[c]!=nil
-               plain=o.to_s
-               o=row_speech_append(o, ((c==0)?":":((plain[-1..-1]!=":"&&plain[-1..-1]!=".")?",":""))+" ")
-               o=row_speech_append(o, text_utf8(@columns[c])+": ")
-               o=row_speech_append(o, row_speech_value(r[c]))
-               end
+         def format_rows(col=0)
+           @rows.map { |row| format_row(row, col) }
+         end
+
+         def format_row(row, col)
+           return nil if row.nil? || row.count(nil) == row.size
+
+           label = row[col].nil? ? "" : row_speech_value(row[col])
+           @columns.each_with_index do |header, i|
+             next if i == col || row[i].nil?
+
+             separator = if i.zero?
+               ": "
+             elsif label.to_s.end_with?(":", ".")
+               " "
+             else
+               ", "
              end
-             end
-             opts.push(o)
+             label = row_speech_append(label, separator)
+             label = row_speech_append(label, text_utf8(header) + ": ")
+             label = row_speech_append(label, row_speech_value(row[i]))
            end
-                                 return opts
+           label
          end
          def index
            return @sel.index
@@ -188,31 +191,32 @@ alias sayoption say_option
            setcolumn(c)
          end
          def setcolumn(c)
-@sel.options=format_rows(c)
+           @sel.options = format_rows(c)
            apply_row_states
            apply_row_audio
-           @column=c
+           @column = c
          end
          def reload
-           @sel.options=format_rows(@column)
+           @sel.options = format_rows(@column)
            apply_row_states
            apply_row_audio
-           end
+         end
+
+         def reload_row(index)
+           return false unless index.is_a?(Integer) && index.between?(0, @rows.size - 1)
+
+           @sel.replace_option(index, format_row(@rows[index], @column))
+         end
+
          def update
-super
-           if key_held?(0x10)&&@rows.size>0
+           super
+           if key_held?(0x10) && !@rows.empty?
              if key_pressed?(:key_right)
-               c=@column
-                           setcolumn((@column+1)%(@columns.size))
-                              setcolumn((@column+1)%(@columns.size)) while (@rows[index][@column]==nil||@rows[index][@column]=="") and c!=@column
-                                                                           speak(text_utf8(@rows[@sel.index][@column])+" ("+text_utf8(@columns[@column])+")", pan: @sel.lpos)
-                                                          elsif key_pressed?(:key_left)
-               c=@column
-                           setcolumn((@column-1)%(@columns.size))
-                           setcolumn((@column-1)%(@columns.size)) while (@rows[index][@column]==nil||@rows[index][@column]=="") and c!=@column
-                                                      speak(text_utf8(@rows[@sel.index][@column])+" ("+text_utf8(@columns[@column])+")", pan: @sel.lpos)
-                                                        end
+               move_column(1)
+             elsif key_pressed?(:key_left)
+               move_column(-1)
              end
+           end
            @sel.update
          end
          def focus(index=nil, count=nil, announce_header: true)
@@ -230,6 +234,21 @@ super
            end
 
          private
+
+         def move_column(step)
+           return if @columns.empty? || index.nil? || index < 0
+
+           row = @rows[index]
+           return if row.nil?
+
+           target = @column
+           @columns.size.times do
+             target = (target + step) % @columns.size
+             break unless row[target].nil? || row[target] == ""
+           end
+           setcolumn(target) unless target == @column
+           speak(text_utf8(row[target]) + " (" + text_utf8(@columns[target]) + ")", pan: @sel.lpos)
+         end
 
          def wait_item_available?(id)
            id>=0 && id<@rows.size && !@sel.hidden?(id)

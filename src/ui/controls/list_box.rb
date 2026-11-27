@@ -187,9 +187,38 @@ def options=(opts)
   0..options.size-1
 end
 
+# Change one label without resetting selection, states, item keys or active players.
+def replace_option(index, value)
+  return false unless index.is_a?(Integer) && index >= 0 && index < @options.size
+
+  key = nil
+  @options[index] = prepare_option(value) { |hotkey| key = hotkey }
+  # A nil label hides its item automatically. Only that kind of hiding expires with the label.
+  auto_grayed = @auto_grayed&.delete(index)
+  if auto_grayed || @grayed[index] != true
+    @grayed[index] = value.nil?
+    (@auto_grayed ||= {})[index] = true if value.nil?
+  end
+  if @hk && @option_hotkeys[index] != key
+    previous = @option_hotkeys[index]
+    @option_hotkeys[index] = key
+    if previous && @hotkeys[previous] == index
+      owner = @option_hotkeys.rindex(previous)
+      if owner
+        @hotkeys[previous] = owner
+      else
+        @hotkeys.delete(previous)
+      end
+    end
+    @hotkeys[key] = index if key && index > @hotkeys.fetch(key, -1)
+  end
+  true
+end
+
 def update_options(options, keys:, fallback: :nearest)
   raise ArgumentError, "fallback must be :nearest or :first" unless [:nearest, :first].include?(fallback)
   keys=normalize_item_keys(keys, options.size)
+  old_auto_grayed = @auto_grayed
   options, grayed, hotkeys=prepare_options(options)
   previous=(@item_keys || []).each_with_index.to_h
   indices=keys.map { |key| previous[key] }
@@ -200,7 +229,16 @@ def update_options(options, keys:, fallback: :nearest)
 
   @item_audio_entries.keys.each { |index| close_item_audio(index) unless positions.key?(index) }
   @item_audio_entries=@item_audio_entries.transform_keys { |index| positions[index] }
-  @grayed.replace(indices.each_with_index.map { |old, index| grayed[index]==true || (old!=nil && @grayed[old]==true) })
+  @grayed.replace(indices.each_with_index.map do |old, index|
+    next grayed[index] == true unless old && @grayed[old] == true
+
+    if old_auto_grayed&.key?(old)
+      (@auto_grayed ||= {})[index] = true
+    else
+      @auto_grayed&.delete(index)
+    end
+    true
+  end)
   @selected.replace(indices.map { |old| old==nil ? false : @selected[old] })
   @item_states.replace(indices.map { |old| old==nil ? {} : @item_states[old] })
   [@item_audio_urls, @item_audio_sources, @item_audio_autoplay_values, @item_audio_completion_labels].each do |values|
@@ -229,6 +267,8 @@ def update_options(options, keys:, fallback: :nearest)
 end
 
 def clear_options
+  @auto_grayed=nil
+  @option_hotkeys&.clear
   @item_keys=[] if @item_keys!=nil
   @required_multiselection_indices&.clear
   @options.clear
@@ -246,6 +286,8 @@ end
 def prepend_options(opts, states=[], audio_sources=[], audio_autoplay=[], audio_completion_labels=[])
   old_options=@options.dup
   old_grayed=@grayed.dup
+  old_auto_grayed=@auto_grayed
+  old_option_hotkeys=@option_hotkeys
   old_selected=@selected.dup
   old_states=@item_states.dup
   old_audio_urls=@item_audio_urls.dup
@@ -262,7 +304,15 @@ def prepend_options(opts, states=[], audio_sources=[], audio_autoplay=[], audio_
     set_item_audio(i, audio_sources[i], autoplay: audio_autoplay[i]!=false, completion_label: audio_completion_labels[i]) if audio_sources[i]!=nil
   end
   @options+=old_options
-  @grayed+=old_grayed
+  offset = opts.size
+  @grayed.fill(false, @grayed.size...offset)
+  @grayed.concat(old_grayed)
+  old_auto_grayed&.each_key { |index| (@auto_grayed ||= {})[offset + index] = true }
+  if @hk
+    @option_hotkeys.fill(nil, @option_hotkeys.size...offset)
+    @option_hotkeys.concat(old_option_hotkeys)
+    old_option_hotkeys.each_with_index { |key, index| @hotkeys[key] = offset + index if key }
+  end
   @selected+=old_selected
   @item_states+=old_states
   @item_audio_urls.fill(nil, @item_audio_urls.size...opts.size)
@@ -343,26 +393,35 @@ def normalize_item_keys(keys, size)
 end
 
 def prepare_options(opts)
-  options, grayed, hotkeys=[], [], {}
-  opts.size.times do |index|
-    option=opts[index]
-    if option==nil
-      option=""
-      grayed[index]=true
-    else
-      text=@hk ? text_utf8(option) : nil
-      marker=text&.index("&")
-      if marker!=nil
-        hotkeys[text[marker+1..marker+1].upcase.getbyte(0)]=index if marker<text.length-1
-      end
-      if option.is_a?(String)
-        option=text_utf8(option).dup
-        option.delete!("&") if marker!=nil
-      end
+  options, grayed, hotkeys = [], [], {}
+  @option_hotkeys = [] if @hk
+  @auto_grayed = nil
+  opts.each_with_index do |option, index|
+    if option.nil?
+      grayed[index] = true
+      (@auto_grayed ||= {})[index] = true
     end
-    options << option
+    label = prepare_option(option) do |key|
+      @option_hotkeys[index] = key
+      hotkeys[key] = index
+    end
+    options << label
   end
   [options, grayed, hotkeys]
+end
+
+def prepare_option(option)
+  return "" if option.nil?
+  if @hk
+    text = text_utf8(option)
+    marker = text.index("&")
+    yield text[marker + 1].upcase.getbyte(0) if marker && marker < text.length - 1
+  end
+  return option unless option.is_a?(String)
+
+  label = (text || text_utf8(option)).dup
+  label.delete!("&") if marker
+  label
 end
 
 def normalize_item_audio_source(source, data)
@@ -1177,6 +1236,7 @@ end
 #
 # @param id [Numeric] the id of an item to hide
     def disable_item(id)
+  @auto_grayed&.delete(id < 0 ? @grayed.size + id : id)
   @grayed[id] = true
   options = @options
   while hidden?(self.index) == true
@@ -1192,6 +1252,7 @@ self.index = 0 if @border == false
   end
 end
 def enable_item(id)
+  @auto_grayed&.delete(id < 0 ? @grayed.size + id : id)
   @grayed[id]=false
 end
 def visible_count
