@@ -718,11 +718,14 @@ loop do
   loop_update
   @form.update
   update
-  if @form.fields[@form.fields.size-4]!=nil and @form.fields[@form.fields.size-4].text!="" and @form.fields[@form.fields.size-3]==nil
-    @form.fields[@form.fields.size-3]=Button.new(p_("Blog", "Send"))
-  elsif @form.fields[@form.fields.size-4]!=nil and @form.fields[@form.fields.size-4].text=="" and @form.fields[@form.fields.size-3]!=nil
-    @form.fields[@form.fields.size-3]=nil
+  comment_field = @form.fields[-4]
+  if comment_field
+    if comment_field.text_len.zero?
+      @form.fields[-3] = nil if @form.fields[-3]
+    else
+      @form.fields[-3] ||= Button.new(p_("Blog", "Send"))
     end
+  end
   break if $scene != self
   end
 end

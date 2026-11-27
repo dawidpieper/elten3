@@ -107,7 +107,6 @@ module EltenAPI
       if break_sequence
         @@current_speechsequence=nil
       end
-      spelling=false
       id=rand(2**32) if id==nil
       $speechid=id
       swait=false
@@ -141,11 +140,9 @@ module EltenAPI
     end
     return
   end
-  if text.length!=0 and ((l=text.split("")).size==1) and l[0].bigletter
-      play_sound("editbox_bigletter")
-              end
+  spelling = text.bytesize <= 4 && text.length == 1
+  play_sound("editbox_bigletter") if spelling && text.bigletter
   if text != ""
-        spelling=true if text.chrsize==1
     text = text.gsub("_"," ") if !spelling
   text_d = text
 text_d.gsub!("\r\n\r\n","\n\n")

@@ -647,7 +647,10 @@ def deleteconversation(c)
             else
               text=message_list_content(m)
               text=[forwarded, text].reject{|part|part.empty?}.join("\r\n")
-              selt[-1]+=":\r\n"+((sp!=nil and sp!="new")?(utf8(m.subject)+":\r\n"):"")+text.split("")[0...5000].join+((text.size>5000)?"... #{p_("Messages", "Open this message to read more")}":"")+"\r\n"+format_date(m.date)+"\r\n"
+              preview = text[0, 5000]
+              preview << "... #{p_("Messages", "Open this message to read more")}" if preview.bytesize < text.bytesize
+              subject_prefix = sp != nil && sp != "new" ? "#{utf8(m.subject)}:\r\n" : ""
+              selt[-1] += ":\r\n#{subject_prefix}#{preview}\r\n#{format_date(m.date)}\r\n"
             end
     end
     selt.push(p_("Messages", "Show older")) if @messages_more and !complete
@@ -773,31 +776,36 @@ def deleteconversation(c)
       return if $scene != self
       @sel_messages.clear_item_state(@sel_messages.index, unread_message_status) if message.receiver == Session.name
     end
-      if @form_messages.fields[3]!=nil
-  if @form_messages.fields[3].text=="" and @form_messages.fields[4]!=nil
-@form_messages.fields[4]=nil
-elsif @form_messages.fields[3].text!="" and @form_messages.fields[4]==nil
-  @form_messages.fields[4]=Button.new(p_("Messages","Send"))
-  end
-    if (((key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form_messages.index==4) or ((key_pressed?(:key_enter) and key_held?(0x11)) and @form_messages.index==3)) and @form_messages.fields[3].text!=""
-      text=@form_messages.fields[3].text
+    reply_field = @form_messages.fields[3]
+    return unless reply_field
+
+    has_reply = reply_field.text_len.positive?
+    if has_reply && @form_messages.fields[4].nil?
+      @form_messages.fields[4] = Button.new(p_("Messages", "Send"))
+    elsif !has_reply && @form_messages.fields[4]
+      @form_messages.fields[4] = nil
+    end
+
+    if has_reply && ((@form_messages.index == 4 && (key_pressed?(:key_enter) || key_pressed?(:key_space))) ||
+                     (@form_messages.index == 3 && key_pressed?(:key_enter) && key_held?(0x11)))
+      text = reply_field.text
       begin
         EltenLink::Messages.send_text(elten_link, to: @messages_user, subject: ("RE: "+(@messages_subject||"")), text: text)
       rescue EltenLink::Error
-      alert(p_("Messages", "Failed to send message"))
+        alert(p_("Messages", "Failed to send message"))
       else
-      @form_messages.index=3
-      @form_messages.fields[3].set_text("")
-      message_draft.sent
-      alert(p_("Messages", "The message has been sent"))
+        @form_messages.index = 3
+        @form_messages.fields[3].set_text("")
+        message_draft.sent
+        alert(p_("Messages", "The message has been sent"))
       end
-load_messages(@messages_user, @messages_subject, @messages_sp, @messages_limit, true)
-      end
-if (key_pressed?(:key_enter) or key_pressed?(:key_space)) and @form_messages.index==5
-    open_composer(@messages_user,"RE: " + (@messages_subject||"").sub("RE: ",""),@form_messages.fields[3])
+      load_messages(@messages_user, @messages_subject, @messages_sp, @messages_limit, true)
+    end
+    if (key_pressed?(:key_enter) || key_pressed?(:key_space)) && @form_messages.index == 5
+      open_composer(@messages_user, "RE: " + (@messages_subject||"").sub("RE: ",""), @form_messages.fields[3])
+    end
   end
-          end
-      end
+
   def context_messages(menu)
     return if @sel_messages==nil
     if @sel_messages.index<@messages.size and @messages[@sel_messages.index].sender_is_user
@@ -1069,7 +1077,7 @@ def audiolimit
                                  loop do                     
              loop_update
              @form.fields[3].start_recording if main_shortcut_pressed?("r", shift: true)
-             notempt = (@form.fields[2].is_a?(EditBox) && @form.fields[2].text!="") || (@form.fields[3].is_a?(OpusRecordButton) && !@form.fields[3].empty?)
+             notempt = (@form.fields[2].is_a?(EditBox) && @form.fields[2].text_len.positive?) || (@form.fields[3].is_a?(OpusRecordButton) && !@form.fields[3].empty?)
              notempt=true if @form.fields[2]==nil and @form.fields[3]==nil
                           if @form.fields[4]==nil && notempt
                  @form.fields[4] = Button.new(p_("Messages", "Send"))

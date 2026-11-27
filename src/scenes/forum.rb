@@ -3379,7 +3379,7 @@ form.wait
       send_confirmed = false
       loop_update
       if type==0
-      if (form.fields[0].text != "" and form.fields[1].text != "")
+      if form.fields[0].text_len.positive? && form.fields[1].text_len.positive?
         form.fields[-2] = Button.new(p_("Forum", "Send")) if form.fields[-2]==nil
       else
         form.fields[-2] = nil
@@ -4165,12 +4165,14 @@ end
   end
 
   def textsendupdate
-    if @form.fields[@postscount * POST_FIELDS + 1].text == "" and @form.fields[@postscount * POST_FIELDS + 3] != nil
-      @form.fields[@postscount * POST_FIELDS + 3] = nil
-    elsif @form.fields[@postscount * POST_FIELDS + 1].text != "" and @form.fields[@postscount * POST_FIELDS + 3] == nil
-      @form.fields[@postscount * POST_FIELDS + 3] = Button.new(p_("Forum", "Send"))
+    reply_index = @postscount * POST_FIELDS + 1
+    send_index = @postscount * POST_FIELDS + 3
+    if @form.fields[reply_index].text_len.zero?
+      @form.fields[send_index] = nil if @form.fields[send_index]
+    else
+      @form.fields[send_index] ||= Button.new(p_("Forum", "Send"))
     end
-    if (@form.fields[@postscount * POST_FIELDS + 3]!=nil && @form.fields[@postscount * POST_FIELDS + 3].pressed?) or (key_pressed?(:key_enter) and key_held?(0x11) and @form.index == @postscount * POST_FIELDS + 1)
+    if @form.fields[send_index]&.pressed? || (key_pressed?(:key_enter) && key_held?(0x11) && @form.index == reply_index)
       return if ![1,2].include?(@threadclass.forum.group.role) and !canjoin
       text=@form.fields[@postscount * POST_FIELDS + 1].text
       format = 0
