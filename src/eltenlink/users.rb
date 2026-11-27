@@ -26,11 +26,14 @@ module EltenLink
   )
 
   module Users
-    @status_time = 0
-    @status_users = []
-    @status_texts = []
-    @online = []
-    @sponsors = []
+    STATUS_TTL = 15
+    STATUS_RETRY_DELAY = 3
+    EMPTY_STATUS = UserStatus.new(text: "".freeze, online: false, sponsor: false).freeze
+    StatusCache = Struct.new(:server, :auth, :index, :refresh_at, :refreshing, keyword_init: true)
+    private_constant :STATUS_TTL, :STATUS_RETRY_DELAY, :EMPTY_STATUS, :StatusCache
+
+    @status_mutex = Mutex.new
+    @status_cache = nil
 
     class << self
       def status(client, name, online: true, sponsor: true)
@@ -38,17 +41,11 @@ module EltenLink
       end
 
       def status_info(client, name, online: true, sponsor: true)
-        refresh_status_cache(client) if Time.now.to_i - 15 > @status_time
-        return UserStatus.new(text: "", online: false, sponsor: false) if @status_users == nil || @online == nil
-        text = ""
-        @status_users.each_with_index do |user, index|
-          text = @status_texts[index] if name == user
-        end
-        UserStatus.new(
-          text: text,
-          online: online && @online.include?(name),
-          sponsor: sponsor && @sponsors.include?(name)
-        )
+        entry = (status_index(client)&.[](name) || EMPTY_STATUS).dup
+        entry.text = entry.text.dup
+        entry.online = online && entry.online
+        entry.sponsor = sponsor && entry.sponsor
+        entry
       end
 
       def set_status(client, text)
@@ -138,20 +135,67 @@ module EltenLink
 
       private
 
-      def refresh_status_cache(client)
-        @status_time = Time.now.to_i
-        statuses = client.api_data("GET", "/api/v1/users/statuses")["statuses"].to_a
-        online = client.api_data("GET", "/api/v1/users/online")["users"].to_a
-        sponsors = client.api_data("GET", "/api/v1/admins", { "category" => "sponsors" })["users"].to_a
-
-        @online = online.map(&:to_s).select { |line| line.size > 0 }
-        @sponsors = sponsors.map(&:to_s)
-        @status_users = []
-        @status_texts = []
-        statuses.each_with_index do |row, index|
-          @status_users[index] = row["name"].to_s
-          @status_texts[index] = row["status"].to_s
+      # Called under @status_mutex. Scene-specific clients use the same API session.
+      def current_status_cache
+        server = Client.api_base_url
+        auth = Client.session_auth_params
+        if @status_cache.nil? || @status_cache.server != server || @status_cache.auth != auth
+          @status_cache = StatusCache.new(server: server.dup.freeze,
+            auth: auth.transform_values { |value| value.dup.freeze }.freeze, refresh_at: 0)
         end
+        @status_cache
+      end
+
+      def status_index(client)
+        cache = @status_mutex.synchronize do
+          current = current_status_cache
+          # HTTP can pump the UI and re-enter this method while the three GETs run.
+          return current.index if current.refreshing || Process.clock_gettime(Process::CLOCK_MONOTONIC) < current.refresh_at
+
+          current.refreshing = true
+          current
+        end
+
+        begin
+          fresh = fetch_status_index(client, cache)
+        rescue Error => error
+          failure = error
+        ensure
+          active = @status_mutex.synchronize do
+            cache.refreshing = false
+            if current_status_cache.equal?(cache)
+              cache.refresh_at = Process.clock_gettime(Process::CLOCK_MONOTONIC) + (fresh ? STATUS_TTL : STATUS_RETRY_DELAY)
+              cache.index = fresh if fresh
+              true
+            end
+          end
+        end
+        return unless active
+        raise failure if failure && cache.index.nil?
+
+        cache.index
+      end
+
+      def fetch_status_index(client, cache)
+        # Pin all three GETs even if the UI changes sessions while a request is sent.
+        auth = cache.auth.empty? ? { "name" => "", "token" => "" } : cache.auth
+        statuses = client.api_data("GET", "/api/v1/users/statuses", auth)["statuses"].to_a
+        return unless @status_mutex.synchronize { current_status_cache.equal?(cache) }
+
+        online = client.api_data("GET", "/api/v1/users/online", auth)["users"].to_a
+        return unless @status_mutex.synchronize { current_status_cache.equal?(cache) }
+
+        sponsors = client.api_data("GET", "/api/v1/admins", auth.merge("category" => "sponsors"))["users"].to_a
+        index = {}
+        statuses.each do |row|
+          (index[row["name"].to_s] ||= EMPTY_STATUS.dup).text = row["status"].to_s
+        end
+        online.each do |user|
+          name = user.to_s
+          (index[name] ||= EMPTY_STATUS.dup).online = true unless name.empty?
+        end
+        sponsors.each { |user| (index[user.to_s] ||= EMPTY_STATUS.dup).sponsor = true }
+        index.freeze
       end
 
       def bool_value(value)
