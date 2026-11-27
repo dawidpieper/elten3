@@ -108,6 +108,15 @@ module EltenAPI
   when :alarm
     Scene_Clock.editalarm
     loop_update
+  when :tasktimer_status
+    alert(TaskTimer.status_text, false)
+  when :tasktimer_pause
+    if !TaskTimer.active? || TaskTimer.finished?
+      alert(TaskTimer.status_text, false)
+    else
+      TaskTimer.toggle_pause
+      alert(TaskTimer.status_text, false)
+    end
   when :tray
             $totray=true if tray_supported?
             when :srsapi
@@ -354,6 +363,8 @@ end
 [:conference_dicerollcustom, p_("EAPI_QuickActions", "Conferences: roll a custom die"), [], 0, false],
 [:latest_notification, p_("EAPI_QuickActions", "Open the latest notification"), [], 0, false],
 [:alarm, p_("EAPI_QuickActions", "Add alarm"), [], 0, false],
+[:tasktimer_status, p_("EAPI_QuickActions", "Tasks: say focus timer status"), [], 0, false],
+[:tasktimer_pause, p_("EAPI_QuickActions", "Tasks: pause or resume focus timer"), [], 0, false],
         ]
         a << [:restart_developer_mode, p_("EAPI_QuickActions", "Restart in developer mode"), [], 0, false] unless GlobalMenu.developer_mode?
         a << [:restart_normal_mode, p_("EAPI_QuickActions", "Restart in normal mode"), [], 0, false] if GlobalMenu.developer_mode?
