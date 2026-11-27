@@ -559,11 +559,11 @@ end
                   return if !index.is_a?(Integer)
                   @hidden[index]=false
                   end
-                def focus(index=nil,count=nil)
+                def focus(index=nil,count=nil, **field_options)
                   if @fields[@index]!=nil
                     @fields[@index].trigger(:before_focus)
-                  @fields[@index].focus(@index, @fields.size)
-                  @fields[@index].trigger(:focus)
+                    @fields[@index].focus(@index, @fields.size, **field_options)
+                    @fields[@index].trigger(:focus)
                   end
                 end
                 def key_processed(k)
