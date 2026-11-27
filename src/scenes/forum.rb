@@ -2105,7 +2105,7 @@ loop do
     lst_threadin.selected[0]=true
     lst_threadin.selected[1]=true
 chk_transcriptions.on(:change) {
-chk_transcriptions.checked=false if !requires_premiumpackage("courier")
+chk_transcriptions.checked=false if !requires_premiumpackage("courier", p_("Forum", "Search the transcriptions of audio posts as well as written posts."))
 }
     form.accept_button = btn_search
     form.cancel_button = btn_cancel
@@ -2411,7 +2411,7 @@ form.focus
             s = p_("Forum", "Follow this forum")
       s = p_("Forum", "Unfollow this forum") if @sforums.size > 0 and @sforums[@frmsel.index].followed == true
       menu.option(s, nil, "l") {
-      if @sforums[@frmsel.index].followed || @sforums[@frmsel.index].group.role==2 || requires_premiumpackage("courier")
+      if @sforums[@frmsel.index].followed || @sforums[@frmsel.index].group.role==2 || requires_premiumpackage("courier", p_("Forum", "Follow activity in forums in groups you do not moderate."))
         if @sforums[@frmsel.index].followed == false
           if forum_attempt(nil) {
             EltenLink::Forum.follow_forum(elten_link, forumid: @sforums[@frmsel.index].id)
@@ -2926,7 +2926,7 @@ break
             s = p_("Forum", "Mark this thread")
       s = p_("Forum", "Unmark this thread") if @sthreads[@thrsel.index].marked== true
       menu.option(s, nil, "h") {
-      if requires_premiumpackage("courier")
+      if requires_premiumpackage("courier", p_("Forum", "Keep selected threads together in your list of marked threads."))
       m=0
       m=1 if @sthreads[@thrsel.index].marked== false
           if forum_attempt(nil) {
@@ -3365,7 +3365,7 @@ form.wait
     if type == 0
       fields[1..6] = [EditBox.new(p_("Forum", "Post content"), type: EditBox::Flags::MultiLine, text: draft_data["text"], quiet: true), CheckBox.new(p_("Forum", "Use Markdown in this post"), checked: draft_data["markdown"] == true && holds_premiumpackage("courier")), nil, Button.new(p_("Forum", "Attach a poll")), nil, Button.new(p_("Forum", "Attach a file"))]
     fields[2].on(:change) {
-    fields[2].checked=false if !requires_premiumpackage("courier")
+    fields[2].checked=false if !requires_premiumpackage("courier", p_("Forum", "Use Markdown formatting in the text of a forum post."))
     }
       else
       fields[1..6] = [OpusRecordButton.new(p_("Forum", "Audio post"), EltenPath.join(Dirs.temp, "audiopost.opus"), max_bitrate: 96, bitrate: 48), nil, nil, nil, nil, nil]
@@ -4105,7 +4105,7 @@ loop do
       end
       @textfields[4] = question_button
       @textfields[3].on(:change) {
-      @textfields[3].checked=false if !requires_premiumpackage("courier")
+      @textfields[3].checked=false if !requires_premiumpackage("courier", p_("Forum", "Use Markdown formatting in the text of a forum post."))
       }
         @audiofields = [OpusRecordButton.new(p_("Forum", "Audio post"), EltenPath.join(Dirs.temp, "audiopost.opus"), max_bitrate: 96, bitrate: 48, time_limit: @threadclass.forum.group.audiolimit), nil, nil, nil, nil, nil, nil]
     @audiofields[4] = question_button
@@ -4395,7 +4395,7 @@ if post.edited && !post.locked
         )
       }
     m.option(p_("Forum", "Bookmarks"), nil, "b") {
-    if requires_premiumpackage("courier")
+    if requires_premiumpackage("courier", p_("Forum", "Save and revisit individual posts in this thread using bookmarks."))
     showbookmarks
     end
     }
@@ -4504,7 +4504,7 @@ if post.edited && !post.locked
         s = p_("Forum", "Mark this thread")
       s = p_("Forum", "Unmark this thread") if @threadclass.marked== true
             menu.option(s, nil, "h") {
-            if requires_premiumpackage("courier")
+            if requires_premiumpackage("courier", p_("Forum", "Keep selected threads together in your list of marked threads."))
                   m=0
       m=1 if @threadclass.marked== false
                 if forum_attempt(nil) {
@@ -4549,7 +4549,7 @@ if post.edited && !post.locked
       )
       if selected != nil && selected >= 0
         mode = SIGNATURE_MODES[selected]
-        if mode != SIGNATURE_MODE_HIDDEN || requires_premiumpackage("courier")
+        if mode != SIGNATURE_MODE_HIDDEN || requires_premiumpackage("courier", p_("Forum", "Hide signatures while reading forum posts."))
           LocalConfig[FORUM_SIGNATURE_MODE_KEY] = mode
           refresh
         end
@@ -4673,7 +4673,7 @@ if post.edited && !post.locked
   end
 
   def reply_to_mention(mention, select_type=false)
-    return if !requires_premiumpackage("courier")
+    return if !requires_premiumpackage("courier", p_("Forum", "Reply directly to the person who mentioned you on the forum."))
     to=mention.author
     subj="RE: "+@threadclass.name
     text="\r\n-- (#{to}):\r\n#{mention.message}\r\n--\r\n"
@@ -5120,7 +5120,7 @@ form.wait
       form = Form.new([EditBox.new(p_("Forum", "edit your post here"), type: EditBox::Flags::MultiLine, text: post.post), ListBox.new(atts.map{|a|a[2]}, header: p_("Forum", "Attachments")), CheckBox.new(p_("Forum", "Use Markdown in this post")), Button.new(_("Save")), Button.new(_("Cancel"))])
       form.fields[2].checked=post.format
       form.fields[2].on(:change) {
-      form.fields[2].checked=post.format if !requires_premiumpackage("courier")
+      form.fields[2].checked=post.format if !requires_premiumpackage("courier", p_("Forum", "Use Markdown formatting in the text of a forum post."))
       }
       form.hide(1) if @threadclass.forum.group.preventattachments
       form.fields[1].bind_context{|menu|

@@ -68,7 +68,8 @@ class Scene_Blog
           @sel.focus
         end
       when 7, 8
-        if requires_premiumpackage("courier")
+        description = @index == 7 ? p_("Blog", "Browse the posts you follow across blogs.") : p_("Blog", "Browse mentions you have received in blog posts.")
+        if requires_premiumpackage("courier", description)
           filter = @index == 7 ? "FOLLOWED" : "MENTIONED"
           $scene = Scene_Blog_Posts.new(Session.name, filter, parent: self).enter_from_blog_tree
         end
@@ -549,7 +550,7 @@ end
   if Session.logged? && (post.followed==true || !post.owner.to_s.start_with?("[*"))
     opt=post.followed==true ? p_("Blog", "Unfollow this post") : p_("Blog", "Follow this post")
     menu.option(opt, nil, "l") {
-      next if post.followed==false && !requires_premiumpackage("courier")
+      next if post.followed==false && !requires_premiumpackage("courier", p_("Blog", "Follow new comments on this blog post."))
       begin
         if post.followed==true
           EltenLink::Blog.unfollow_post(elten_link, blog: post.owner, post_id: post.id)
@@ -834,7 +835,7 @@ def context(menu)
     if Session.logged? && (@post.followed==true || (@iseltenblog && @post.followed==false))
       opt=@post.followed==true ? p_("Blog", "Unfollow this post") : p_("Blog", "Follow this post")
       menu.option(opt, nil, "l") {
-        next if @post.followed==false && !requires_premiumpackage("courier")
+        next if @post.followed==false && !requires_premiumpackage("courier", p_("Blog", "Follow new comments on this blog post."))
         begin
           if @post.followed==true
             EltenLink::Blog.unfollow_post(elten_link, blog: @post.owner, post_id: @post.id)
@@ -1348,7 +1349,7 @@ menu.option(p_("Blog", "Create new blog"), nil, "n") {
     alert(_("Error"))
     next
   end
-  next if !managed.empty? && !requires_premiumpackage("scribe")
+  next if !managed.empty? && !requires_premiumpackage("scribe", p_("Blog", "Create another blog in addition to your first blog."))
 
   $scene = Scene_Blog_Create.new(true, $scene)
 }
