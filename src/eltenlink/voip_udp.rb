@@ -279,7 +279,7 @@ module EltenLink
       def muted?(packet)
         user = @users[sender(packet)]
         return true unless user
-        @owner.__send__(:packet_muted?, user["name"], packet.getbyte(7), destination(packet))
+        @owner.__send__(:packet_muted?, user["name"], packet.getbyte(7), destination(packet), sender(packet))
       end
 
       def targets(packet)

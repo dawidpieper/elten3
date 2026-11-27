@@ -50,7 +50,7 @@ class Channel
           end
         end
     class ChannelUser
-     attr_accessor :id, :name, :waiting, :supervisor, :speech_requested, :speech_allowed
+     attr_accessor :id, :name, :waiting, :supervisor, :speech_requested, :speech_allowed, :legacy_primary, :multi_session, :can_whisper
      def initialize(id, name, waiting=false, supervisor=nil, speech_requested=false, speech_allowed=false)
        @id=id
        @name=name
@@ -795,13 +795,14 @@ end
 def self.whisper(userid)
   safe {@@core.whisper=userid if @@core!=nil}
   end
-def self.create(name="", public=true, bitrate=64, framesize=60, vbr_type=1, codec_application=0, prediction_disabled=false, fec=false, password=nil, spatialization=0, channels=2, lang='', width=30, height=30, key_len=256, waiting_type=0, permanent=false, motd="", allow_guests=false, conference_mode=0, blacklist_policy=1, p2p_enabled=false, p2p_participants_limit=2)
+def self.create(name="", public=true, bitrate=64, framesize=60, vbr_type=1, codec_application=0, prediction_disabled=false, fec=false, password=nil, spatialization=0, channels=2, lang='', width=30, height=30, key_len=256, waiting_type=0, permanent=false, motd="", allow_guests=false, conference_mode=0, blacklist_policy=1, p2p_enabled=false, p2p_participants_limit=2, voice_call_grace: false)
   if @@opened==false
   self.open
   delay(1)
   end
   @@created=nil
   params={'name'=>name, 'public'=>public, 'bitrate'=>bitrate, 'framesize'=>framesize, 'vbr_type'=>vbr_type, 'codec_application'=>codec_application, 'prediction_disabled'=>prediction_disabled, 'fec'=>fec, 'password'=>password, 'spatialization'=>spatialization, 'channels'=>channels, 'lang'=>lang, 'width'=>width, 'height'=>height, 'key_len'=>key_len, 'waiting_type'=>waiting_type, 'permanent'=>permanent, 'motd'=>motd, 'allow_guests'=>allow_guests, 'conference_mode'=>conference_mode, 'blacklist_policy'=>blacklist_policy, 'p2p_enabled'=>p2p_enabled, 'p2p_participants_limit'=>p2p_participants_limit}
+  params["voice_call_grace"] = true if voice_call_grace
   @@created=safe(nil) {@@core.create_channel(params) if @@core!=nil}
   return @@created
 end
@@ -890,6 +891,10 @@ LocalConfig["ConferenceStreamVolume"]=vol
     @@stream_volume=vol
   end
 def self.volume(user)
+  if user.is_a?(Integer) && @@core
+    member = channel.users.find { |u| u.id == user }
+    return ChannelUserVolume.new(user, *@@core.effective_volume(user, member.name)) if member
+  end
   v=self.volumes[user]
   v||=ChannelUserVolume.new(user, 100, false, false, false)
   v
@@ -901,6 +906,9 @@ def self.volumes
     vls[u] = ChannelUserVolume.new(u, @@volumes[u][0], @@volumes[u][1], @@volumes[u][2], @@volumes[u][3])
     end
   return vls
+end
+def self.use_for_legacy_listeners
+  safe { @@core.use_for_legacy_listeners if @@core }
 end
 def self.streamid_mutes
   @@streamid_mutes
@@ -985,7 +993,7 @@ def self.waiting_channel_id
             return @@opened
           end
           def self.userid
-            return @@userid
+            return @@core ? @@core.userid : @@userid
             end
           def self.channel
             return @@channel
@@ -1007,8 +1015,8 @@ end
 }
 return [@@x, @@y, @@dir]
 end
-def self.calling_play
-safe {@@core.calling_play if @@core!=nil}
+def self.calling_play(peer=nil)
+safe {@@core.calling_play(peer) if @@core!=nil}
 end
 def self.calling_stop
 safe {@@core.calling_stop if @@core!=nil}
@@ -1071,7 +1079,13 @@ end
             ch.groupid=params['groupid'].to_i
             ch.users=[]
             if params['users'].is_a?(Array)
-                                          ch.users=params['users'].map{|u| ChannelUser.new(u['id'], u['name'], false, u['supervisor'], u['speech_requested'], params['speakers'].is_a?(Array) && params['speakers'].include?(u['id']))}
+                                          ch.users=params['users'].map do |u|
+                member = ChannelUser.new(u['id'], u['name'], false, u['supervisor'], u['speech_requested'], Array(params['speakers']).include?(u['id']))
+                member.legacy_primary = u['legacy_primary']
+                member.multi_session = u['multi_session']
+                member.can_whisper = u['can_whisper']
+                member
+              end
             end
                         if params['waiting_users'].is_a?(Array)
               ch.users+=params['waiting_users'].map{|u| ChannelUser.new(u['id'], u['name'], true)}

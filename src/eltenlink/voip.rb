@@ -43,7 +43,7 @@ Ping=251
 Pong=252
 end
 
-attr_reader :connected, :latency, :uid, :tcp_requested, :streams
+attr_reader :connected, :latency, :uid, :tcp_requested, :streams, :multi_session
 def initialize
 @closing=false
 @tcp_requested=false
@@ -141,12 +141,9 @@ encodings = ['deflate', 'zstd']
 encodings.push('xz') if defined?(XZ_AVAILABLE) && XZ_AVAILABLE
 command("session_encodings", {'encodings'=>encodings}, reconnect: false)
 command("session_aliasversion", {'version'=>1}, reconnect: false)
-resp=command("login", {'login'=>username, 'token'=>token, 'publickey'=>Base64.strict_encode64(@key.public_key.to_der), 'udp_p2p_v1'=>true}, reconnect: false)
+resp=command("login", {'login'=>username, 'token'=>token, 'publickey'=>Base64.strict_encode64(@key.public_key.to_der), 'udp_p2p_v1'=>true, 'multi_session_v1'=>true}, reconnect: false)
 if resp!=false
-@uid=resp['id']
-@secret=Base64.strict_decode64(resp['secret'])
-raise IOError, "UDP negotiation failed" unless resp['udp_p2p_v1'].is_a?(Hash)
-@udp_transport=UDPTransport.new(self, resp['udp_p2p_v1'], ConferenceHost, 8133)
+configure_login(resp)
 stop_transport_thread(@tcpthread)
 @tcpthread=Thread.new {
 until @closing
@@ -176,6 +173,24 @@ rescue Exception
 end
 return false
 end
+def configure_login(response)
+  secret = Base64.strict_decode64(response.fetch('secret'))
+  if response.key?('udp_p2p_v1')
+    registration = response['udp_p2p_v1']
+    raise IOError, "Invalid UDP negotiation" unless registration.is_a?(Hash)
+    transport = UDPTransport.new(self, registration, ConferenceHost, 8133)
+  elsif secret.bytesize != 256
+    raise IOError, "Missing legacy UDP secret"
+  end
+  @uid = response.fetch('id')
+  @secret = secret
+  @udp_transport = transport
+  @multi_session = response['multi_session_v1'] == true
+  @session_mutes = @multi_session ? {@uid => [true, false, true]} : {}
+  @mutes = @multi_session ? [] : [@username]
+end
+private :configure_login
+
 def create_channel(params)
 st=command("create", params)
 if st!=false
@@ -249,6 +264,10 @@ end
 end
 @receive_mutex.synchronize { @received={} }
 if resp['params']!=nil
+if @session_mutes && (members = resp['params'].dig('channel', 'users'))
+  live = members.map { |u| u['id'] }
+  @session_mutes.delete_if { |id, _| id != @uid && !live.include?(id) }
+end
 queue_params(resp['params'])
 end
 end
@@ -406,12 +425,17 @@ end
 @reconnecting=false
 set_packet_method(:tcp) if @tcp_requested==true
 update
-join_channel(nil, @last_password, @last_uuid) if @last_uuid!=nil
+join_channel(nil, password, uuid) if uuid!=nil
 update
-unmute(@username) if !mutes.include?(@username)
-mutes.each{|m|mute(m)}
-chat_mutes.each{|m|chat_mute(m)}
-streams_mutes.each{|m|streams_mute(m)}
+mutes.each { |name| mute(name) unless name.casecmp?(@username) }
+chat_mutes.each { |name| chat_mute(name) }
+streams_mutes.each { |name| streams_mute(name) unless name.casecmp?(@username) }
+unless @own_account_audio_mute.nil?
+  @own_account_audio_mute ? mute(@username) : unmute(@username)
+end
+unless @own_account_streams_mute.nil?
+  @own_account_streams_mute ? streams_mute(@username) : streams_unmute(@username)
+end
 streamid_mutes.each{|m|streamid_mute(m)}
 for i in 0...@streams.size
 s=@streams[i]
@@ -484,7 +508,7 @@ return false if data==nil
 return @udp_transport.send(data) if @udp_transport
 @sendbytes+=data.bytesize
 if !@tcp_requested
-@udp.send(data, 0, "conferencing.elten.link", 8133)
+@udp.send(data, 0, ConferenceHost, 8133)
 else
 command("packet", {'packet'=>Base64.encode64(data)})
 end
@@ -533,11 +557,13 @@ def on_ping(&block)
 @ping_hooks.push(block) if block!=nil
 end
 def mute(user)
+@own_account_audio_mute = true if user.casecmp?(@username)
 log(-1, "Conference: muting user #{user}")
 @mutes.push(user) if !@mutes.include?(user)
 command("mute", {'user'=>user})
 end
 def unmute(user)
+@own_account_audio_mute = false if user.casecmp?(@username)
 log(-1, "Conference: unmuting user #{user}")
 command("unmute", {'user'=>user})
 @mutes.delete(user)
@@ -553,11 +579,13 @@ command("chat_unmute", {'user'=>user})
 @chat_mutes.delete(user)
 end
 def streams_mute(user)
+@own_account_streams_mute = true if user.casecmp?(@username)
 log(-1, "Conference: muting streams of user #{user}")
 @streams_mutes.push(user) if !@streams_mutes.include?(user)
 command("streams_mute", {'user'=>user})
 end
 def streams_unmute(user)
+@own_account_streams_mute = false if user.casecmp?(@username)
 log(-1, "Conference: unmuting streams of user #{user}")
 command("streams_unmute", {'user'=>user})
 @streams_mutes.delete(user)
@@ -738,14 +766,29 @@ end
 @sendbytes+=data.bytesize
 command("packet", {'packet'=>Base64.strict_encode64(data)})!=false
 end
-def packet_muted?(username, type, streamid)
+def set_session_mutes(id, audio, chat, streams)
+  return false unless @multi_session
+  result = command("session_mutes", {"userid"=>id, "audio"=>audio, "chat"=>chat, "streams"=>streams})
+  return false unless result.is_a?(Hash)
+  @session_mutes[id] = [audio, chat, streams]
+  true
+end
+
+def use_for_legacy_listeners
+  @multi_session && command("legacy_primary").is_a?(Hash)
+end
+
+public :set_session_mutes, :use_for_legacy_listeners
+
+def packet_muted?(username, type, streamid, userid=nil)
+session_mutes = (@session_mutes || {})[userid] || []
 case type
 when 1
-@mutes.include?(username)
+session_mutes[0] || @mutes.include?(username)
 when 2, 101, 111, 112, 113, 114
-@chat_mutes.include?(username)
+session_mutes[1] || @chat_mutes.include?(username)
 when 21
-@streams_mutes.include?(username) || @streamid_mutes.include?(streamid)
+session_mutes[2] || @streams_mutes.include?(username) || @streamid_mutes.include?(streamid)
 else
 false
 end

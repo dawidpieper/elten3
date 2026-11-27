@@ -11,7 +11,8 @@ class Scene_Conference
   def self.channel_target(id)
     { "type" => "channel", "id" => id.to_i }
   end
-  def initialize(timeout=nil, prefocus=0, target=nil)
+  def initialize(timeout=nil, prefocus=0, target=nil, expected_peer: nil)
+    @expected_peer=expected_peer
     @timeout=timeout
     @prefocus=prefocus
     @target=target
@@ -55,7 +56,7 @@ class Scene_Conference
     st_conference.add_tip(p_("Conference", "Use Shift+Left/Right Arrow to rotate"))
                         lst_users.bind_context{|menu|
     if lst_users.options.size>0
-      user=Conference.channel.users[lst_users.index]
+      user=Conference.channel.users.find { |entry| entry.id == Array(@lastusers)[lst_users.index] }
       if user!=nil
         if user.waiting==false
       menu.useroption(user.name)
@@ -89,11 +90,12 @@ class Scene_Conference
             end
         end
         end
-      vol=Conference.volume(user.name)
+      volume_target = user.legacy_primary.nil? ? user.name : user.id
+      vol=Conference.volume(volume_target)
       s=p_("Conference", "Mute user")
       s=p_("Conference", "Unmute user") if vol.muted==true
       menu.option(s, nil, "m") {
-            Conference.setvolume(user.name, vol.volume, !vol.muted, vol.chat_muted, vol.streams_muted)
+            Conference.setvolume(volume_target, vol.volume, !vol.muted, vol.chat_muted, vol.streams_muted)
             if !vol.muted
               speak(p_("Conference", "User muted"))
             else
@@ -103,7 +105,7 @@ class Scene_Conference
       s=p_("Conference", "Mute user's chat messages and dice rolls")
       s=p_("Conference", "Unmute user's chat messages and dice rolls") if vol.chat_muted==true
       menu.option(s, nil, "e") {
-            Conference.setvolume(user.name, vol.volume, vol.muted, !vol.chat_muted, vol.streams_muted)
+            Conference.setvolume(volume_target, vol.volume, vol.muted, !vol.chat_muted, vol.streams_muted)
             if !vol.chat_muted
               speak(p_("Conference", "User's chat muted"))
             else
@@ -113,7 +115,7 @@ class Scene_Conference
       s=p_("Conference", "Mute user's streams")
       s=p_("Conference", "Unmute user's streams") if vol.streams_muted==true
       menu.option(s, nil, "w") {
-            Conference.setvolume(user.name, vol.volume, vol.muted, vol.chat_muted, !vol.streams_muted)
+            Conference.setvolume(volume_target, vol.volume, vol.muted, vol.chat_muted, !vol.streams_muted)
             if !vol.streams_muted
               speak(p_("Conference", "User's streams muted"))
             else
@@ -123,14 +125,14 @@ class Scene_Conference
       menu.option(p_("Conference", "Change user volume")) {
       lst_volume = ListBox.new((0..300).to_a.reverse.map{|v|v.to_s+"%"}, header: p_("Conference", "User volume"), index: 300-vol.volume, flags: 0, quiet: false)
       lst_volume.on(:move) {
-      Conference.setvolume(user.name, 300-lst_volume.index, vol.muted, vol.chat_muted, vol.streams_muted)
+      Conference.setvolume(volume_target, 300-lst_volume.index, vol.muted, vol.chat_muted, vol.streams_muted)
       }
       loop {
       loop_update
       lst_volume.update
       break if key_pressed?(:key_enter)
       if key_pressed?(:key_escape)
-        Conference.setvolume(user.name, vol.volume, vol.muted, vol.chat_muted, vol.streams_muted)
+        Conference.setvolume(volume_target, vol.volume, vol.muted, vol.chat_muted, vol.streams_muted)
         break
         end
       }
@@ -150,7 +152,7 @@ end
       loop_update while key_held?(0x20)
       Conference.whisper(0)
       speak(p_("Conference", "Hold the Space bar to whisper to the user")) if Time.now.to_f-t<0.25
-      }
+      } unless user.can_whisper == false
     else
             if Conference.channel.administrators.include?(Session.name)
         menu.option(p_("Conference", "Accept")) {
@@ -181,7 +183,7 @@ end
       if Conference.channel.administrators.include?(Session.name)
         if user.supervisor==nil || user.supervisor==0
                 menu.option(p_("Conference", "Take over this user's stream")) {
-                if requires_premiumpackage("director") && user.name!=Session.name
+                if requires_premiumpackage("director") && user.id!=Conference.userid
       Conference.supervise(user.id)
     end
     }
@@ -247,11 +249,13 @@ end
     @users_hook = Conference.on(:update) {
     lastuser=nil
     lastuser=@lastusers[lst_users.index] if @lastusers.is_a?(Array)
-    timeout_break if Conference.channel.users.size>1
+    timeout_break if call_peer_present?
             lst_users.clear_options
         ind=nil
             for u in Conference.channel.users
-          parts=[u.name]
+          duplicate = Conference.channel.users.count { |other| other.name.casecmp?(u.name) } > 1
+          label = duplicate ? p_("Conference", "%{user}, session %{id}") % {user: u.name, id: u.id} : u.name
+          parts=[label]
           if u.supervisor!=nil && u.supervisor!=""
           su=Conference.channel.users.find{|us|us.id==u.supervisor}
           supervisor=""
@@ -262,10 +266,10 @@ end
       parts << EltenAPI::SpeechCommands::SoundCommand.new("listbox_itemfuture", " "+p_("EAPI_Speech", "Future")+" ", "", immediate: true) if u.speech_requested
       s=parts.size==1 ? parts[0] : EltenAPI::SpeechSequence.new(parts)
       lst_users.options.push(s)
-    ind=lst_users.options.size-1 if u.name==lastuser
+    ind=lst_users.options.size-1 if u.id==lastuser
       end
     lst_users.index=ind if ind!=nil
-      @lastusers = Conference.channel.users.map{|u|u.name}
+      @lastusers = Conference.channel.users.map(&:id)
     motd=Conference.channel.motd||""
     if motd!=""
       motdh=Digest::SHA1.hexdigest(motd.to_s)
@@ -1691,6 +1695,12 @@ def schedule_outgoing_call_cancel(call_id)
     end
   end
 end
+def call_peer_present?
+  Conference.channel.users.any? do |u|
+    next false if u.waiting || u.id == Conference.userid
+    @expected_peer ? u.name.casecmp?(@expected_peer) : !u.name.casecmp?(Session.name.to_s)
+  end
+end
 def start_timeout(seconds)
   return if seconds==nil
   @timeout_mutex=Mutex.new
@@ -1708,7 +1718,7 @@ def start_timeout(seconds)
       end
       !@timeout_cancelled && Process.clock_gettime(Process::CLOCK_MONOTONIC)>=deadline
     end
-    if elapsed && Conference.opened? && Conference.channel.users.size<=1
+    if elapsed && Conference.opened? && !call_peer_present?
       resume_form=@timeout_mutex.synchronize do
         if !@timeout_cancelled
           @timeout_expired=true

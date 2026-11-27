@@ -1566,6 +1566,8 @@ Bass.record_prepare
 @streams={}
 @outstreams=[]
 @volumes={@username=>[100,true,false,true]}
+@default_self_volume = true
+@session_volumes={}
 @speakers={}
 @volume=100
 @muted=false
@@ -1599,6 +1601,7 @@ Bass.record_prepare
 @voip.on_params {|params|onparams(params)}
 @voip.on_ping {|t|onping(t)}
 @voip.connect(@username, @token)
+@volumes.clear if @voip.multi_session
 snd=getsound("conference_whisper")
 @whisper_sound=nil
 @whisper_sound=Bass.create_file_stream_from_memory(snd, 256) if snd!=nil
@@ -2034,44 +2037,43 @@ end
 return id
 end
 
+def effective_volume(id, name)
+  account = @volumes[name] || [100, false, false, false]
+  device = @session_volumes[id]
+  device ||= [account[0], true, false, true] if @voip.multi_session && id == @voip.uid
+  return account unless device
+  [device[0], account[1] || device[1], account[2] || device[2], account[3] || device[3]]
+end
+
+def use_for_legacy_listeners
+  @voip.use_for_legacy_listeners
+end
+
 def setvolume(user, volume=100, muted=false, chat_muted=false, streams_muted=false)
-volume=300 if volume>300
-volume=10 if volume<10
-v=[volume, muted, chat_muted, streams_muted]
-@volumes[user]=v
-for t in @transmitters.values
-t.setvolume(v) if t.username==user
+  settings = [volume.clamp(10, 300), muted, chat_muted, streams_muted]
+  if user.is_a?(Integer)
+    transmitter = @transmitters[user]
+    return unless transmitter && @voip.set_session_mutes(user, muted, chat_muted, streams_muted)
+    @session_volumes[user] = settings
+    transmitter.setvolume(effective_volume(user, transmitter.username))
+  else
+    @default_self_volume = false if user == @username
+    @volumes[user] = settings
+    @transmitters.each do |id, transmitter|
+      transmitter.setvolume(effective_volume(id, user)) if transmitter.username == user
+    end
+    muted ? @voip.mute(user) : @voip.unmute(user)
+    chat_muted ? @voip.chat_mute(user) : @voip.chat_unmute(user)
+    streams_muted ? @voip.streams_mute(user) : @voip.streams_unmute(user)
+  end
+  apply_monitor_mutes if user == @username || user == @voip.uid
+  @volumes_hooks.each { |hook| hook.call(@volumes) }
 end
-if muted
-@voip.mute(user)
-else
-@voip.unmute(user)
-end
-if chat_muted
-@voip.chat_mute(user)
-else
-@voip.chat_unmute(user)
-end
-if streams_muted
-@voip.streams_mute(user)
-else
-@voip.streams_unmute(user)
-end
-if user==@username
-if !muted
-Bass::BASS_ChannelSetAttribute.call(@myself_mixer, 2, 0.0)
-@muteme=false
-else
-Bass::BASS_ChannelSetAttribute.call(@myself_mixer, 2, 1.0)
-@muteme=true
-end
-if !streams_muted
-Bass::BASS_ChannelSetAttribute.call(@outstreams_mixer, 2, 0.0)
-else
-Bass::BASS_ChannelSetAttribute.call(@outstreams_mixer, 2, 1.0)
-end
-end
-@volumes_hooks.each{|h|h.call(@volumes)}
+
+def apply_monitor_mutes
+  _, @muteme, _, streams_muted = effective_volume(@voip.uid, @username)
+  Bass::BASS_ChannelSetAttribute.call(@myself_mixer, 2, @muteme ? 1.0 : 0.0)
+  Bass::BASS_ChannelSetAttribute.call(@outstreams_mixer, 2, streams_muted ? 1.0 : 0.0)
 end
 def streamid_setvolume(id, volume, mute)
 volume=100 if volume>100
@@ -2394,20 +2396,24 @@ end
 def whisper
 @whisper
 end
-def whisper=(w)
-if w.is_a?(Integer) && w>=0 && w<256**2
-log(-1, "Conference: whispering to #{w}")
-@whisper_key = @voip.public_key(w)
-@whisper_aes = OpenSSL::Cipher::AES128.new(:CBC)
-@whisper_aes_key = @whisper_aes.random_key
-@whisper=w
-if w>0
-play_sound("recording_start")
-else
-play_sound("recording_stop")
-end
-end
-@whisper
+def whisper=(target)
+  return @whisper unless target.is_a?(Integer) && target.between?(0, 65_535)
+  @encoder_mutex.synchronize do
+    @whisper = target
+    @whisper_sender = @voip.uid
+    @whisper_unavailable = target.positive? && (!@transmitters.key?(target) || Array(@unreachable_whispers).include?(target))
+    @whisper_key = nil
+    return target if @whisper_unavailable
+    if target.positive?
+      @whisper_unavailable = true
+      @whisper_key = @voip.public_key(target)
+      @whisper_aes = OpenSSL::Cipher::AES128.new(:CBC)
+      @whisper_aes_key = @whisper_aes.random_key
+      @whisper_unavailable = false
+    end
+  end
+  play_sound(target.positive? ? "recording_start" : "recording_stop")
+  target
 end
 def object_add(resid, name, x, y)
 log(-1, "Conference: adding object #{name} at #{x}, #{y}")
@@ -2466,7 +2472,8 @@ end
 def chat
 @chat.dup
 end
-def calling_play
+def calling_play(peer=nil)
+@expected_peer=peer
 calling_stop
 @callingplaying=true
 return if Configuration.soundthemeactivation == false
@@ -2833,6 +2840,19 @@ return if @closing
 @position.mutex.synchronize {
 @encoder_mutex.synchronize {
 if params['channel'].is_a?(Hash)
+if @local_uid != @voip.uid
+  @session_volumes.clear
+  @whisper_unavailable = true if @local_uid && @whisper.to_i > 0
+  @local_uid = @voip.uid
+  if @default_self_volume
+    if @voip.multi_session
+      @volumes.delete(@username)
+    else
+      @volumes[@username] = [100, true, false, true]
+    end
+  end
+  apply_monitor_mutes
+end
 channel_changed=@chid!=params['channel']['id']
 if channel_changed
 @chid=params['channel']['id']
@@ -2926,6 +2946,8 @@ end
 frs=@transmitters.size==0
 upusers=[]
 pch=false
+@unreachable_whispers = params['channel']['users'].select { |u| u['can_whisper'] == false }.map { |u| u['id'] }
+@whisper_unavailable = true if @unreachable_whispers.include?(@whisper)
 n=params['channel']['users'].size
 c = params['channel']['users'].find_index{|u|u['id']==@voip.uid}
 c=0 if c==nil
@@ -2945,14 +2967,14 @@ if @transmitters[uid].speech_requested==false && u['speech_requested']==true
 end
 @transmitters[uid].speech_requested=u['speech_requested']
 else
+calling_stop if @callingplaying && uid != @voip.uid && (@expected_peer ? u['name'].casecmp?(@expected_peer) : !u['name'].casecmp?(@username))
 if pch==false
-calling_stop
 position_changed
 pch=true
 end
 @user_hooks.each{|h|h.call(true, u['name'], uid)} if frs==false
 log(-1, "Conference: registering new transmitter #{uid}")
-@transmitters[uid] = Transmitter.new(params['channel']['channels'], params['channel']['framesize'], @encoder.preskip, @starttime, params['channel']['spatialization'], @position, u['name'], @volumes[u['name']])
+@transmitters[uid] = Transmitter.new(params['channel']['channels'], params['channel']['framesize'], @encoder.preskip, @starttime, params['channel']['spatialization'], @position, u['name'], effective_volume(uid, u['name']))
 @transmitters[uid].set_hrtf(@hrtf) if params['channel']['spatialization']==1 || params['channel']['spatialization']==2
 @transmitters[uid].set_mixer(@channel_mixer, @whisper_mixer)
 if params['channel']['spatialization']==2
@@ -2968,7 +2990,8 @@ end
 @volumes_hooks.each{|h|h.call(@volumes)}
 for t in @transmitters.keys
 if !upusers.include?(t)
-@whisper=0 if @whisper==t
+@session_volumes.delete(t)
+@whisper_unavailable=true if @whisper==t
 @user_hooks.each{|h|h.call(false, @transmitters[t].username, t)} if frs==false
 log(-1, "Conference: unregistering transmitter #{t}")
 @transmitters[t].free
@@ -3187,7 +3210,7 @@ else
 Bass::BASS_StreamPutData.call(@output_stream, "\0"*part.bytesize, part.bytesize)
 end
 end
-if part.bytesize!=part.b.count("\0")
+if !@whisper_unavailable && (@whisper == 0 || @whisper_sender == @voip.uid) && part.bytesize!=part.b.count("\0")
 if @encoder!=nil
 frame=@encoder.encode(part, fs/2/@channels)
 end

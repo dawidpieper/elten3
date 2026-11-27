@@ -18,17 +18,17 @@ end
 if channel==nil
 channel_password = rand(36**32).to_s(36)
 chname="VoiceCall_"+Session.name
-channel = Conference.create(chname, false, 56, 40, 1, 0, false, true, channel_password, 0, 2, nil).to_i
+channel = Conference.create(chname, false, 56, 40, 1, 0, false, true, channel_password, 0, 2, nil, voice_call_grace: true).to_i
 else
 Conference.join(channel, channel_password)
 end
 delay(1)
 tm=nil
 tm=30 if invite.is_a?(Array) && invite.size==1
-sc=Scene_Conference.new(tm, 1)
+sc=Scene_Conference.new(tm, 1, expected_peer: tm && invite.first)
 if invite.is_a?(Array)
 invite.each{|user|sc.invite(user)}
-Conference.calling_play if invite.size==1
+Conference.calling_play(invite.first) if invite.size==1
 end
 insert_scene(sc)
       end
