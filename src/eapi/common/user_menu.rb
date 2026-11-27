@@ -128,7 +128,7 @@ module EltenAPI
         ringtone_label = if ringtone
           p_("EAPI_Common", "Unset ringtone")
         else
-          p_("EAPI_Common", "Set ringtone")
+          premium_feature_label(p_("EAPI_Common", "Set ringtone"), "audiophile")
         end
         actions << user_menu_action(ringtone_label) do
           if ringtone

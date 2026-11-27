@@ -33,7 +33,7 @@ class Scene_Blog
   end
 
   def main
-    @sel = ListBox.new([p_("Blog", "Managed blogs"),p_("Blog", "Recently updated blogs"),p_("Blog", "Frequently updated blogs"),p_("Blog", "Frequently commented blogs"),p_("Blog", "Followed blogs"), p_("Blog", "Blogs popular with my friends"), p_("Blog", "Open an external WordPress blog"), p_("Blog", "Followed blog posts"), p_("Blog", "Received mentions"), p_("Blog", "Blogs library")],header: p_("Blog", "Blogs"),index: @index)
+    @sel = ListBox.new([p_("Blog", "Managed blogs"),p_("Blog", "Recently updated blogs"),p_("Blog", "Frequently updated blogs"),p_("Blog", "Frequently commented blogs"),p_("Blog", "Followed blogs"), p_("Blog", "Blogs popular with my friends"), p_("Blog", "Open an external WordPress blog"), premium_feature_label(p_("Blog", "Followed blog posts"), "courier"), premium_feature_label(p_("Blog", "Received mentions"), "courier"), p_("Blog", "Blogs library")],header: p_("Blog", "Blogs"),index: @index)
     unless Session.logged?
       [0, 4, 5, 7, 8, 9].each { |index| @sel.disable_item(index) }
     end
@@ -547,7 +547,7 @@ end
       }
   post = @post[@sel.index]
   if Session.logged? && (post.followed==true || !post.owner.to_s.start_with?("[*"))
-    opt=post.followed==true ? p_("Blog", "Unfollow this post") : p_("Blog", "Follow this post")
+    opt=post.followed==true ? p_("Blog", "Unfollow this post") : premium_feature_label(p_("Blog", "Follow this post"), "courier")
     menu.option(opt, nil, "l") {
       next if post.followed==false && !requires_premiumpackage("courier")
       begin
@@ -832,7 +832,7 @@ def context(menu)
       }
     end
     if Session.logged? && (@post.followed==true || (@iseltenblog && @post.followed==false))
-      opt=@post.followed==true ? p_("Blog", "Unfollow this post") : p_("Blog", "Follow this post")
+      opt=@post.followed==true ? p_("Blog", "Unfollow this post") : premium_feature_label(p_("Blog", "Follow this post"), "courier")
       menu.option(opt, nil, "l") {
         next if @post.followed==false && !requires_premiumpackage("courier")
         begin
@@ -1341,7 +1341,13 @@ confirm(p_("Blog", "All posts on this blog will be marked as read. Do you want t
 }
 end
 end
-menu.option(p_("Blog", "Create new blog"), nil, "n") {
+create_label = p_("Blog", "Create new blog")
+if @type == Session.name && !@blogs.empty?
+  create_label = premium_feature_label(create_label, "scribe")
+elsif !holds_premiumpackage("scribe") && @type != Session.name
+  create_label = p_("Blog", "Create new blog (additional blogs require the Sponsorship package)")
+end
+menu.option(create_label, nil, "n") {
   begin
     managed = EltenLink::Blog.managed(elten_link)
   rescue EltenLink::Error
@@ -2674,7 +2680,7 @@ end
     @lst_domaintype = @form.fields[2] = ListBox.new([
     p_("Blog", "Personal Elten blog domain (%{username}.elten.blog)")%{:username=>Session.name},
     p_("Blog", "Shared Elten blog domain (selectedname.s.elten.blog)"),
-    p_("Blog", "External domain")
+    premium_feature_label(p_("Blog", "External domain"), "scribe")
     ], header: p_("Blog", "Domain type"))
     @lst_domaintype.disable_item(2) if !holds_premiumpackage("scribe")
     @txt_domaininstructions = @form.fields[3] = EditBox.new(p_("Blog", "Buying your own domain"), type: EditBox::Flags::ReadOnly, text: p_("Blog", "To continue, you should point your domain to Elten Blogging server.\nYou can buy your own domain from domain providers, such as ovh.com, domain.com, godaddy.com or bluehost.com."), quiet: true)
