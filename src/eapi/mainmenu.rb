@@ -173,26 +173,30 @@ module GlobalMenu
     $scene=nil
     }
     m.option(p_("MainMenu", "&Restart")) {
+              if confirm_restart
                                   play_sound("logout")
               $restart=true
               $scene=Scene_Loading.new
+              end
     }
     if !developer_mode?
     m.option(p_("MainMenu", "Restart in de&veloper mode")) {
-              if !restart_to_developer_mode
+              if restart_to_developer_mode == false
                 alert(p_("MainMenu", "Cannot restart in developer mode."))
               end
     }
     end
     if developer_mode?
     m.option(p_("MainMenu", "Restart in de&bug mode")) {
+              if confirm_restart(:debug)
                     play_sound("logout")
               $DEBUG=true
               $restart=true
               $scene=Scene_Loading.new
+              end
     }
     m.option(p_("MainMenu", "Restart in &normal mode")) {
-              if !restart_to_normal_mode
+              if restart_to_normal_mode == false
                 alert(p_("MainMenu", "Cannot restart in normal mode."))
               end
     }
